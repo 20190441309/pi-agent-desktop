@@ -2,7 +2,6 @@
 // 拦截 session 事件, 决定要不要发审批, 拒绝时调 session.abort()
 // 已知限制: abort 杀整个 turn, 不能单工具. M3+ 可升级为真 Pi 扩展.
 
-import type { RiskLevel } from "@shared/approval";
 import { classifyToolCall } from "./classifier";
 import { requestApproval } from "./approval-bridge";
 import { readFile } from "fs/promises";

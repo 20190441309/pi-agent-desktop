@@ -12,12 +12,19 @@ import { buildFileTree } from './file-tree';
 import { MessagingGateway } from './messaging/gateway';
 import { GatewayConfig } from './messaging/types';
 import { PiDriver, type PiInstallProgress } from './pi-driver';
+import { WorkspaceRegistry } from './services/pi-session/registry';
+import { PendingEdits } from './services/approval/pending-edits';
+import { setupChatIpc } from './ipc/chat.ipc';
+import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 
 let mainWindow: BrowserWindow | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
-let currentPiProcess: ReturnType<typeof spawn> | null = null;
 let gateway: MessagingGateway | null = null;
 let piDriver: PiDriver | null = null;
+
+// M1: 长连接 Pi session 管理
+const piRegistry = new WorkspaceRegistry();
+const piPendingEdits = new PendingEdits();
 
 // 终端进程管理
 const terminalProcesses = new Map<string, ChildProcess>();
@@ -346,137 +353,15 @@ function getGitStatus(workspacePath: string): { branch: string; modified: string
 
 // IPC Handlers
 function setupIPC(): void {
-  // Pi CLI — 使用 --mode json 结构化事件流模式，每次独立运行
-  ipcMain.handle('pi:prompt', async (_, message: string, _sessionId?: string) => {
-    const provider = piAgentConfig?.defaultProvider || 'mimo';
-    const model = piAgentConfig?.defaultModel || 'mimo-v2.5-pro';
-    
-    console.log('[Main] pi:prompt called with message:', message.substring(0, 50) + '...');
-    
-    return new Promise<void>((resolve, reject) => {
-      try {
-        // --mode json 输出结构化 JSONL 事件流，--print 让 pi 从 stdin 读取输入
-        const args = ['--provider', provider, '--model', model, '--mode', 'json', '--print'];
-
-        // 构建命令字符串，避免 shell: true 时的参数拼接问题
-        const command = `pi ${args.map(a => `"${a}"`).join(' ')}`;
-        console.log('[Main] Spawning command:', command);
-        
-        const proc = spawn(command, [], {
-          cwd: process.cwd(),
-          stdio: ['pipe', 'pipe', 'pipe'],
-          shell: true
-        });
-
-        // 保存进程引用以便中止
-        currentPiProcess = proc;
-
-        // 兼容层：发送 text_start 给旧的 pi:event 监听器
-        if (mainWindow && mainWindow.webContents) {
-          mainWindow.webContents.send('pi:event', { type: 'text_start' });
-        }
-
-        // 标记是否已经发送了 turn_end 兼容事件
-        let turnEnded = false;
-        const sendTurnEndCompat = () => {
-          if (!turnEnded) {
-            turnEnded = true;
-            mainWindow?.webContents.send('pi:event', { type: 'turn_end' });
-          }
-        };
-
-        // JSONL 行缓冲：stdout 可能不按行边界到达，需要拼接
-        let buffer = '';
-
-        proc.stdout?.on('data', (data: Buffer) => {
-          buffer += data.toString();
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // 保留不完整的最后一行
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const event = JSON.parse(line);
-              // 转发完整的结构化事件给渲染进程
-              if (mainWindow && mainWindow.webContents) {
-                mainWindow.webContents.send('pi:json-event', event);
-              }
-
-              // 兼容层：将关键事件也映射到旧的 pi:event 通道
-              if (event.type === 'message_update' && event.assistantMessageEvent) {
-                const sub = event.assistantMessageEvent;
-                if (sub.type === 'text_delta' && sub.delta) {
-                  mainWindow?.webContents.send('pi:event', {
-                    type: 'text_delta',
-                    text: sub.delta
-                  });
-                }
-              } else if (event.type === 'tool_execution_start') {
-                mainWindow?.webContents.send('pi:event', {
-                  type: 'toolcall_start',
-                  tool: event.toolName,
-                  input: event.args
-                });
-              } else if (event.type === 'tool_execution_end') {
-                mainWindow?.webContents.send('pi:event', {
-                  type: 'toolcall_end',
-                  tool: event.toolName,
-                  result: event.result
-                });
-              }
-            } catch (e) {
-              console.error('[Main] Failed to parse Pi JSON line:', (e as Error).message, line.substring(0, 120));
-            }
-          }
-        });
-
-        proc.stderr?.on('data', (data: Buffer) => {
-          console.error('Pi stderr:', data.toString().substring(0, 200));
-        });
-
-        proc.on('close', (code) => {
-          console.log('[Main] Pi process closed with code:', code);
-          currentPiProcess = null;
-
-          // 处理缓冲区中最后一行（可能没有换行符结尾）
-          if (buffer.trim()) {
-            try {
-              const event = JSON.parse(buffer);
-              if (mainWindow && mainWindow.webContents) {
-                mainWindow.webContents.send('pi:json-event', event);
-              }
-            } catch {
-              // 忽略无法解析的尾部数据
-            }
-          }
-
-          // 延迟发送兼容 turn_end，确保所有事件都已推送
-          setTimeout(() => {
-            sendTurnEndCompat();
-          }, 100);
-          if (code === 0) {
-            resolve();
-          } else {
-            reject(new Error(`Pi exited with code ${code}`));
-          }
-        });
-
-        proc.on('error', (error) => {
-          mainWindow?.webContents.send('pi:event', {
-            type: 'error',
-            message: error.message
-          });
-          sendTurnEndCompat();
-          reject(error);
-        });
-
-        // 写入用户消息并关闭 stdin（触发 --print 处理）
-        proc.stdin?.write(message + '\n');
-        proc.stdin?.end();
-      } catch (error) {
-        reject(error);
-      }
-    });
+  // M1: 替换老的 pi:prompt (一次性 spawn), 走 AgentSession 长连接
+  setupChatIpc({
+    registry: piRegistry,
+    pendingEdits: piPendingEdits,
+    getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
+    getDefaultWorkspace: () => {
+      const ws = store.get('workspaces');
+      return ws.length > 0 ? ws[0] : undefined;
+    },
   });
 
   // ── Pi Driver 管理 ───────────────────────────────────────────────
@@ -515,25 +400,7 @@ function setupIPC(): void {
     piDriver?.cancelOperation();
   });
 
-  ipcMain.handle('pi:stop', async () => {
-    if (currentPiProcess) {
-      const proc = currentPiProcess;
-      proc.kill('SIGTERM');
-      // 等待进程实际退出（最多 3 秒）
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(() => {
-          proc.kill('SIGKILL');
-          resolve();
-        }, 3000);
-        proc.on('close', () => {
-          clearTimeout(timer);
-          resolve();
-        });
-      });
-      currentPiProcess = null;
-    }
-    mainWindow?.webContents.send('pi:event', { type: 'turn_end' });
-  });
+  // 注: pi:stop 已经在 setupChatIpc 里注册 (M1 走 session.abort 而不是 SIGKILL)
 
   // Workspace management
   ipcMain.handle('workspace:list', async () => {
@@ -966,6 +833,11 @@ app.on('window-all-closed', () => {
     piDriver.destroy();
     piDriver = null;
   }
+
+  // M1: 清理所有 Pi session (每个 workspace 一个)
+  clearAllPendingApprovals();
+  piPendingEdits.clear();
+  piRegistry.disposeAll();
 
   // 清理所有终端进程
   for (const [id, child] of terminalProcesses) {

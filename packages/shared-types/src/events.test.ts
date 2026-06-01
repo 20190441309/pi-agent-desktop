@@ -1,6 +1,6 @@
-import { describe, it, expect, expectTypeOf } from "vitest";
-import type { PiEvent, PiTextDeltaEvent, PiToolStartEvent, PiToolExecutionStart } from "../events";
-import type { RiskLevel, ApprovalRequest } from "../approval";
+import { describe, it, expect } from "vitest";
+import type { PiEvent, PiTextDeltaEvent, PiToolStartEvent, PiToolExecutionStart } from "./events";
+import type { RiskLevel, ApprovalRequest } from "./approval";
 
 describe("Pi events", () => {
     it("text_delta has delta string", () => {
