@@ -1,244 +1,243 @@
-# Pi Desktop v1.0 — Design Spec
+# Pi Desktop v1.0 — 设计 Spec
 
-**Date**: 2026-06-01
-**Status**: Draft, pending user review
-**Author**: brainstorming session (Mavis + user)
+**日期**: 2026-06-01
+**状态**: 草稿, 待用户审阅
+**作者**: 头脑风暴会话 (Mavis + 用户)
 
 ---
 
-## 1. Goal
+## 1. 目标
 
-Ship a polished, open-source Windows desktop GUI for [Pi](https://github.com/earendil-works/pi-coding-agent) that:
+发布一个精致的、开源的 Windows 桌面 GUI, 为 [Pi](https://github.com/earendil-works/pi-coding-agent) 服务, 满足:
 
-- **Looks and feels like** OpenAI Codex Desktop (2025) — light theme, 4-column layout, task panel on the right.
-- **Preserves Pi's signature**: free-form extensibility via Skills, Providers, and Plugins.
-- **Is safe by default** via tiered tool approval.
-- **Is real, not theatre**: every UI element wires to working data flow.
+- **长得像、感觉像** OpenAI Codex Desktop (2025) — 浅色主题、四列布局、右侧任务面板
+- **保留 Pi 的招牌特色**: 通过 Skills / Providers / Plugins 自由扩展
+- **默认安全** 通过分层工具审批
+- **不是花架子**: 每个 UI 元素都接通真实数据流
 
-## 2. Non-Goals (v1.0)
+## 2. 非目标 (v1.0)
 
-- macOS / Linux support (v1.1+).
-- Telemetry / cloud sync / account system.
-- Marketplace backend we host ourselves.
-- Plugin authoring IDE beyond "edit SKILL.md with syntax highlighting".
-- Multi-window, multi-account, collaboration features.
+- macOS / Linux 支持 (v1.1+)
+- 埋点 / 云同步 / 账户体系
+- 我们自己托管的 marketplace 后端
+- 超出 "用 Monaco 高亮编辑 SKILL.md" 的插件开发 IDE
+- 多窗口、多账户、协作功能
 
-## 3. Target User
+## 3. 目标用户
 
-A developer who:
+满足以下条件的开发者:
 
-- Uses Pi CLI today (or wants to).
-- Wants a polished GUI instead of a terminal.
-- Likes the Codex Desktop UX and wants the same on Pi.
-- Adds skills / providers / plugins to Pi to fit their workflow.
-- Runs on Windows 10/11.
+- 现在就在用 Pi CLI (或想用)
+- 想要一个精致的 GUI 替代终端
+- 喜欢 Codex Desktop 的 UX, 想在 Pi 上也得到同样的体验
+- 会给 Pi 加 skills / providers / plugins 来适配自己的工作流
+- 运行 Windows 10/11
 
-## 4. Reference Product
+## 4. 参考产品
 
-OpenAI Codex Desktop (2025). Light theme, 4-column layout, task panel on right, @ file references, integrated terminal, image paste, diff visualization, Git panel, integrated tool approval.
+OpenAI Codex Desktop (2025)。浅色主题、四列布局、右侧任务面板、@ 文件引用、集成终端、图片粘贴、diff 可视化、Git 面板、集成工具审批。
 
-## 5. Architecture
+## 5. 架构
 
-### 5.1 Three layers + one persistent process per workspace
+### 5.1 三层 + 每个 workspace 一个常驻进程
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ Renderer (React)                                         │
-│  ├─ 4-column layout: IconBar | ProjectPanel | Chat |     │
-│  │  TaskPanel                                            │
+│  ├─ 4 列布局: IconBar | ProjectPanel | Chat | TaskPanel  │
 │  ├─ Zustand stores: session, workspace, approval,        │
 │  │  skills, settings, tasks, search, ui                  │
 │  └─ contextBridge: window.piAPI / window.shellAPI        │
 └────────────────┬────────────────────────────────────────┘
-                 │ IPC (typed)
+                 │ IPC (类型化)
 ┌────────────────┴────────────────────────────────────────┐
 │ Main Process (Electron)                                  │
-│  ├─ WindowManager       window/tray/hotkeys              │
-│  ├─ WorkspaceManager    workspaces metadata + switching  │
-│  ├─ PiSessionManager ⭐ 1 long-lived Pi process per WS   │
-│  │    ├─ ProcessSupervisor  lifecycle / restart / crash  │
-│  │    ├─ EventBridge        JSON event → IPC broadcast   │
-│  │    ├─ ApprovalInterceptor tiered tool approval        │
-│  │    └─ HistoryBuffer      in-memory + persisted        │
-│  ├─ SkillsManager       local scan / enable / install    │
-│  ├─ GitService          status/diff/log/blame/undo       │
-│  ├─ ShellManager ⭐     node-pty multi-tab terminal      │
+│  ├─ WindowManager       窗口/托盘/快捷键                 │
+│  ├─ WorkspaceManager    workspace 元数据 + 切换          │
+│  ├─ PiSessionManager ⭐ 每个 workspace 1 个长连接 Pi 进程│
+│  │    ├─ ProcessSupervisor  生命周期 / 重启 / 崩溃恢复   │
+│  │    ├─ EventBridge        JSON 事件 → IPC 广播        │
+│  │    ├─ ApprovalInterceptor 分层工具审批               │
+│  │    └─ HistoryBuffer      内存 + 持久化              │
+│  ├─ SkillsManager       本地扫描 / 启用 / 安装          │
+│  ├─ GitService          状态/diff/log/blame/undo        │
+│  ├─ ShellManager ⭐     node-pty 多 tab 终端            │
 │  ├─ FileSearcher        ripgrep + SQLite FTS5            │
 │  └─ AutoUpdater         electron-updater → GitHub        │
 └────────────────┬────────────────────────────────────────┘
                  │ spawn / pipe
 ┌────────────────┴────────────────────────────────────────┐
-│ External Processes                                       │
-│  ├─ pi-coding-agent (1 per workspace, long-lived)        │
-│  └─ node-pty shells (PowerShell per terminal tab)        │
+│ 外部进程                                                 │
+│  ├─ pi-coding-agent (每个 workspace 1 个, 长连接)        │
+│  └─ node-pty shells (每个 terminal tab 一个 PowerShell)  │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 5.2 Key Decisions
+### 5.2 关键决策
 
-| Decision | Choice | Why |
-|---|---|---|
-| Pi invocation | Long-lived per workspace | Real multi-turn, real state, cheaper |
-| Multi-workspace | Concurrent Pi processes | Independent state, no cross-contamination |
-| Pi crash | Auto-restart up to 3×, then dialog | App must survive Pi dying |
-| Approval | Tiered (see §7) | Balances safety and friction |
-| Session persist | Dual-layer (Pi in-mem + electron-store) | Crash-safe |
-| Skills source | Local + SkillHub CLI + GitHub import | No central marketplace to maintain |
-| Terminal | node-pty + xterm.js, multi-tab | Real PTY, real TUI apps work |
-| Auto-update | electron-updater + GitHub Releases | OSS-standard |
-| IPC | Typed contract in `packages/shared-types` | Self-documenting, contributor-friendly |
+| 决策 | 选择 | 原因 |
+|------|------|------|
+| Pi 调用方式 | 每个 workspace 长连接 | 真多轮, 状态在 Pi 进程内, 更便宜 |
+| 多 workspace | 并发 Pi 进程 | 状态独立, 不互相污染 |
+| Pi 崩溃 | 自动重启最多 3 次, 然后弹对话框 | 应用不能跟着 Pi 一起挂 |
+| 审批 | 分层 (见 §7) | 在安全和摩擦之间取平衡 |
+| 会话持久化 | 双层 (Pi 内存 + electron-store) | 崩溃也不丢 |
+| Skills 数据源 | 本地 + SkillHub CLI + GitHub 导入 | 不需要我们自己维护中央市场 |
+| 终端 | node-pty + xterm.js, 多 tab | 真 PTY, TUI 应用能跑 |
+| 自动更新 | electron-updater + GitHub Releases | OSS 标准做法 |
+| IPC | `packages/shared-types` 类型化契约 | 自带文档, 贡献者友好 |
 
-### 5.3 Failure Modes
+### 5.3 失败模式
 
-- **Pi process OOM/segfault**: Supervisor catches, auto-restart up to 3 attempts, then show "Pi crashed" dialog with log copy button.
-- **electron-store corruption**: Back up corrupted file, rebuild empty, surface warning.
-- **Workspace path deleted**: Mark as `missing`, do not auto-delete.
-- **Same workspace reopened**: Reuse existing Pi process (pid dedup).
-- **Offline**: Registry/GitHub/SkillHub API failures degrade silently; do not block startup.
+- **Pi 进程 OOM/segfault**: Supervisor 捕获, 自动重启最多 3 次, 失败后弹 "Pi 崩了" 对话框, 附 "复制日志" 按钮
+- **electron-store 损坏**: 备份损坏文件, 重建空配置, 弹警告
+- **workspace 路径被删**: 标记为 `missing`, 不自动删除记录
+- **同一 workspace 重复打开**: 复用现有 Pi 进程 (pid 去重)
+- **离线**: registry / GitHub / SkillHub API 失败静默降级, 不阻塞启动
 
-## 6. Key Flows
+## 6. 关键流程
 
-### 6.1 Chat send (happy path)
+### 6.1 聊天发送 (主路径)
 
 ```
 [Renderer] ChatInput → useChatStore.send(text)
   → ipc: pi:send(workspaceId, text, attachments)
   → [Main] PiSessionManager.sendPrompt(workspaceId, text)
-    1. Pull last turn history from HistoryBuffer
-    2. Hand to workspace's Pi process stdin
-    3. Mark streaming=true
-  → Pi process stdout: JSONL events
-  → [Main] EventBridge parses:
-    - text_delta       → ipc: pi:event → renderer appends to currentMsg
-    - thinking_delta   → ipc: pi:event → renderer updates ThinkingBlock
+    1. 从 HistoryBuffer 取出上一轮历史
+    2. 交给当前 workspace 的 Pi 进程 stdin
+    3. 标记 streaming=true
+  → Pi 进程 stdout: JSONL 事件
+  → [Main] EventBridge 解析:
+    - text_delta       → ipc: pi:event → renderer 追加到当前消息
+    - thinking_delta   → ipc: pi:event → renderer 更新 ThinkingBlock
     - tool_execution_start → ApprovalInterceptor.classify()
-    - tool_execution_end   → ipc: pi:event (tool card update)
+    - tool_execution_end   → ipc: pi:event (tool 卡片更新)
     - turn_end         → streaming=false, HistoryBuffer.flush()
 ```
 
-### 6.2 Tiered Approval (core innovation)
+### 6.2 分层审批 (核心创新)
 
 ```
-Pi emits tool_execution_start { name, args }
+Pi 发出 tool_execution_start { name, args }
   │
   ▼
 ApprovalInterceptor.classify(tool):
   │
-  ├─ HIGH_RISK
-  │    Hardcoded list (overridable via config):
-  │      • bash subcommand contains: rm -rf /, sudo, mkfs, dd,
+  ├─ HIGH_RISK (高危)
+  │    硬编码清单 (配置可覆盖):
+  │      • bash 子命令含: rm -rf /, sudo, mkfs, dd,
   │        chmod 777 /, curl|sh, force push, git reset --hard
-  │      • write path matches: ~/.ssh/**, ~/.aws/**, /etc/**,
+  │      • 写路径匹配: ~/.ssh/**, ~/.aws/**, /etc/**,
   │        .git/hooks/**, .git/config
-  │    Action:
-  │      1. Pause Pi process (SIGSTOP on Unix, suspend on Win)
+  │    动作:
+  │      1. 暂停 Pi 进程 (Unix SIGSTOP, Windows suspend)
   │      2. ipc: approval:request { risk: 'high', preview, options }
-  │      3. Wait for user response
-  │      4. On approve: resume Pi (SIGCONT)
-  │      5. On reject: kill tool, send cancel to Pi
+  │      3. 等用户响应
+  │      4. 通过: 恢复 Pi (SIGCONT)
+  │      5. 拒绝: 中止工具, 通知 Pi 取消
   │
-  ├─ FILE_EDIT (write / edit / multi-file)
-  │    Action:
-  │      1. Do NOT pause Pi
-  │      2. Record in _pendingEdits: { toolCallId, filePath,
-  │         oldContent (read before), newContent }
+  ├─ FILE_EDIT (文件编辑, write/edit/批量)
+  │    动作:
+  │      1. 不暂停 Pi
+  │      2. 记录到 _pendingEdits: { toolCallId, filePath,
+  │         oldContent (事前读), newContent }
   │      3. ipc: approval:deferred { toolCallId }
-  │      4. On tool_execution_end: read latest file → diff →
+  │      4. tool_execution_end 时: 读最新文件 → diff →
   │         ipc: approval:review { toolCallId, diff, options:
   │         [Approve | Reject | Undo] }
-  │      5. "Undo" = `git checkout -- <file>` (if git repo) or
-  │         restore oldContent
+  │      5. "Undo" = `git checkout -- <file>` (git 仓库) 或
+  │         用记录的 oldContent 还原
   │
-  └─ READ_ONLY (read, grep, ls, glob, simple bash)
-       Action: do not intercept, just show tool call card.
+  └─ READ_ONLY (read/grep/ls/glob 等)
+       动作: 不拦截, 只显示 tool call 卡片。
 ```
 
-### 6.3 Skills: marketplace + install + manage
+### 6.3 Skills: 市场 + 安装 + 管理
 
-**Marketplace tab** (uses SkillHub CLI):
+**市场 tab** (用 SkillHub CLI):
 ```
 [Renderer] SkillsMarketplace
   → ipc: skills:search(query, filter)
-  → [Main] exec('skillhub search ' + query), parse output
-  → ipc: skills:results → renderer renders cards
-  → User clicks Install
+  → [Main] exec('skillhub search ' + query), 解析输出
+  → ipc: skills:results → renderer 渲染卡片
+  → 用户点安装
   → ipc: skills:install(name)
   → [Main] exec('skillhub install ' + name, cwd=workspace)
-  → On success: rescan ~/.pi/agent/skills/ → ipc: skills:updated
+  → 成功: 重新扫描 ~/.pi/agent/skills/ → ipc: skills:updated
 ```
 
-**My tab** (local skills):
+**我的 tab** (本地技能):
 ```
-ipc: skills:list → rescan ~/.pi/agent/skills/ + .agents/skills/
-ipc: skills:toggle(name, enabled) → write .state.json
+ipc: skills:list → 重新扫描 ~/.pi/agent/skills/ + .agents/skills/
+ipc: skills:toggle(name, enabled) → 写 .state.json
 ipc: skills:uninstall(name) → rm -rf ~/.pi/agent/skills/<name>
 ```
 
-**+ Create menu** (3 options):
-- 💬 **用 Pi 构建** — Opens chat with pre-filled "help me write a skill that does X" prompt.
-- ✏️ **编写技能** — Monaco editor with SKILL.md template + live preview pane.
-- 🔗 **从 GitHub 导入** — Input GitHub URL → fetch SKILL.md → validate → install.
+**+ 创建菜单** (3 个选项):
+- 💬 **用 Pi 构建** — 打开聊天, 预填 "帮我写一个 skill, 它..." 提示词
+- ✏️ **编写技能** — Monaco 编辑器, 左侧 SKILL.md 模板, 右侧 live preview
+- 🔗 **从 GitHub 导入** — 输入 GitHub URL → 拉 SKILL.md → 校验 → 安装
 
-> **Note**: SkillHub is primarily designed for OpenClaw agent. We need a thin **adapter** in `services/skills/skillhub-adapter.ts` to normalize OpenClaw-format skills into Pi's SKILL.md shape, OR confirm Pi reads them as-is. **Open question — verify during M3.**
+> **注意**: SkillHub 主要为 OpenClaw agent 设计。我们需要在 `services/skills/skillhub-adapter.ts` 里加一层**适配器**, 把 OpenClaw 格式的 skill normalize 成 Pi 的 SKILL.md 格式, 或者确认 Pi 能直接读。**开放问题 — M3 spike 时验证。**
 
-### 6.4 Ctrl+K Command Palette
-
-```
-Ctrl+K → CommandPalette opens (modal)
-  ├─ Mode 1: file search (ripgrep, fuzzy)
-  ├─ Mode 2: history search (SQLite FTS5 on all sessions)
-  └─ Mode 3: command (new chat, switch workspace, install skill)
-  Streaming results back via ipc: search:results
-```
-
-### 6.5 Terminal
+### 6.4 Ctrl+K 命令面板
 
 ```
-[Renderer] TerminalPanel multi-tab
+Ctrl+K → 打开 CommandPalette (模态)
+  ├─ 模式 1: 文件搜索 (ripgrep, 模糊匹配)
+  ├─ 模式 2: 历史搜索 (SQLite FTS5, 跨所有 session)
+  └─ 模式 3: 命令 (新建对话 / 切 workspace / 装 skill)
+  结果流式回推 ipc: search:results
+```
+
+### 6.5 终端
+
+```
+[Renderer] TerminalPanel 多 tab
   → ipc: shell:create(tabId, cwd=workspacePath)
   → [Main] ShellManager.spawn(node-pty, 'powershell.exe', cwd, env)
-  → Output streamed: ipc: shell:output { tabId, data }
-  → Input: ipc: shell:input(tabId, data)
-  → Resize: ipc: shell:resize(tabId, cols, rows) — real PTY resize
-  → Close: ipc: shell:close(tabId) → kill
+  → 输出流: ipc: shell:output { tabId, data }
+  → 输入: ipc: shell:input(tabId, data)
+  → 调整大小: ipc: shell:resize(tabId, cols, rows) — 真 PTY resize
+  → 关闭: ipc: shell:close(tabId) → kill
 
-Default 1 terminal tab per workspace, + button to add more.
-Ctrl+\` toggles visibility.
+每个 workspace 默认 1 个 terminal tab, + 按钮加更多。
+Ctrl+\` 切换显隐。
 ```
 
-## 7. UI Structure
+## 7. UI 结构
 
-### 7.1 Four-Column Layout
+### 7.1 四列布局
 
 ```
 ┌──────┬──────────────┬───────────────────────────┬─────────────┐
 │ 48px │ 220px        │ flex-1                    │ 280px       │
-│IconBar│ProjectPanel │ Chat (or Skills/Settings) │ TaskPanel   │
-│      │  (resizable) │                           │ (collapsible)│
+│IconBar│ProjectPanel │ Chat (或 Skills/Settings) │ TaskPanel   │
+│      │  (可拖动)     │                           │ (可折叠)     │
 └──────┴──────────────┴───────────────────────────┴─────────────┘
 ```
 
-- **IconBar (48px)**: chat, skills, terminal, git, settings.
-- **ProjectPanel (220px, 180-400 drag range)**: project info + file tree + session list.
-- **Center (flex)**: chat / skills / settings (swappable based on IconBar selection).
-- **TaskPanel (280px, collapsible)**: live task progress, output links, source citations.
+- **IconBar (48px)**: 聊天、skills、终端、git、设置
+- **ProjectPanel (220px, 拖动范围 180-400)**: 项目信息 + 文件树 + session 列表
+- **中间 (flex)**: chat / skills / settings (按 IconBar 选择切换内容)
+- **TaskPanel (280px, 可折叠)**: 实时任务进度, 输出链接, 来源引用
 
-### 7.2 Key Interactions & Hotkeys
+### 7.2 关键交互与快捷键
 
-| Action | Hotkey | Notes |
-|---|---|---|
-| Global search | `Ctrl+K` | Command palette |
-| New chat | `Ctrl+N` | Current workspace |
-| Switch workspace | `Ctrl+P` | Workspace switcher |
-| Open skills | `Ctrl+Shift+S` | Jump to Skills page |
-| Toggle terminal | `Ctrl+\`` | Already exists |
-| Toggle project panel | `Ctrl+B` | Resize-hide |
-| Approve high-risk tool | `Y` | When approval dialog is focused |
-| Reject high-risk tool | `N` | Same |
-| Send message | `Enter` | |
-| Newline | `Shift+Enter` | |
+| 操作 | 快捷键 | 备注 |
+|------|--------|------|
+| 全局搜索 | `Ctrl+K` | 命令面板 |
+| 新建对话 | `Ctrl+N` | 当前 workspace |
+| 切换 workspace | `Ctrl+P` | workspace 切换器 |
+| 打开 skills | `Ctrl+Shift+S` | 跳到 Skills 页 |
+| 切换终端 | `Ctrl+\`` | 已存在 |
+| 切换项目面板 | `Ctrl+B` | 收起/展开 |
+| 通过高危工具 | `Y` | 审批弹窗聚焦时 |
+| 拒绝高危工具 | `N` | 同上 |
+| 发送消息 | `Enter` | |
+| 换行 | `Shift+Enter` | |
 
-### 7.3 Skills Page Layout (matches reference)
+### 7.3 Skills 页面布局 (匹配参考)
 
 ```
 技能  [市场 | 我的]  [全部 | 官方 | 贡献]  [搜索...]  [热门▾]   [+ 创建]
@@ -249,30 +248,30 @@ Ctrl+\` toggles visibility.
 │ @作者  │ │ @作者  │ │ @作者  │ │ @作者  │
 │ 使用次数│ │ 使用次数│ │ 使用次数│ │ 使用次数│
 └─────────┘ └─────────┘ └─────────┘ └─────────┘
-... (4-col grid, paginated) ...
+... (4 列网格, 分页) ...
 ```
 
-**+ Create dropdown (when + clicked)**:
-- 💬 用 Pi 构建 — chat with Pi to draft skill
-- ✏️ 编写技能 — Monaco editor
-- 🔗 从 GitHub 导入 — paste URL
+**+ 创建下拉** (点 + 后):
+- 💬 用 Pi 构建 — 让 Pi 帮忙起草 skill
+- ✏️ 编写技能 — Monaco 编辑器
+- 🔗 从 GitHub 导入 — 粘 URL
 
-## 8. Component Breakdown
+## 8. 组件拆解
 
 ### 8.1 Renderer
 
 ```
 src/renderer/src/
-├── App.tsx                          # 4-column shell
+├── App.tsx                          # 4 列 shell
 ├── stores/
-│   ├── session-store.ts             # current session + message stream
+│   ├── session-store.ts             # 当前 session + 消息流
 │   ├── workspace-store.ts
-│   ├── approval-store.ts            # tiered queue
-│   ├── skills-store.ts              # marketplace + my skills
-│   ├── tasks-store.ts               # task panel
+│   ├── approval-store.ts            # 分层队列
+│   ├── skills-store.ts              # 市场 + 我的 skills
+│   ├── tasks-store.ts               # 任务面板
 │   ├── settings-store.ts
-│   ├── search-store.ts              # Ctrl+K state
-│   └── ui-store.ts                  # panel visibility, theme
+│   ├── search-store.ts              # Ctrl+K 状态
+│   └── ui-store.ts                  # 面板显隐, 主题
 ├── components/
 │   ├── IconBar/
 │   ├── ProjectPanel/
@@ -280,25 +279,25 @@ src/renderer/src/
 │   │   ├── MessageBubble.tsx
 │   │   ├── MarkdownRenderer.tsx
 │   │   ├── CodeBlock.tsx
-│   │   ├── ThinkingBlock.tsx        # collapsible reasoning
+│   │   ├── ThinkingBlock.tsx        # 可折叠的推理
 │   │   ├── ToolCallCard.tsx
 │   │   ├── CommandCard.tsx
 │   │   ├── ChatInput.tsx
-│   │   ├── AttachmentChip.tsx       # @file / image preview
-│   │   └── MentionPopover.tsx       # @ trigger dropdown
+│   │   ├── AttachmentChip.tsx       # @文件/图片预览
+│   │   └── MentionPopover.tsx       # @ 触发的下拉
 │   ├── TaskPanel/
 │   │   ├── TaskList.tsx
 │   │   ├── OutputStream.tsx
 │   │   └── SourceCitations.tsx
 │   ├── ApprovalPanel/
-│   │   ├── HighRiskModal.tsx        # pre-approval gate
-│   │   └── EditReviewList.tsx       # post-approval diff queue
+│   │   ├── HighRiskModal.tsx        # 预审批门
+│   │   └── EditReviewList.tsx       # 事后审批 diff 队列
 │   ├── SkillsPanel/
-│   │   ├── SkillsMarketplace.tsx    # market tab
-│   │   ├── MySkills.tsx             # my tab
+│   │   ├── SkillsMarketplace.tsx    # 市场 tab
+│   │   ├── MySkills.tsx             # 我的 tab
 │   │   ├── SkillCard.tsx
 │   │   └── SkillCreateDropdown.tsx
-│   ├── SkillEditor/                 # Monaco-based SKILL.md editor
+│   ├── SkillEditor/                 # Monaco 写的 SKILL.md 编辑器
 │   ├── Terminal/
 │   ├── GitPanel/
 │   ├── CommandPalette/              # Ctrl+K
@@ -315,9 +314,9 @@ src/renderer/src/
 
 ```
 src/main/
-├── index.ts                         # app bootstrap + DI
+├── index.ts                         # app 启动 + DI
 ├── window-manager.ts
-├── ipc/                             # IPC route layer (one file per domain)
+├── ipc/                             # IPC 路由层 (按域分文件)
 │   ├── chat.ipc.ts
 │   ├── workspace.ipc.ts
 │   ├── approval.ipc.ts
@@ -326,19 +325,19 @@ src/main/
 │   ├── shell.ipc.ts
 │   ├── search.ipc.ts
 │   └── settings.ipc.ts
-├── services/                        # business logic
+├── services/                        # 业务逻辑
 │   ├── pi-session/
-│   │   ├── manager.ts               # multi-workspace orchestration
-│   │   ├── process.ts               # one Pi process lifecycle
-│   │   ├── event-bridge.ts          # JSONL → IPC events
-│   │   ├── approval-interceptor.ts  # tiered approval
+│   │   ├── manager.ts               # 多 workspace 编排
+│   │   ├── process.ts               # 单个 Pi 进程生命周期
+│   │   ├── event-bridge.ts          # JSONL → IPC 事件
+│   │   ├── approval-interceptor.ts  # 分层审批
 │   │   └── history-buffer.ts
 │   ├── skills/
 │   │   ├── scanner.ts
 │   │   ├── installer.ts
 │   │   ├── toggler.ts
-│   │   └── skillhub-adapter.ts      # ← verify compat in M3
-│   ├── shell/                       # node-pty wrapper
+│   │   └── skillhub-adapter.ts      # ← M3 验证兼容性
+│   ├── shell/                       # node-pty 封装
 │   ├── git/
 │   ├── search/
 │   │   ├── file-indexer.ts          # ripgrep
@@ -348,25 +347,25 @@ src/main/
 └── utils/
     ├── logger.ts
     ├── paths.ts
-    └── platform.ts                  # Windows-specific
+    └── platform.ts                  # Windows 特定
 ```
 
 ### 8.3 Packages
 
 ```
 packages/
-├── shared-types/                    # cross-process types
-│   ├── ipc.ts                       # IPC params/returns
-│   ├── events.ts                    # Pi JSON event types
+├── shared-types/                    # 跨进程类型
+│   ├── ipc.ts                       # IPC 入参出参
+│   ├── events.ts                    # Pi JSON 事件类型
 │   ├── pi.ts                        # PiStatus, PiAgentConfig
 │   └── approval.ts                  # ApprovalRequest, RiskLevel
-└── ui-tokens/                       # design tokens
+└── ui-tokens/                       # 设计 token
     └── tailwind-preset.ts
 ```
 
-> **Cleanup**: `packages/pi-driver/` is dead code (duplicates `apps/desktop/src/main/pi-driver.ts`). **Delete in M5**.
+> **清理**: `packages/pi-driver/` 是死代码 (跟 `apps/desktop/src/main/pi-driver.ts` 重复)。**M5 阶段删掉**。
 
-## 9. Data Contracts (typed)
+## 9. 数据契约 (类型化)
 
 ```ts
 // packages/shared-types/src/ipc.ts
@@ -374,14 +373,14 @@ export interface IpcContract {
   // Chat
   'pi:send':       (workspaceId: string, text: string, attachments: Attachment[]) => void;
   'pi:stop':       (workspaceId: string) => void;
-  'pi:event':      PiEvent;                              // main → renderer push
+  'pi:event':      PiEvent;                              // main → renderer 推送
   'pi:history':    (workspaceId: string) => HistorySnapshot;
 
   // Approval
   'approval:respond':   (requestId: string, decision: 'approve' | 'reject' | 'edit', edit?: string) => void;
-  'approval:request':   ApprovalRequest;                 // push
-  'approval:deferred':  DeferredEdit;                    // push
-  'approval:review':    FileReview;                      // push
+  'approval:request':   ApprovalRequest;                 // 推送
+  'approval:deferred':  DeferredEdit;                    // 推送
+  'approval:review':    FileReview;                      // 推送
 
   // Skills
   'skills:list':     () => SkillInfo[];
@@ -390,16 +389,16 @@ export interface IpcContract {
   'skills:toggle':   (name: string, enabled: boolean) => void;
   'skills:uninstall': (name: string) => void;
 
-  // Shell (node-pty terminal)
+  // Shell (node-pty 终端)
   'shell:create':  (tabId: string, cwd: string) => void;
   'shell:input':   (tabId: string, data: string) => void;
   'shell:resize':  (tabId: string, cols: number, rows: number) => void;
   'shell:close':   (tabId: string) => void;
-  'shell:output':  { tabId: string; data: string };      // push
+  'shell:output':  { tabId: string; data: string };      // 推送
 
   // Search
   'search:query':   (q: string, mode: 'file' | 'history' | 'cmd') => void;
-  'search:results': SearchResults;                       // push
+  'search:results': SearchResults;                       // 推送
 
   // Workspace
   'workspace:list':    () => Workspace[];
@@ -413,207 +412,207 @@ export interface IpcContract {
 }
 ```
 
-## 10. Approval Risk Tiers (concrete list)
+## 10. 审批风险分层 (具体清单)
 
-### 10.1 HIGH_RISK (pre-approval required)
+### 10.1 HIGH_RISK (需要预审批)
 
-**Bash subcommand matchers**:
-- `rm -rf /` or `rm -rf ~` (broad destructive)
-- `sudo` any command
+**Bash 子命令匹配**:
+- `rm -rf /` 或 `rm -rf ~` (大范围破坏)
+- `sudo` 任意命令
 - `mkfs`, `dd if=`, `fdisk`
 - `chmod 777 /`
-- `curl ... | sh` or `wget ... | sh`
-- `git push --force` to any branch
+- `curl ... | sh` 或 `wget ... | sh`
+- `git push --force` 任意分支
 - `git reset --hard`
 - `npm uninstall -g`
-- `pip uninstall` system-wide
-- `reg delete` on Windows registry
+- `pip uninstall` 系统级
+- `reg delete` 操作 Windows 注册表
 
-**Write path matchers** (path-based):
+**写路径匹配** (基于路径):
 - `~/.ssh/**`
 - `~/.aws/**`
-- `~/.config/**` (broad config dirs)
+- `~/.config/**` (大范围配置目录)
 - `~/.bashrc`, `~/.zshrc`, `~/.profile`
 - `/etc/**`, `C:\Windows\System32\**`
 - `.git/hooks/**`, `.git/config`
-- `~/.pi/agent/settings.json` (without user-initiated save)
+- `~/.pi/agent/settings.json` (用户主动保存除外)
 
-### 10.2 FILE_EDIT (post-approval with undo)
+### 10.2 FILE_EDIT (事后审批 + 可撤销)
 
-- `write` tool, `edit` tool, multi-file batch tool
-- Bash: `> file` (write redirect), `sed -i`, `awk ... > file`
+- `write` 工具, `edit` 工具, 多文件批量工具
+- Bash: `> file` (写重定向), `sed -i`, `awk ... > file`
 
-### 10.3 READ_ONLY (no approval)
+### 10.3 READ_ONLY (不弹审批)
 
-- `read`, `grep`, `glob`, `ls`, `find` (with limits)
-- Bash: query-style commands (`ls`, `cat`, `head`, `tail`, `git status`, `git log`, etc.)
+- `read`, `grep`, `glob`, `ls`, `find` (有限范围)
+- Bash: 查询类命令 (`ls`, `cat`, `head`, `tail`, `git status`, `git log` 等)
 
-> The classifier is **configurable** in `settings.json` so power users can override.
+> 分类器**可在 settings.json 里配置**, 高手可以覆盖默认规则。
 
-## 11. Skills Integration Detail
+## 11. Skills 集成细节
 
 ### 11.1 SkillHub CLI
 
-Prereq (documented in README):
+前置条件 (README 写清楚):
 ```bash
 curl -fsSL https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/install.sh | bash
 ```
 
-Pi Desktop assumes `skillhub` is on PATH. If missing, the Marketplace tab shows:
-> "SkillHub CLI not installed. [Install instructions]"
+Pi Desktop 假设 `skillhub` 在 PATH 里。如果不在, 市场 tab 显示:
+> "SkillHub CLI 未安装。[安装说明]"
 
-### 11.2 Adapter Layer
+### 11.2 适配器层
 
-`services/skills/skillhub-adapter.ts` wraps `skillhub` CLI:
+`services/skills/skillhub-adapter.ts` 包装 `skillhub` CLI:
 ```ts
 async search(query: string): Promise<SkillInfo[]>
   → exec('skillhub search ' + query)
-  → parse output (try JSON first, fallback to table)
-  → return normalized SkillInfo[]
+  → 解析输出 (先试 JSON, 兜底解析表格)
+  → 返回 normalize 后的 SkillInfo[]
 
 async install(name: string, workspacePath: string): Promise<SkillInfo>
   → exec('skillhub install ' + name, { cwd: workspacePath })
-  → rescan ~/.pi/agent/skills/<name>/
-  → return SkillInfo (validate SKILL.md exists)
+  → 重新扫描 ~/.pi/agent/skills/<name>/
+  → 返回 SkillInfo (校验 SKILL.md 存在)
 ```
 
-**Open question**: skillhub installs in OpenClaw format. Verify Pi reads it, or implement format conversion. **Verify in M3 spike.**
+**开放问题**: skillhub 装的是 OpenClaw 格式。需验证 Pi 是否能直接读, 否则实现格式转换。**M3 spike 时验证**。
 
-### 11.3 Skill Format (Pi standard)
+### 11.3 Skill 格式 (Pi 标准)
 
 ```yaml
 # SKILL.md frontmatter
 ---
 name: skill-name
-description: One-line description
+description: 一句话描述
 author: @handle
 version: 1.0.0
 tags: [category1, category2]
 ---
 
-# Skill Instructions (markdown body)
+# Skill Instructions (markdown 正文)
 ...
 ```
 
-## 12. Distribution & Release
+## 12. 分发与发布
 
-- **Channel**: GitHub Releases, public.
-- **Installer**: electron-builder NSIS `.exe` for Windows x64.
-- **Auto-update**: `electron-updater` checks GitHub Releases, prompts user, downloads delta, restarts.
-- **Versioning**: semver. Each release includes CHANGELOG.md entry.
-- **Code signing**: deferred to v1.1 (cost; users get SmartScreen warning first time).
-- **Distribution mirrors**: optional in v1.1 (e.g., winget, scoop manifests).
+- **渠道**: GitHub Releases, 公开
+- **安装包**: electron-builder NSIS `.exe`, Windows x64
+- **自动更新**: `electron-updater` 检查 GitHub Releases, 提示用户, 下载 delta, 重启
+- **版本号**: semver, 每个 release 写 CHANGELOG.md
+- **代码签名**: 推迟到 v1.1 (要钱; 用户首次会看到 SmartScreen 警告)
+- **分发镜像** (winget / scoop manifest): v1.1 再说
 
-## 13. Engineering Hygiene
+## 13. 工程卫生
 
-### 13.1 Tests
+### 13.1 测试
 
-- **Unit (vitest)**: approval classifier, history buffer, IPC contract types, file scanner, electron-store schema.
-- **Integration**: PiSessionManager with a mock Pi process (fake JSONL).
-- **E2E (Playwright + Electron)**: smoke test for chat send, approval flow, skill install.
-- **Manual checklist**: per-release sanity on a fresh Windows VM.
+- **单元 (vitest)**: 审批分类器, history buffer, IPC 契约类型, 文件扫描, electron-store schema
+- **集成**: PiSessionManager 用 mock Pi 进程 (假 JSONL)
+- **E2E (Playwright + Electron)**: 冒烟测试 — 聊天发送, 审批流, skill 安装
+- **手工 checklist**: 每次发版在全新 Windows 虚拟机上跑一遍
 
 ### 13.2 CI
 
 GitHub Actions:
-- `ci.yml`: lint + typecheck + unit test on every PR.
-- `release.yml`: build installer on tag push → publish to GitHub Release.
+- `ci.yml`: 每个 PR 跑 lint + typecheck + 单元测试
+- `release.yml`: tag 推送时构建安装包 → 发布到 GitHub Release
 
-### 13.3 Repo Cleanup (M5)
+### 13.3 仓库清理 (M5)
 
-- Delete `packages/pi-driver/` (dead code).
-- Move mockup HTMLs to `docs/design-archive/`.
-- Delete `ts-errors2.txt`, `app-output.log`.
-- Move `test-*.png`, `screenshot-*.png` to `docs/screenshots/`.
-- Add `.codebuddy/` to `.gitignore` or commit with content.
-- Configure `.gitattributes` for line endings.
+- 删 `packages/pi-driver/` (死代码)
+- mockup HTML 移到 `docs/design-archive/`
+- 删 `ts-errors2.txt`, `app-output.log`
+- `test-*.png`, `screenshot-*.png` 移到 `docs/screenshots/`
+- `.codebuddy/` 加进 `.gitignore` 或正式提交
+- 配 `.gitattributes` 处理行尾
 
-### 13.4 Logging & Observability
+### 13.4 日志与可观测性
 
-- `utils/logger.ts` (electron-log) writes to `app.getPath('logs')`.
-- Renderer errors caught by ErrorBoundary → main process log.
-- "Open logs folder" in Settings → Help.
+- `utils/logger.ts` (electron-log) 写到 `app.getPath('logs')`
+- Renderer 错误由 ErrorBoundary 捕获 → main 进程日志
+- 设置 → 帮助里加 "打开日志目录" 按钮
 
-## 14. Milestone Breakdown
+## 14. Milestone 拆解
 
-### M1 — Foundation (the 3 critical bugs)
+### M1 — 基础 (3 个关键 bug)
 
-1. **Cwd bug fix**: `pi:prompt` uses `currentWorkspace.path`, not `process.cwd()`.
-2. **PiSessionManager rewrite**: long-lived Pi per workspace, persistent IPC, history persistence.
-3. **ApprovalInterceptor v1**: tiered classifier, HIGH_RISK pre-approval gate, FILE_EDIT post-approval diff, READ_ONLY pass-through.
+1. **Cwd bug 修复**: `pi:prompt` 用 `currentWorkspace.path`, 不是 `process.cwd()`
+2. **PiSessionManager 重写**: 每个 workspace 长连接 Pi, 持久 IPC, 历史持久化
+3. **ApprovalInterceptor v1**: 分层分类器, HIGH_RISK 预审批门, FILE_EDIT 事后 diff, READ_ONLY 直通
 
-### M2 — Context (UX pillars)
+### M2 — 上下文 (UX 支柱)
 
-1. `@ file` mention parser + popover.
-2. Image paste (clipboard + drag).
-3. Ctrl+K CommandPalette (file + history + command).
-4. AttachmentChip component.
+1. `@ file` mention 解析器 + popover
+2. 图片粘贴 (剪贴板 + 拖拽)
+3. Ctrl+K CommandPalette (文件 + 历史 + 命令)
+4. AttachmentChip 组件
 
-### M3 — Pi特色 (Skills + lifecycle)
+### M3 — Pi 特色 (Skills + 生命周期)
 
-1. SkillsPanel + SkillCard (marketplace + my).
-2. SkillHub adapter (verify compat).
-3. GitHub import flow.
-4. Monaco-based SkillEditor.
-5. PiStatusPanel polish (already exists, refine).
-6. Skill create dropdown with 3 options.
+1. SkillsPanel + SkillCard (市场 + 我的)
+2. SkillHub 适配器 (验证兼容性)
+3. GitHub 导入流程
+4. Monaco 写的 SkillEditor
+5. PiStatusPanel 打磨 (已存在, 优化)
+6. Skill 创建下拉的 3 个选项
 
-### M4 — Terminal
+### M4 — 终端
 
-1. node-pty + xterm.js integration.
-2. Multi-tab terminal panel.
-3. Resize / colors / TUI apps work.
-4. Per-workspace default tab.
+1. node-pty + xterm.js 集成
+2. 多 tab 终端面板
+3. resize / 颜色 / TUI 应用都能跑
+4. 每个 workspace 默认一个 tab
 
-### M5 — Engineering hygiene
+### M5 — 工程卫生
 
-1. vitest setup, unit tests for core modules.
-2. GitHub Actions (ci + release).
-3. electron-updater integration.
-4. Repo cleanup (delete dead code, archive mockups, fix gitignore).
-5. README polish, CONTRIBUTING.md, issue templates.
-6. ErrorBoundary in renderer.
-7. CHANGELOG.md initial entry.
+1. vitest 搭建, 核心模块单元测试
+2. GitHub Actions (ci + release)
+3. electron-updater 集成
+4. 仓库清理 (删死代码, 归档 mockup, 修 gitignore)
+5. README 打磨, CONTRIBUTING.md, issue 模板
+6. Renderer 的 ErrorBoundary
+7. CHANGELOG.md 首条记录
 
-## 15. Open Questions (resolve before/during implementation)
+## 15. 开放问题 (实施前/中验证)
 
-1. **Does Pi CLI support long-lived process?** — User confirmed yes, but **verify exact invocation flags and protocol during M1 spike**.
-2. **Does skillhub install to Pi-compatible path?** — Verify in M3.
-3. **Does Pi read OpenClaw-format skills as-is?** — If not, implement converter in `skillhub-adapter.ts`.
-4. **What is Pi's exact JSON event format for tool calls?** — We have `tool_execution_start` / `_end` from the existing code, but verify the full schema.
-5. **How does Pi handle cancellation mid-tool-call?** — Needed for the approval "reject" path.
-6. **What is the rendering performance of node-pty + xterm with large output?** — Spike during M4.
+1. **Pi CLI 长连接的具体协议是什么?** — 用户已确认支持长连接, M1 spike 时验证精确的调用 flags 和协议
+2. **skillhub 装到 Pi 兼容的路径吗?** — M3 验证
+3. **Pi 能直接读 OpenClaw 格式的 skill 吗?** — 若不能, 在 `skillhub-adapter.ts` 实现转换器
+4. **Pi 工具调用的 JSON 事件完整 schema 是什么?** — 现有代码里看到 `tool_execution_start` / `_end`, 但要验证完整结构
+5. **Pi 如何处理中途取消工具调用?** — 审批 "拒绝" 路径需要
+6. **node-pty + xterm 在大输出下的渲染性能?** — M4 spike 验证
 
-## 16. Out of Scope (v1.0)
+## 16. 不在 v1.0 范围
 
-- macOS / Linux installers.
-- Telemetry / crash reporting server.
-- Code signing certificate.
-- In-app skill marketplace search by category.
-- Voice input.
-- AI-generated commit messages.
-- Branch switching from Git panel.
-- Plugin authoring IDE beyond SKILL.md editor.
-- Multi-account / cloud sync.
-- Plugin auto-update.
+- macOS / Linux 安装包
+- 埋点 / 崩溃上报服务端
+- 代码签名证书
+- 应用内按分类搜索 marketplace
+- 语音输入
+- AI 生成的 commit message
+- Git 面板里切分支
+- 超出 SKILL.md 编辑器的插件开发 IDE
+- 多账户 / 云同步
+- 插件自动更新
 
-## 17. Success Criteria
+## 17. 验收标准
 
-v1.0 ships when:
+v1.0 满足以下条件算发布:
 
-- [ ] All 5 milestones complete.
-- [ ] `pnpm test` passes with ≥60% coverage on services/.
-- [ ] CI green on every commit to main.
-- [ ] Manual smoke test on fresh Windows 10 VM passes.
-- [ ] NSIS installer builds and installs cleanly.
-- [ ] Auto-update from a previous version works.
-- [ ] README has install + usage + screenshots.
-- [ ] GitHub repo has issue templates + CONTRIBUTING.md.
-- [ ] CHANGELOG.md v1.0.0 entry written.
+- [ ] 5 个 milestone 全部完成
+- [ ] `pnpm test` 通过, `services/` 覆盖率 ≥60%
+- [ ] main 分支每次提交 CI 绿
+- [ ] 全新 Windows 10 虚拟机上手工冒烟通过
+- [ ] NSIS 安装包能构建并干净安装
+- [ ] 从旧版本自动更新能跑通
+- [ ] README 有安装 + 使用 + 截图
+- [ ] GitHub 仓库有 issue 模板 + CONTRIBUTING.md
+- [ ] CHANGELOG.md 写了 v1.0.0 条目
 
-## 18. References
+## 18. 参考
 
-- OpenAI Codex Desktop (2025) — visual reference.
-- Pi CLI: `@earendil-works/pi-coding-agent` (npm).
-- SkillHub: https://skillhub.cn.
-- electron-vite, React 19, Tailwind 4, Zustand 5 — current stack.
+- OpenAI Codex Desktop (2025) — 视觉参考
+- Pi CLI: `@earendil-works/pi-coding-agent` (npm)
+- SkillHub: https://skillhub.cn
+- electron-vite, React 19, Tailwind 4, Zustand 5 — 当前技术栈
