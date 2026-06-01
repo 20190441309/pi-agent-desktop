@@ -15,6 +15,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.75.5",
     "@pi-desktop/pi-driver": "workspace:*",
     "@pi-desktop/shared-types": "workspace:*",
     "diff2html": "^3.4.0",
