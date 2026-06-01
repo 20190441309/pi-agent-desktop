@@ -275,3 +275,49 @@ Week 8  ┃████ 缓冲 / 用户反馈处理           ┃
 
 > 路线图版本：v1 · 维护者：Pi Desktop contributors
 > 下次评审：P0 完成后 / 每月一次
+
+---
+
+## 10. E2E 阻塞说明（2026-06-01，e2e-framework 任务）
+
+**状态**：Playwright 框架已落地（`apps/desktop/playwright.config.ts` + `apps/desktop/e2e/launch.spec.ts` + 根 `package.json` 装上 `@playwright/test@1.60` + `playwright@1.60`），但**实际 spec 无法跑通**。
+
+**根因（不可在 30 分钟切片内修复）**：
+
+`@earendil-works/pi-coding-agent@0.75.5` 这个依赖在启动时同时撞两条互不兼容的硬约束：
+
+1. **包是 ESM-only**：`package.json` 的 `exports` map 只有 `import` 条件，没有 `require` 条件。
+   Electron 34 的主进程以 CommonJS 跑，`require("@earendil-works/pi-coding-agent")` 直接抛 `ERR_PACKAGE_PATH_NOT_EXPORTED`。
+2. **包硬依赖 `node:sqlite` 内建模块**：这是 Node.js 22.5+ 引入的 builtin。
+   Electron 34 自带 Node 20.x，没有这个模块。即使把包 bundle 进主进程让 `require()` 拿到东西，
+   包内部的 `require("node:sqlite")` 仍然抛 `ERR_UNKNOWN_BUILTIN_MODULE`。
+
+两条任一都会让主进程在 `app.whenReady` 之前就挂掉，Playwright 起窗口时 `firstWindow()` 永远不 resolve，spec 超时失败。
+
+**已尝试的 workaround**（保留为诊断历史）：
+
+- 把 `@earendil-works/pi-coding-agent` 加进 `externalizeDepsPlugin.exclude` 让 vite 把它 bundle 进主进程 chunk
+  → 解决 (1)，但暴露 (2)，`node:sqlite` require 仍然失败，主进程依然 crash
+- pnpm patch（不可持久，install 时被还原，已被排除）
+- 改 `factory.ts` 用 dynamic `import()`（超出本任务允许的改动范围）
+
+**v1.1 解锁路径**（任选其一）：
+
+| 选项 | 描述 | 风险 |
+|---|---|---|
+| **A. Electron 升级到 35+** | Electron 35 自带 Node 22.x，暴露 `node:sqlite`。最小成本、向后兼容。 | 需要重测 native 依赖（node-pty、sharp、electron-store）；CI 镜像需同步 |
+| **B. 降 pi-coding-agent 到 0.74.x** | 找不带 sqlite 的旧版（如果有）。 | 该包可能根本不向后兼容到 0.74 |
+| **C. 引入 polyfill / 替代存储** | 用 `better-sqlite3` 注入 process 顶替 `node:sqlite`。 | 维护负担，且 e2e 仍可能因其他 22+ builtin 失败 |
+
+**推荐**：选 **A（Electron 35+）**，顺带把 `engines.node` 收紧到 `>=22.5.0`，在 PR 标题里加 `[breaking] electron-35-bump`。
+
+**v1.0.x 期间的临时方案**：
+
+- e2e spec 暂不纳入 CI 必跑门禁
+- `pnpm e2e` 命令保留但标记为"已知失败"
+- 关键回归继续靠 `pnpm -r test`（vitest 130+ 测）+ 手动 smoke 验证
+- 待 v1.1 bump Electron 后，spec 解锁，4 个核心 spec（launch / chat-happy-path / approval-flow / terminal）一次性补齐
+
+**关联 commit**：（提交后填入本节 e2e-framework 的 commit hash）
+
+
