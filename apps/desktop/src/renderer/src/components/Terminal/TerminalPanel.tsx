@@ -1,10 +1,11 @@
 // TerminalPanel (M4 Task M4-3)
 // 多 tab 终端面板, 集成 xterm.js + node-pty
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import type { PiAPI } from "@/types";
 
 interface Tab {
     id: string;
@@ -15,26 +16,13 @@ interface Tab {
     cwd: string;
 }
 
-declare global {
-    interface Window {
-        piAPI?: {
-            createTerminal: (opts: { id?: string; cwd?: string; cols?: number; rows?: number }) => Promise<{ id: string; reused: boolean }>;
-            terminalInput: (id: string, data: string) => Promise<void>;
-            terminalResize: (id: string, cols: number, rows: number) => Promise<void>;
-            closeTerminal: (id: string) => Promise<void>;
-            onTerminalOutput: (id: string, callback: (data: string) => void) => () => void;
-            onTerminalExit: (id: string, callback: (code: number | null) => void) => () => void;
-        };
-    }
-}
-
 interface TerminalPanelProps {
     workspacePath?: string;
     isOpen: boolean;
     onClose: () => void;
 }
 
-export function TerminalPanel({ workspacePath, isOpen, onClose }: TerminalPanelProps): JSX.Element | null {
+export function TerminalPanel({ workspacePath, isOpen, onClose }: TerminalPanelProps): React.ReactElement | null {
     const [tabs, setTabs] = useState<Tab[]>([]);
     const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -61,14 +49,14 @@ export function TerminalPanel({ workspacePath, isOpen, onClose }: TerminalPanelP
             rows: term.rows,
         });
 
-        term.onData((data) => {
+        term.onData((data: string) => {
             void window.piAPI.terminalInput(actualId, data);
         });
 
-        const unsubOut = window.piAPI.onTerminalOutput(actualId, (data) => {
+        const unsubOut = window.piAPI.onTerminalOutput(actualId, (data: string) => {
             term.write(data);
         });
-        const unsubExit = window.piAPI.onTerminalExit(actualId, (code) => {
+        const unsubExit = window.piAPI.onTerminalExit(actualId, (code: number | null) => {
             term.write(`\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`);
         });
 

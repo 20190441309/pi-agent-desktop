@@ -1,6 +1,8 @@
 // Frontend Type Definitions
 
-export type { PiEvent as PiJsonEvent } from './pi-events';
+// PiEvent now lives in @shared/events.ts (M1 cross-process event union)
+import type { PiEvent } from '@shared/events';
+export type { PiEvent };
 
 export interface PiAPI {
   // M1: Chat (长连接, 走 workspace)

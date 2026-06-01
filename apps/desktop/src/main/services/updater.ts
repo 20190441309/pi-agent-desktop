@@ -3,7 +3,7 @@
 
 import { app, BrowserWindow, dialog } from "electron";
 import { autoUpdater, type ProgressInfo, type UpdateInfo } from "electron-updater";
-import { log } from "electron-log";
+import log from "electron-log/main";
 
 export interface UpdaterDeps {
     getMainWindow: () => BrowserWindow | null;

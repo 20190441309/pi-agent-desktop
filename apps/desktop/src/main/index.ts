@@ -3,7 +3,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
-import { spawn, execSync } from 'child_process';
+import { execSync } from 'child_process';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { homedir } from 'os';
 import Store from 'electron-store';
@@ -20,8 +20,6 @@ import { setupSkillsIpc } from './ipc/skills.ipc';
 import { setupTerminalIpc } from './ipc/terminal.ipc';
 import { ptyManager } from './services/shell/pty-manager';
 import { setupAutoUpdater } from './services/updater';
-import { app } from 'electron';
-import { join } from 'path';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 
 let mainWindow: BrowserWindow | null = null;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { findActiveMention } from "../utils/mention-parser";
 
 /** 跟踪输入框里活跃的 @mention 状态 */

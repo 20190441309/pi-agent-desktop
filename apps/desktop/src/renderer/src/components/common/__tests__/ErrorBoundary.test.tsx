@@ -1,6 +1,8 @@
 // ErrorBoundary test (M5 Task M5-4)
 // 验证组件错误被 ErrorBoundary 捕获
 
+// @vitest-environment jsdom
+
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import React from "react";
