@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -42,11 +42,9 @@ jobs:
 
       - name: Lint
         run: pnpm -r lint
-        continue-on-error: true  # 允许 lint 失败不阻塞 CI (待修复)
 
       - name: Test
         run: pnpm -r test
 
-      - name: Build renderer (M1 smoke)
+      - name: Build renderer
         run: pnpm --filter @pi-desktop/desktop build
-        continue-on-error: true  # 暂时允许 build 失败 (renderer 端待修复)

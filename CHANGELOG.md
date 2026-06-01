@@ -2,6 +2,28 @@
 
 All notable changes to Pi Desktop will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] — v1.0.1 hotfix
+
+### Fixed
+- **CI**: Add `eslint.config.js` (ESLint 9 flat config) so lint actually runs; project had no config and CI was silently passing.
+- **CI**: Remove `continue-on-error: true` from lint and build steps (was hiding real failures).
+- **CI**: Bump Node version 20 → 22 to match documented requirement.
+- **Security**: Parameterize all `git` shell invocations in main process (`execSync` → `execFileSync`) — closes command injection in `git:add`, `git:commit`, `git:diff`, `git:log`, `git:undo`.
+- **Memory leak**: Chat IPC no longer re-subscribes to Pi session events on every `pi:send` — bridge and interceptor are now created once per workspace session.
+
+### Removed
+- **messaging/gateway (IM bridge)**: Deleted `src/main/messaging/` (feishu/qq/wechat adapters + gateway) and `src/renderer/src/components/GatewayPanel/`. v0.1.0 product decision: focus on AI coding agent GUI, defer IM bridge to v2.0+.
+- `CODEBUDDY.md` (was stale and contradicted README).
+
+### Changed
+- `package.json` `engines.node`: `>=18.0.0` → `>=22.19.0` (matches README prerequisite).
+- `WorkspaceData` interface: now includes optional `lastActiveAt` field (was previously `as any` cast).
+
+### Tests
+- 107 passed, 2 skipped, 0 failed (17 test files) — unchanged.
+
+---
+
 ## [0.1.0] - 2026-06-01
 
 首个公开版本。Windows 10/11 x64.
@@ -23,53 +45,6 @@ All notable changes to Pi Desktop will be documented here. Format follows [Keep 
 - 旧 UI 组件归档, 等 v1.1 重写 ChatView
 - 技能格式 adapter (OpenClaw → Pi) v1.1
 
-## [Unreleased] — M1 through M5 in progress
-
-### M5 (in progress)
-- TBD
-
-### M4 — Terminal (node-pty)
-- Replaced child_process.spawn with node-pty (real PTY, resize works, TUI apps supported)
-- Multi-tab TerminalPanel with xterm.js
-- PtyManager (TDD, 12 tests)
-- terminal.ipc.ts: create / input / resize / close / list
-- e2e + manual smoke checklist
-
-### M3 — Skills (SkillHub integration)
-- SkillHub CLI adapter (search / install / uninstall / list / check)
-- Skills IPC: search, installed, install, uninstall, toggle, github-import
-- SkillsStore (Zustand)
-- SkillsPanel with 市场 / 我的 tabs
-- SkillCard, SkillCreateDropdown (3 options: 用 Pi 构建 / 编写技能 / 从 GitHub 导入)
-- PiAPI type extended with all M1+M2+M3 methods (centralized in `types/index.ts`)
-
-### M2 — Context
-- File scanner (skip node_modules / .git / hidden)
-- Fuzzy match (substring + path-segment + camelcase) — 7 tests
-- @ mention parser (cursor tracking, mid-token detection) — 9 tests
-- MentionPopover (debounced search, keyboard navigation)
-- Image paste handler (FileReader → dataURL → attachments store)
-- AttachmentChip (file + image variants)
-- CommandPalette modal (Ctrl+K, 3 modes: file / history / cmd)
-- useCommandPalette hook (global Ctrl+K)
-- attachments-store, types/attachments
-
-### M1 — Foundation (3 critical bugs fixed)
-- **Cwd bug fix**: Pi now runs in user's selected workspace path, not Electron's cwd
-- **Long-lived Pi sessions**: AgentSession in-process per workspace (replaces one-shot --print)
-- **Tiered approval flow**:
-  - READ_ONLY → pass through
-  - FILE_EDIT → post-hoc diff + undo via `git checkout`
-  - HIGH_RISK → modal prompt, session.abort() on deny
-- Risk classifier: 16+ patterns (rm -rf, sudo, /etc writes, ~/.ssh, etc.)
-- PendingEdits tracker (TDD, 9 tests)
-- ApprovalInterceptor + approval-bridge (TDD, 8 tests)
-- EventBridge (Pi events → renderer, 6 tests)
-- WorkspaceRegistry (TDD, 5 tests)
-- shared-types package (events + approval types, 6 tests)
-- vitest config + sanity test
-- pnpm test, typecheck, lint scripts working
-
 ### Housekeeping
 - `.codebuddy/`, `app-output.log`, `package-lock.json` removed
 - Mockup HTMLs and old design docs archived to `docs/design-archive/`
@@ -81,3 +56,4 @@ All notable changes to Pi Desktop will be documented here. Format follows [Keep 
 - Initial scaffold: Electron + React + TypeScript monorepo
 - Basic IPC scaffolding
 - Old `--print` based chat (replaced by M1)
+

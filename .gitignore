@@ -70,7 +70,10 @@ temp/
 # Stale artifacts (M5 cleanup)
 *.tserrors.txt
 ts-errors*.txt
+ts-errors-*.txt
 app-output.log
+build-current.txt
+lint-current.txt
 test-*.js
 test-*.ps1
 test-screenshot*.png
