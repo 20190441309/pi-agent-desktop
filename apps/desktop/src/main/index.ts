@@ -15,6 +15,7 @@ import { PiDriver, type PiInstallProgress } from './pi-driver';
 import { WorkspaceRegistry } from './services/pi-session/registry';
 import { PendingEdits } from './services/approval/pending-edits';
 import { setupChatIpc } from './ipc/chat.ipc';
+import { setupFilesIpc } from './ipc/files.ipc';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 
 let mainWindow: BrowserWindow | null = null;
@@ -363,6 +364,9 @@ function setupIPC(): void {
       return ws.length > 0 ? ws[0] : undefined;
     },
   });
+
+  // M2: 文件搜索 (给 @ 引用和 CommandPalette 用)
+  setupFilesIpc();
 
   // ── Pi Driver 管理 ───────────────────────────────────────────────
 

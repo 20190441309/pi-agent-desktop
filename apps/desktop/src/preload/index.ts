@@ -163,6 +163,10 @@ contextBridge.exposeInMainWorld('piAPI', {
   listPlugins: () => ipcRenderer.invoke('pi:list-plugins'),
   getFullConfig: () => ipcRenderer.invoke('pi:get-full-config'),
 
+  // M2: 文件搜索 (给 @ 引用和 CommandPalette 用)
+  filesList: (workspacePath: string, query?: string) =>
+    ipcRenderer.invoke('files:list', workspacePath, query),
+
   // Terminal
   createTerminal: (terminalId: string) => ipcRenderer.invoke('terminal:create', terminalId),
   terminalInput: (terminalId: string, data: string) => ipcRenderer.invoke('terminal:input', terminalId, data),
