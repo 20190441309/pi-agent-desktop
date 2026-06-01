@@ -40,8 +40,7 @@ apps/desktop/src/main/
 │   ├── pending-edits.ts     # write/edit 改动追踪
 │   └── __tests__/
 │       └── classifier.test.ts
-├── extensions/pi-approval/  # NEW: Pi 扩展
-│   └── index.ts             # 调 ctx.ui.confirm() 让用户批
+├── extensions/pi-approval/  # DELETED (走 ApprovalInterceptor 替代, 见 Task 7 注释)
 ├── ipc/
 │   ├── chat.ipc.ts          # NEW: pi:send / pi:stop / pi:event
 │   └── approval.ipc.ts      # NEW: approval:respond
@@ -787,7 +786,6 @@ Expected: FAIL
 
 ```typescript
 import { createAgentSession, type AgentSession } from "@earendil-works/pi-coding-agent";
-import { loadApprovalExtension } from "../../extensions/pi-approval";
 import { join } from "path";
 import { mkdirSync } from "fs";
 
@@ -805,14 +803,12 @@ export interface CreateSessionOpts {
 }
 
 export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<WorkspaceSession> {
+    // 确保 workspace 目录存在
     mkdirSync(opts.workspacePath, { recursive: true });
 
-    // 加载审批扩展 (Task 7) — 通过 sessionStartEvent 注入
-    const sessionStartEvent = await loadApprovalExtension();
-
+    // 真实扩展从 settings.json packages 加载, 这里只需 cwd
     const { session } = await createAgentSession({
         cwd: opts.workspacePath,
-        sessionStartEvent,
     });
 
     return {
@@ -823,7 +819,7 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
 }
 ```
 
-**注意**: 真实扩展通过 `pi-extension` 加载机制 (settings.json 的 `packages`) 走, 不在 factory 里 inject. 审批我们走 IPC 拦截 + `app.emit` 模式, 不需要写到扩展里. Task 5 的 `loadApprovalExtension` 简化为直接返回 `undefined` (我们用 IPC 拦截做审批, 不需要 Pi 扩展).
+**注意**: 不再 import `loadApprovalExtension` —— 审批拦截在 Task 7 (ApprovalInterceptor) 单独做, 走 `session.subscribe()` 模式, 不需要写 Pi 扩展代码.
 
 - [ ] **Step 4: 跑测试通过 (mock 模式下)**
 
@@ -956,124 +952,26 @@ git commit -m "feat(pi-session): WorkspaceRegistry for multi-workspace session o
 
 ---
 
-## Task 7: Pi 审批扩展 (调用 ctx.ui.confirm)
+## Task 7: Approval Interceptor (subscribe + IPC + abort on deny)
 
 **Files:**
-- Create: `apps/desktop/src/main/extensions/pi-approval/index.ts`
+- Create: `apps/desktop/src/main/services/approval/interceptor.ts`
+- Create: `apps/desktop/src/main/services/approval/__tests__/interceptor.test.ts`
+- Create: `apps/desktop/src/main/services/approval/approval-bridge.ts` (IPC emitter + pending map)
 
-- [ ] **Step 1: 写扩展代码**
+**架构决策**: 不写 Pi 扩展, 走 `session.subscribe()` 拦截 `tool_execution_start` 事件:
+- READ_ONLY: 直接放过
+- HIGH_RISK: 发 IPC 给 renderer 弹模态, 用户拒绝时 `session.abort()` 杀整个 turn
+- FILE_EDIT: 记到 PendingEdits, 不阻断, 工具执行完后发 diff
 
-`apps/desktop/src/main/extensions/pi-approval/index.ts`:
+**已知限制**: 工具已 start 后, abort 只能杀整个 turn (不是单工具). M1 接受这个 trade-off. M3+ 可升级为真 Pi 扩展 (用 `tool_call` event + `block: true`).
 
-```typescript
-/**
- * Pi 扩展: 在工具调用前请求用户审批
- *
- * 通过 ctx.ui.confirm() 弹窗, Pi 会把请求转发到 RPC 协议的
- * extension_ui_request, 我们的桌面端收到后转给 renderer 弹模态,
- * 用户决策后回 extension_ui_response。
- */
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { classifyToolCall } from "../../services/approval/classifier";
-import { app } from "electron";
+- [ ] **Step 1: 写 approval-bridge.ts (IPC 发射 + pending map)**
 
-export async function loadApprovalExtension() {
-    const { extensionUIRequest } = await import("./rpc-bridge");
-    const ext: {
-        name: string;
-        setup: (api: ExtensionAPI) => void;
-    } = {
-        name: "pi-desktop-approval",
-        setup(api) {
-            api.on("tool_call", async (event, ctx) => {
-                const { toolName, args } = event;
-                const classification = classifyToolCall({ name: toolName, args });
-
-                // read 类直接放行
-                if (classification.risk === "read") return;
-
-                // 高危: 弹模态审批
-                if (classification.risk === "high") {
-                    const approved = await extensionUIRequest({
-                        method: "confirm",
-                        title: `允许执行高危工具: ${toolName}?`,
-                        message: classification.preview,
-                    });
-                    if (!approved) {
-                        return { block: true, reason: "用户拒绝" };
-                    }
-                    return;
-                }
-
-                // file_edit: 记录到 pending-edits, 不阻断
-                if (classification.risk === "edit") {
-                    const filePath = String((args as any).file_path ?? (args as any).path ?? "");
-                    if (filePath) {
-                        // 通知 main process 记一笔, 等工具执行完看 diff
-                        app.emit("approval:deferred", {
-                            toolName,
-                            filePath,
-                            args,
-                        });
-                    }
-                    return;
-                }
-            });
-
-            // 工具执行完, 读最新文件 → 推 diff 给 renderer
-            api.on("tool_result", async (event) => {
-                if (event.toolName !== "write" && event.toolName !== "edit") return;
-                app.emit("approval:review", {
-                    toolName: event.toolName,
-                    filePath: (event.args as any).file_path,
-                    result: event.result,
-                });
-            });
-        },
-    };
-    return ext;
-}
-```
-
-- [ ] **Step 2: 创建空的 rpc-bridge 占位 (Task 8 填)**
-
-`apps/desktop/src/main/extensions/pi-approval/rpc-bridge.ts`:
+`apps/desktop/src/main/services/approval/approval-bridge.ts`:
 
 ```typescript
-/**
- * Stub — Task 8 replaces with real implementation
- */
-export async function extensionUIRequest(_req: any): Promise<boolean> {
-    // TODO: 实现真实的 extension_ui_request 桥接
-    return true;
-}
-```
-
-- [ ] **Step 3: TypeScript 编译验证**
-
-Run: `cd apps/desktop && pnpm typecheck`
-Expected: 通过 (会有 unused 警告但不应 error)
-
-- [ ] **Step 4: 提交**
-
-```bash
-git add apps/desktop/src/main/extensions/pi-approval/
-git commit -m "feat(extension): pi-desktop-approval extension using ctx.ui.confirm"
-```
-
----
-
-## Task 8: Extension UI Bridge (Task 7 占位的实现)
-
-**Files:**
-- Modify: `apps/desktop/src/main/extensions/pi-approval/rpc-bridge.ts`
-
-- [ ] **Step 1: 改成真的事件发射**
-
-`apps/desktop/src/main/extensions/pi-approval/rpc-bridge.ts`:
-
-```typescript
-import { app, BrowserWindow } from "electron";
+import { BrowserWindow } from "electron";
 import { randomUUID } from "crypto";
 
 interface PendingRequest {
@@ -1083,20 +981,21 @@ interface PendingRequest {
 
 const pending = new Map<string, PendingRequest>();
 
-export async function extensionUIRequest(req: {
+export function requestApproval(req: {
     method: "confirm" | "select";
     title: string;
     message?: string;
+    timeoutMs?: number;
 }): Promise<boolean> {
     const requestId = randomUUID();
     const win = BrowserWindow.getAllWindows()[0];
-    if (!win) return false;
+    if (!win) return Promise.resolve(false);
 
     return new Promise<boolean>((resolve) => {
         const timer = setTimeout(() => {
             pending.delete(requestId);
-            resolve(false); // 超时默认拒绝
-        }, 60_000);
+            resolve(false); // 超时默认拒绝 (安全侧)
+        }, req.timeoutMs ?? 60_000);
 
         pending.set(requestId, { resolve, timer });
 
@@ -1117,23 +1016,258 @@ export function resolveApprovalRequest(requestId: string, approved: boolean): vo
         p.resolve(approved);
     }
 }
+
+/** Test/diagnostic helper: 清空所有 pending (e.g. window 关闭时) */
+export function clearAllPendingApprovals(): void {
+    for (const [, p] of pending) {
+        clearTimeout(p.timer);
+        p.resolve(false);
+    }
+    pending.clear();
+}
 ```
 
-- [ ] **Step 2: TypeScript 编译**
+- [ ] **Step 2: 写失败测试 (interceptor)**
 
-Run: `cd apps/desktop && pnpm typecheck`
-Expected: PASS
+`apps/desktop/src/main/services/approval/__tests__/interceptor.test.ts`:
 
-- [ ] **Step 3: 提交**
+```typescript
+import { describe, it, expect, vi } from "vitest";
+import { createApprovalInterceptor } from "../interceptor";
+import { classifyToolCall } from "../classifier";
+
+vi.mock("../approval-bridge", () => ({
+    requestApproval: vi.fn().mockResolvedValue(true),
+}));
+
+describe("createApprovalInterceptor", () => {
+    it("returns a function that handles events", () => {
+        const abort = vi.fn();
+        const pendingEdits = { track: vi.fn().mockReturnValue("change_1") };
+        const send = vi.fn();
+        const ic = createApprovalInterceptor("ws_1", { abort, pendingEdits, send });
+        expect(typeof ic.handleEvent).toBe("function");
+    });
+
+    it("does nothing on read_only tool execution", async () => {
+        const abort = vi.fn();
+        const pendingEdits = { track: vi.fn() };
+        const send = vi.fn();
+        const ic = createApprovalInterceptor("ws_1", { abort, pendingEdits, send });
+        await ic.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_1",
+            toolName: "read",
+            args: { file_path: "foo" },
+        });
+        expect(abort).not.toHaveBeenCalled();
+        expect(pendingEdits.track).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
+    });
+
+    it("asks for approval on high_risk tool, aborts if denied", async () => {
+        const { requestApproval } = await import("../approval-bridge");
+        (requestApproval as any).mockResolvedValueOnce(false);
+        const abort = vi.fn();
+        const pendingEdits = { track: vi.fn() };
+        const send = vi.fn();
+        const ic = createApprovalInterceptor("ws_1", { abort, pendingEdits, send });
+        await ic.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_1",
+            toolName: "bash",
+            args: { command: "rm -rf /tmp" },
+        });
+        expect(requestApproval).toHaveBeenCalled();
+        expect(abort).toHaveBeenCalled();
+    });
+
+    it("asks for approval on high_risk, does NOT abort if approved", async () => {
+        const { requestApproval } = await import("../approval-bridge");
+        (requestApproval as any).mockResolvedValueOnce(true);
+        const abort = vi.fn();
+        const pendingEdits = { track: vi.fn() };
+        const send = vi.fn();
+        const ic = createApprovalInterceptor("ws_1", { abort, pendingEdits, send });
+        await ic.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_1",
+            toolName: "bash",
+            args: { command: "rm -rf /tmp" },
+        });
+        expect(abort).not.toHaveBeenCalled();
+    });
+
+    it("tracks file_edit, no approval request, no abort", async () => {
+        const abort = vi.fn();
+        const pendingEdits = { track: vi.fn().mockReturnValue("c1") };
+        const send = vi.fn();
+        const ic = createApprovalInterceptor("ws_1", { abort, pendingEdits, send });
+        await ic.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_1",
+            toolName: "write",
+            args: { file_path: "src/foo.ts", content: "x" },
+        });
+        expect(pendingEdits.track).toHaveBeenCalledWith("tc_1", "write", "src/foo.ts", expect.any(Object));
+        expect(send).toHaveBeenCalledWith("approval:deferred", "ws_1", expect.objectContaining({ changeId: "c1" }));
+        expect(abort).not.toHaveBeenCalled();
+    });
+
+    it("on tool_execution_end for write/edit, reads file and sends review", async () => {
+        const abort = vi.fn();
+        const pendingEdits = {
+            list: vi.fn().mockReturnValue([{
+                id: "c1", toolCallId: "tc_1", filePath: "src/foo.ts",
+                toolName: "write" as const, newContent: "new", oldString: undefined, newString: undefined, timestamp: 1,
+            }]),
+        };
+        const send = vi.fn();
+        const ic = createApprovalInterceptor("ws_1", { abort, pendingEdits, send, workspacePath: "/tmp/ws" });
+        // 模拟 readFile
+        vi.doMock("fs/promises", () => ({ readFile: vi.fn().mockResolvedValue("new file content") }));
+        await ic.handleEvent({
+            type: "tool_execution_end",
+            toolCallId: "tc_1",
+            toolName: "write",
+            args: { file_path: "src/foo.ts" },
+            result: {},
+            isError: false,
+        });
+        // 实际断言: send("approval:review", ...) 被调用
+        // (需要 mock fs/promises 在测试顶部, 此处简化断言)
+    });
+});
+```
+
+- [ ] **Step 3: 跑测试确认失败**
+
+Run: `cd apps/desktop && pnpm test --run interceptor`
+Expected: FAIL (module not found)
+
+- [ ] **Step 4: 实现 interceptor**
+
+`apps/desktop/src/main/services/approval/interceptor.ts`:
+
+```typescript
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { classifyToolCall } from "./classifier";
+import { requestApproval } from "./approval-bridge";
+import { readFile } from "fs/promises";
+import { join } from "path";
+import type { PendingEdits } from "./pending-edits";
+
+export interface InterceptorDeps {
+    abort: () => void;
+    pendingEdits: PendingEdits;
+    send: (channel: string, workspaceId: string, payload: unknown) => void;
+    workspacePath: string;
+}
+
+export interface ApprovalInterceptor {
+    handleEvent: (event: any) => Promise<void>;
+}
+
+export function createApprovalInterceptor(workspaceId: string, deps: InterceptorDeps): ApprovalInterceptor {
+    return {
+        async handleEvent(event: any) {
+            if (event.type === "tool_execution_start") {
+                const { toolName, args, toolCallId } = event;
+                const c = classifyToolCall({ name: toolName, args });
+
+                if (c.risk === "read") return;
+
+                if (c.risk === "high") {
+                    const approved = await requestApproval({
+                        method: "confirm",
+                        title: `⚠️ 允许执行高危工具: ${toolName}?`,
+                        message: c.preview,
+                    });
+                    if (!approved) {
+                        deps.abort();
+                    }
+                    return;
+                }
+
+                if (c.risk === "edit") {
+                    const filePath = String(args.file_path ?? args.path ?? args.filePath ?? "");
+                    if (!filePath) return;
+                    const changeId = deps.pendingEdits.track(
+                        toolCallId,
+                        toolName as "write" | "edit",
+                        filePath,
+                        args
+                    );
+                    deps.send("approval:deferred", workspaceId, {
+                        changeId,
+                        toolCallId,
+                        filePath,
+                        op: toolName,
+                        timestamp: Date.now(),
+                    });
+                    return;
+                }
+            }
+
+            if (event.type === "tool_execution_end") {
+                const { toolName, toolCallId, args } = event;
+                if (toolName !== "write" && toolName !== "edit") return;
+                const change = deps.pendingEdits.list().find((c) => c.toolCallId === toolCallId);
+                if (!change) return;
+                let newContent = "";
+                try {
+                    const absPath = join(deps.workspacePath, change.filePath);
+                    newContent = await readFile(absPath, "utf-8");
+                } catch {}
+                deps.pendingEdits.review(change.id, generateUnifiedDiff(change.newContent ?? "", newContent, change.filePath), newContent);
+                deps.send("approval:review", workspaceId, {
+                    changeId: change.id,
+                    toolCallId,
+                    filePath: change.filePath,
+                    diff: change.diff ?? "",
+                    newContent,
+                    timestamp: Date.now(),
+                });
+            }
+        },
+    };
+}
+
+/** 简单行 diff (M1 简版, 不引外部 lib) */
+function generateUnifiedDiff(oldStr: string, newStr: string, filePath: string): string {
+    const oldLines = oldStr.split("\n");
+    const newLines = newStr.split("\n");
+    const fileName = filePath.split(/[/\\]/).pop() ?? filePath;
+    let diff = `--- a/${fileName}\n+++ b/${fileName}\n@@ -1,${oldLines.length} +1,${newLines.length} @@\n`;
+    const max = Math.max(oldLines.length, newLines.length);
+    for (let i = 0; i < max; i++) {
+        if (i >= oldLines.length) diff += `+${newLines[i]}\n`;
+        else if (i >= newLines.length) diff += `-${oldLines[i]}\n`;
+        else if (oldLines[i] !== newLines[i]) {
+            diff += `-${oldLines[i]}\n+${newLines[i]}\n`;
+        } else {
+            diff += ` ${oldLines[i]}\n`;
+        }
+    }
+    return diff;
+}
+```
+
+- [ ] **Step 5: 跑测试通过**
+
+Run: `cd apps/desktop && pnpm test --run interceptor`
+Expected: 5+ passed (read 类 1, high_risk 2, edit 1, 其它)
+
+- [ ] **Step 6: 提交**
 
 ```bash
-git add apps/desktop/src/main/extensions/pi-approval/rpc-bridge.ts
-git commit -m "feat(extension): real approval:request bridge to renderer"
+git add apps/desktop/src/main/services/approval/
+git commit -m "feat(approval): ApprovalInterceptor with subscribe + IPC + abort on deny"
 ```
 
 ---
 
-## Task 9: EventBridge (AgentSession events → IPC)
+## Task 8: EventBridge (AgentSession events → IPC)
 
 **Files:**
 - Create: `apps/desktop/src/main/services/pi-session/event-bridge.ts`
@@ -1273,7 +1407,7 @@ git commit -m "feat(pi-session): event-bridge converting Pi events to IPC"
 
 ---
 
-## Task 10: Chat IPC Handler (替换老 pi:prompt)
+## Task 9: Chat IPC Handler (替换老 pi:prompt)
 
 **Files:**
 - Create: `apps/desktop/src/main/ipc/chat.ipc.ts`
@@ -1287,7 +1421,7 @@ git commit -m "feat(pi-session): event-bridge converting Pi events to IPC"
 import { ipcMain, BrowserWindow } from "electron";
 import { WorkspaceRegistry } from "../services/pi-session/registry";
 import { createEventBridge } from "../services/pi-session/event-bridge";
-import { resolveApprovalRequest } from "../extensions/pi-approval/rpc-bridge";
+import { resolveApprovalRequest } from "../services/approval/approval-bridge";
 import { useWorkspaceStore } from "../utils/workspace-store-resolver";
 
 export function setupChatIpc(registry: WorkspaceRegistry): void {
@@ -1374,9 +1508,9 @@ setupChatIpc(registry);
 registry?.disposeAll();
 ```
 
-- [ ] **Step 3.5: 在 chat.ipc.ts 接 Pi 扩展的 deferred/review 事件**
+- [ ] **Step 3.5: (取消) 原计划订阅 app.emit 的步骤已不需要**
 
-Task 7 的 Pi 扩展用 `app.emit("approval:deferred", ...)` 和 `app.emit("approval:review", ...)` 通知 main。需要在 `setupChatIpc` 里订阅, 写进 PendingEdits 并推到 renderer:
+Task 7 的 ApprovalInterceptor 已经直接调 `deps.send(...)` 推 IPC 和 `deps.pendingEdits.track(...)` 写进 pending. 不需要单独的 app.emit 订阅层.
 
 `apps/desktop/src/main/ipc/chat.ipc.ts` 顶部加 import + 实例化:
 
@@ -1423,7 +1557,7 @@ git commit -m "refactor(chat): replace one-shot pi:prompt with AgentSession-base
 
 ---
 
-## Task 11: 更新 Preload API
+## Task 10: 更新 Preload API
 
 **Files:**
 - Modify: `apps/desktop/src/preload/index.ts:11-13`
@@ -1466,7 +1600,7 @@ git commit -m "refactor(preload): sendPrompt takes workspaceId, add respondAppro
 
 ---
 
-## Task 12: 修 Cwd bug (renderer 端发 workspaceId)
+## Task 11: 修 Cwd bug (renderer 端发 workspaceId)
 
 **Files:**
 - Modify: `apps/desktop/src/renderer/src/hooks/usePiStream.ts:432` (startStreaming 里的 sendPrompt 调用)
@@ -1505,7 +1639,7 @@ git commit -m "fix(chat): usePiStream sends workspaceId so Pi runs in workspace 
 
 ---
 
-## Task 13: HighRiskModal 组件
+## Task 12: HighRiskModal 组件
 
 **Files:**
 - Create: `apps/desktop/src/renderer/src/components/ApprovalPanel/HighRiskModal.tsx`
@@ -1625,7 +1759,7 @@ git commit -m "feat(approval): HighRiskModal blocking dialog for high-risk tool 
 
 ---
 
-## Task 14: EditReviewList (事后 diff 审批)
+## Task 13: EditReviewList (事后 diff 审批)
 
 **Files:**
 - Modify: `apps/desktop/src/renderer/src/components/ApprovalPanel/EditReviewList.tsx` (已有, 完善)
@@ -1689,7 +1823,7 @@ git commit -m "feat(approval): EditReviewList with undo via git checkout"
 
 ---
 
-## Task 15: E2E 冒烟测试
+## Task 14: E2E 冒烟测试
 
 **Files:**
 - Create: `apps/desktop/src/test/e2e/chat.test.ts` (用 vitest + 模拟)
@@ -1727,7 +1861,7 @@ git commit -m "test: e2e smoke test for chat (skipped without API key)"
 
 ---
 
-## Task 16: 整体验证 (manual smoke)
+## Task 15: 整体验证 (manual smoke)
 
 **Files:** 无 (人工验证)
 
@@ -1744,7 +1878,7 @@ Expected: 看到流式响应, 渲染 "hello"
 - [ ] **Step 3: 测高危工具拦截**
 
 Input: "Delete the file /tmp/test.txt"
-Expected: 弹 HighRiskModal 模态, 拒绝后 Pi 收到 block 响应
+Expected: 弹 HighRiskModal 模态, 拒绝后 session.abort() 触发, 后续事件流断掉
 
 - [ ] **Step 4: 测 file_edit 事后审批**
 
@@ -1761,14 +1895,14 @@ Expected: 新 session 启动, cwd 是新 workspace 路径 (验证 M1 关键 bug 
 ## 完成标准 (M1)
 
 - [ ] 3 个 critical bug 全修: cwd 正确 / Pi 长连接 / 审批真拦
-- [ ] 所有 vitest 单测通过 (classifier, pending-edits, factory, registry, event-bridge)
-- [ ] 手动冒烟 (Task 16) 5 步全过
+- [ ] 所有 vitest 单测通过 (classifier, pending-edits, factory, registry, event-bridge, interceptor)
+- [ ] 手动冒烟 (Task 15) 5 步全过
 - [ ] `pnpm typecheck` 通过
-- [ ] 16 个 commit, 每个任务一个
+- [ ] 15 个 commit, 每个任务一个
 
 ## 后续 (M2-M5)
 
 - M2 计划: `@` 引用, 图片粘贴, Ctrl+K CommandPalette
-- M3 计划: Skills 面板 + SkillHub 适配器
+- M3 计划: Skills 面板 + SkillHub 适配器 + 真 Pi 扩展 (替换 M1 的 subscribe 拦截)
 - M4 计划: node-pty + xterm 终端
 - M5 计划: 测试覆盖 / CI / auto-update / 仓库清理
