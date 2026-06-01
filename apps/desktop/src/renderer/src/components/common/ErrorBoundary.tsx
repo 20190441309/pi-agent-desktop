@@ -14,6 +14,22 @@ interface State {
     error: Error | null;
 }
 
+/**
+ * M7: 错误上报入口 (单点).
+ * 当前仅 console.error 留痕, TODO: 接入 Sentry / 其他 APM.
+ * 暴露为独立函数便于在 componentDidCatch 之外 (例如事件处理器、
+ * async 边界) 也能复用同一通道.
+ *
+ * @param error 抛出的错误
+ * @param info  React 提供的 componentStack (或其它上下文)
+ */
+export function reportError(error: Error, info?: React.ErrorInfo): void {
+    // TODO(sentry): 接入 Sentry 后, 在此调用
+    //   Sentry.captureException(error, { extra: info })
+    //   并保留 console.error 作为本地开发 fallback.
+    console.error("[ErrorBoundary] Caught:", error, info);
+}
+
 export class ErrorBoundary extends React.Component<Props, State> {
     state: State = { hasError: false, error: null };
 
@@ -22,8 +38,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
     }
 
     componentDidCatch(error: Error, info: React.ErrorInfo): void {
-        // 简单 log 到 console, 实际生产可以接 Sentry 等
-        console.error("[ErrorBoundary] Caught:", error, info);
+        reportError(error, info);
     }
 
     reset = (): void => {
