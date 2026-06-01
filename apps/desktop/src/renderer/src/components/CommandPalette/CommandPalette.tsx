@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { fuzzyScore } from "../../../main/utils/fuzzy-match";
+import { useSessionStore } from "../../stores/session-store";
 
 export type CommandMode = "file" | "history" | "cmd";
 
@@ -88,9 +89,29 @@ export function CommandPalette({
                 onSelect: () => onRunCommand?.(x.c.id),
             }));
     } else if (mode === "history") {
-        // 历史搜索 (M2-6, 简版: 走 session-store)
-        // 实际由父组件通过 props 注入, 这里先用占位
-        results = [];
+        // 历史搜索 (M2-6): 跨 session 搜消息内容
+        const sessions = useSessionStore.getState().sessions;
+        const q = query.toLowerCase();
+        const all: Array<{ id: string; primary: string; secondary?: string; onSelect: () => void }> = [];
+        for (const s of sessions) {
+            for (const m of s.messages) {
+                if (q && !m.content.toLowerCase().includes(q)) continue;
+                all.push({
+                    id: `${s.id}_${m.id}`,
+                    primary: m.content.length > 80 ? m.content.slice(0, 80) + "..." : m.content,
+                    secondary: `${s.title} · ${m.role === "user" ? "你" : "Pi"}`,
+                    onSelect: () => onSelectHistory?.(s.id),
+                });
+                if (all.length >= 30) break;
+            }
+            if (all.length >= 30) break;
+        }
+        // 按 score 排序
+        results = all
+            .map((r) => ({ r, s: fuzzyScore(r.primary, query) }))
+            .sort((a, b) => b.s - a.s)
+            .slice(0, 20)
+            .map((x) => x.r);
     }
 
     useEffect(() => {
@@ -174,7 +195,7 @@ export function CommandPalette({
                             {query
                                 ? "无匹配"
                                 : mode === "history"
-                                ? "历史功能开发中 (M2-6)"
+                                ? "无历史对话 (开始一个新对话试试)"
                                 : mode === "file"
                                 ? "输入文件名搜索"
                                 : "输入命令名搜索"}
