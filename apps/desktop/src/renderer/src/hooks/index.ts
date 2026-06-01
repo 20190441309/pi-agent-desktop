@@ -1,3 +1,5 @@
-// Hooks barrel export (M6: archived legacy hooks, see docs/design-archive/legacy-components/)
+// Hooks barrel export (M7: re-exports all M1-M6 hooks)
 
 export { useSession } from './useSession';
+export { useCommandPalette } from './useCommandPalette';
+export { useMentions } from './useMentions';
