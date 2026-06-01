@@ -12,7 +12,7 @@
     "package:dir": "electron-builder build --win --dir --config.win.signAndEditExecutable=false --config.win.sign=false",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
-    "test": "vitest"
+    "test": "vitest --run"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.75.5",
