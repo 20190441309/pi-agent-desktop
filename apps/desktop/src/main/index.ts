@@ -16,6 +16,9 @@ import { WorkspaceRegistry } from './services/pi-session/registry';
 import { PendingEdits } from './services/approval/pending-edits';
 import { setupChatIpc } from './ipc/chat.ipc';
 import { setupFilesIpc } from './ipc/files.ipc';
+import { setupSkillsIpc } from './ipc/skills.ipc';
+import { app } from 'electron';
+import { join } from 'path';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 
 let mainWindow: BrowserWindow | null = null;
@@ -367,6 +370,15 @@ function setupIPC(): void {
 
   // M2: 文件搜索 (给 @ 引用和 CommandPalette 用)
   setupFilesIpc();
+
+  // M3: Skills 面板 (SkillHub 集成)
+  setupSkillsIpc({
+    getWorkspacePath: () => {
+      const ws = store.get('workspaces');
+      return ws.length > 0 ? ws[0].path : undefined;
+    },
+    getStateFile: () => join(app.getPath('userData'), 'skills-state.json'),
+  });
 
   // ── Pi Driver 管理 ───────────────────────────────────────────────
 

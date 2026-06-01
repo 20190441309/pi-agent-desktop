@@ -167,6 +167,16 @@ contextBridge.exposeInMainWorld('piAPI', {
   filesList: (workspacePath: string, query?: string) =>
     ipcRenderer.invoke('files:list', workspacePath, query),
 
+  // M3: Skills 面板 (SkillHub 集成)
+  skillsCheck: () => ipcRenderer.invoke('skills:check'),
+  skillsSearch: (query: string) => ipcRenderer.invoke('skills:search', query),
+  skillsInstalled: () => ipcRenderer.invoke('skills:installed'),
+  skillsInstall: (slug: string) => ipcRenderer.invoke('skills:install', slug),
+  skillsUninstall: (slug: string) => ipcRenderer.invoke('skills:uninstall', slug),
+  skillsToggle: (slug: string, enabled: boolean) =>
+    ipcRenderer.invoke('skills:toggle', slug, enabled),
+  skillsGithubImport: (url: string) => ipcRenderer.invoke('skills:github-import', url),
+
   // Terminal
   createTerminal: (terminalId: string) => ipcRenderer.invoke('terminal:create', terminalId),
   terminalInput: (terminalId: string, data: string) => ipcRenderer.invoke('terminal:input', terminalId, data),
