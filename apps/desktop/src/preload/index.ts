@@ -177,11 +177,13 @@ contextBridge.exposeInMainWorld('piAPI', {
     ipcRenderer.invoke('skills:toggle', slug, enabled),
   skillsGithubImport: (url: string) => ipcRenderer.invoke('skills:github-import', url),
 
-  // Terminal
-  createTerminal: (terminalId: string) => ipcRenderer.invoke('terminal:create', terminalId),
+  // Terminal (M4: node-pty)
+  createTerminal: (opts: { id?: string; cwd?: string; cols?: number; rows?: number }) =>
+    ipcRenderer.invoke('terminal:create', opts),
   terminalInput: (terminalId: string, data: string) => ipcRenderer.invoke('terminal:input', terminalId, data),
   terminalResize: (terminalId: string, cols: number, rows: number) => ipcRenderer.invoke('terminal:resize', terminalId, cols, rows),
   closeTerminal: (terminalId: string) => ipcRenderer.invoke('terminal:close', terminalId),
+  listTerminals: () => ipcRenderer.invoke('terminal:list'),
 
   onTerminalOutput: (terminalId: string, callback: (data: string) => void) => {
     const subscription = (_event: Electron.IpcRendererEvent, payload: { id: string; data: string }) => {

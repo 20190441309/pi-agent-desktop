@@ -73,11 +73,12 @@ export interface PiAPI {
   onApprovalDeferred: (callback: (d: { changeId: string; toolCallId: string; filePath: string; op: string; timestamp: number }) => void) => () => void;
   onApprovalReview: (callback: (r: { changeId: string; toolCallId: string; filePath: string; diff: string; newContent: string; timestamp: number }) => void) => () => void;
 
-  // Terminal
-  createTerminal: (terminalId: string) => Promise<boolean>;
+  // Terminal (M4: node-pty)
+  createTerminal: (opts: { id?: string; cwd?: string; cols?: number; rows?: number }) => Promise<{ id: string; reused: boolean }>;
   terminalInput: (terminalId: string, data: string) => Promise<void>;
   terminalResize: (terminalId: string, cols: number, rows: number) => Promise<void>;
   closeTerminal: (terminalId: string) => Promise<void>;
+  listTerminals: () => Promise<Array<{ id: string; cwd: string; title: string }>>;
   onTerminalOutput: (terminalId: string, callback: (data: string) => void) => () => void;
   onTerminalExit: (terminalId: string, callback: (code: number | null) => void) => () => void;
 

@@ -3,7 +3,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
-import { spawn, execSync, type ChildProcess } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { homedir } from 'os';
 import Store from 'electron-store';
@@ -17,6 +17,8 @@ import { PendingEdits } from './services/approval/pending-edits';
 import { setupChatIpc } from './ipc/chat.ipc';
 import { setupFilesIpc } from './ipc/files.ipc';
 import { setupSkillsIpc } from './ipc/skills.ipc';
+import { setupTerminalIpc } from './ipc/terminal.ipc';
+import { ptyManager } from './services/shell/pty-manager';
 import { app } from 'electron';
 import { join } from 'path';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
@@ -29,23 +31,6 @@ let piDriver: PiDriver | null = null;
 // M1: 长连接 Pi session 管理
 const piRegistry = new WorkspaceRegistry();
 const piPendingEdits = new PendingEdits();
-
-// 终端进程管理
-const terminalProcesses = new Map<string, ChildProcess>();
-
-// 获取默认 shell
-function getDefaultShell(): string {
-  if (process.platform === 'win32') {
-    // 优先 PowerShell，回退到 cmd
-    try {
-      execSync('where powershell.exe', { stdio: 'ignore' });
-      return 'powershell.exe';
-    } catch {
-      return 'cmd.exe';
-    }
-  }
-  return process.env.SHELL || '/bin/bash';
-}
 
 // Pi Agent 配置结构（从 ~/.pi/agent/ 读取）
 interface PiAgentModel {
@@ -727,83 +712,8 @@ function setupIPC(): void {
     return buildFileTree(workspacePath, maxDepth || 3);
   });
 
-  ipcMain.handle('terminal:create', (_event, terminalId: string) => {
-    // 如果已存在同 ID 的进程，先关闭
-    const existing = terminalProcesses.get(terminalId);
-    if (existing) {
-      existing.kill();
-      terminalProcesses.delete(terminalId);
-    }
-
-    const shell = getDefaultShell();
-    const shellArgs = process.platform === 'win32' ? [] : [];
-
-    console.log(`[Terminal] Creating shell: ${shell} (id=${terminalId})`);
-
-    const child = spawn(shell, shellArgs, {
-      cwd: process.cwd(),
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, TERM: 'xterm-256color' },
-      windowsHide: true,
-    });
-
-    terminalProcesses.set(terminalId, child);
-
-    child.stdout?.on('data', (data: Buffer) => {
-      mainWindow?.webContents.send('terminal:output', {
-        id: terminalId,
-        data: data.toString(),
-      });
-    });
-
-    child.stderr?.on('data', (data: Buffer) => {
-      mainWindow?.webContents.send('terminal:output', {
-        id: terminalId,
-        data: data.toString(),
-      });
-    });
-
-    child.on('close', (code) => {
-      console.log(`[Terminal] Process closed: id=${terminalId}, code=${code}`);
-      terminalProcesses.delete(terminalId);
-      mainWindow?.webContents.send('terminal:exit', {
-        id: terminalId,
-        code,
-      });
-    });
-
-    child.on('error', (err) => {
-      console.error(`[Terminal] Process error: id=${terminalId}`, err.message);
-      mainWindow?.webContents.send('terminal:output', {
-        id: terminalId,
-        data: `\x1b[31mError: ${err.message}\x1b[0m\r\n`,
-      });
-    });
-
-    return true;
-  });
-
-  ipcMain.handle('terminal:input', (_event, terminalId: string, data: string) => {
-    const child = terminalProcesses.get(terminalId);
-    if (child && child.stdin && !child.stdin.destroyed) {
-      child.stdin.write(data);
-    }
-  });
-
-  ipcMain.handle('terminal:resize', (_event, terminalId: string, cols: number, rows: number) => {
-    // child_process 不直接支持 resize，但记录日志
-    // 若将来切换到 node-pty，可以调用 pty.resize(cols, rows)
-    console.log(`[Terminal] Resize: id=${terminalId}, cols=${cols}, rows=${rows}`);
-  });
-
-  ipcMain.handle('terminal:close', (_event, terminalId: string) => {
-    const child = terminalProcesses.get(terminalId);
-    if (child) {
-      child.kill();
-      terminalProcesses.delete(terminalId);
-      console.log(`[Terminal] Closed: id=${terminalId}`);
-    }
-  });
+  // M4: Terminal IPC 走 node-pty (替换老 child_process.spawn 模式)
+  setupTerminalIpc();
 }
 
 // App lifecycle
@@ -855,12 +765,8 @@ app.on('window-all-closed', () => {
   piPendingEdits.clear();
   piRegistry.disposeAll();
 
-  // 清理所有终端进程
-  for (const [id, child] of terminalProcesses) {
-    console.log(`[Terminal] Killing terminal process: ${id}`);
-    child.kill();
-  }
-  terminalProcesses.clear();
+  // 清理所有终端进程 (M4: 走 ptyManager)
+  ptyManager.closeAll();
 
   if (process.platform !== 'darwin') {
     app.quit();
