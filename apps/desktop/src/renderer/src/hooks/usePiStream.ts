@@ -428,8 +428,16 @@ export function usePiStream(): UsePiStreamReturn {
       messageRef.current = assistantMessageId;
       setStreamingMessageId(assistantMessageId);
 
-      // 发送到 Pi CLI
-      window.piAPI.sendPrompt(content).catch((err) => {
+      // 发送到 Pi CLI (M1: 带 workspaceId, 让 Pi 跑在用户选的 workspace 目录)
+      const { useWorkspaceStore } = await import('../stores/workspace-store');
+      const ws = useWorkspaceStore.getState().getCurrentWorkspace();
+      if (!ws) {
+        setError('未选择 workspace');
+        setIsStreaming(false);
+        resetRefs();
+        return;
+      }
+      window.piAPI.sendPrompt(ws.id, content).catch((err) => {
         console.error('[usePiStream] sendPrompt error:', err);
         setError(err.message || '发送失败');
         setIsStreaming(false);
@@ -445,9 +453,15 @@ export function usePiStream(): UsePiStreamReturn {
 
   // ── 停止流式处理 ──────────────────────────────────────────────────────────
 
-  const stopStreaming = useCallback(() => {
+  const stopStreaming = useCallback(async () => {
     if (window.piAPI) {
-      window.piAPI.stop();
+      const { useWorkspaceStore } = await import('../stores/workspace-store');
+      const ws = useWorkspaceStore.getState().getCurrentWorkspace();
+      if (ws) {
+        window.piAPI.stop(ws.id);
+      } else {
+        window.piAPI.stop();
+      }
     }
     setIsStreaming(false);
     setStreamingMessageId(null);
