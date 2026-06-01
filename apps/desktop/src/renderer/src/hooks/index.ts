@@ -1,5 +1,3 @@
-// Hooks barrel export
+// Hooks barrel export (M6: archived legacy hooks, see docs/design-archive/legacy-components/)
 
-export { usePiDriver } from './usePiDriver';
 export { useSession } from './useSession';
-export { useGit } from './useGit';

@@ -142,15 +142,6 @@ export interface PiInstallProgress {
   percent?: number;
 }
 
-export type PiEvent =
-  | { type: 'text_start' }
-  | { type: 'text_delta'; text: string }
-  | { type: 'toolcall_start'; tool: string; input: any }
-  | { type: 'toolcall_end'; tool: string; result: any }
-  | { type: 'turn_end' }
-  | { type: 'error'; message: string }
-  | { type: 'process_exit'; code: number | null };
-
 export interface WorkspaceData {
   id: string;
   name: string;

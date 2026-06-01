@@ -2,6 +2,27 @@
 
 All notable changes to Pi Desktop will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.0] - 2026-06-01
+
+首个公开版本。Windows 10/11 x64.
+
+### Added
+- M1 基础: 修 cwd bug + Pi in-process 长连接 + 分层审批 (high-risk 预拦 / file_edit 事后 diff / read 放行)
+- M2 上下文: @ 文件引用 (fuzzy 排序) + 图片粘贴 + Ctrl+K CommandPalette (文件/历史/命令 3 模式)
+- M3 技能: SkillHub CLI 集成, 市场 tab + 我的 tab + 3 选项创建 (用 Pi 构建/编写/从 GitHub)
+- M4 终端: node-pty 真 PTY, 多 tab, xterm.js 6 集成
+- M5 工程: electron-updater + GitHub Actions (CI + Release) + ErrorBoundary + 重写 README/CONTRIBUTING
+- M6 发布: 写最小 App.tsx + 归档旧 UI 组件 + 真实 NSIS 打包 (101 MB installer)
+
+### Tests
+- 107 通过, 2 跳过, 0 失败 (17 test files)
+
+### Known Limitations
+- macOS / Linux 不支持 (v1.1)
+- 没代码签名 (SmartScreen 警告, v1.1)
+- 旧 UI 组件归档, 等 v1.1 重写 ChatView
+- 技能格式 adapter (OpenClaw → Pi) v1.1
+
 ## [Unreleased] — M1 through M5 in progress
 
 ### M5 (in progress)

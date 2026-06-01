@@ -1,8 +1,8 @@
 // CommandPalette (M2 Task M2-5)
 // Ctrl+K 调起的模态: 文件搜索 / 历史搜索 / 内置命令 三模式
 
-import { useEffect, useState, useRef } from "react";
-import { fuzzyScore } from "../../../main/utils/fuzzy-match";
+import React, { useEffect, useState, useRef } from "react";
+import { fuzzyScore } from "../../utils/fuzzy-match";
 import { useSessionStore } from "../../stores/session-store";
 
 export type CommandMode = "file" | "history" | "cmd";
@@ -14,14 +14,6 @@ interface CommandPaletteProps {
     onSelectFile?: (path: string) => void;
     onSelectHistory?: (sessionId: string) => void;
     onRunCommand?: (cmdId: string) => void;
-}
-
-declare global {
-    interface Window {
-        piAPI?: {
-            filesList: (workspacePath: string, query?: string) => Promise<string[]>;
-        };
-    }
 }
 
 const COMMANDS = [
@@ -39,7 +31,7 @@ export function CommandPalette({
     onSelectFile,
     onSelectHistory,
     onRunCommand,
-}: CommandPaletteProps): JSX.Element | null {
+}: CommandPaletteProps): React.ReactElement | null {
     const [query, setQuery] = useState("");
     const [mode, setMode] = useState<CommandMode>("file");
     const [activeIdx, setActiveIdx] = useState(0);

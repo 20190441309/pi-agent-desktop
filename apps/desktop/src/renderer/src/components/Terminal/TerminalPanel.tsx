@@ -5,7 +5,6 @@ import React, { useEffect, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import type { PiAPI } from "@/types";
 
 interface Tab {
     id: string;
@@ -60,11 +59,10 @@ export function TerminalPanel({ workspacePath, isOpen, onClose }: TerminalPanelP
             term.write(`\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`);
         });
 
-        // Cleanup hook
-        term.onDispose(() => {
-            unsubOut();
-            unsubExit();
-        });
+        // Stash unsubs for cleanup in closeTab (xterm has no onDispose event)
+        (term as unknown as { _unsubs: Array<() => void> })._unsubs = [unsubOut, unsubExit];
+
+        // Cleanup happens in closeTab (term.dispose() + IPC close)
 
         const newTab: Tab = {
             id: actualId,
