@@ -3,14 +3,12 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { homedir } from 'os';
 import Store from 'electron-store';
 import { detectProject } from './project-detector';
 import { buildFileTree } from './file-tree';
-import { MessagingGateway } from './messaging/gateway';
-import { GatewayConfig } from './messaging/types';
 import { PiDriver, type PiInstallProgress } from './pi-driver';
 import { WorkspaceRegistry } from './services/pi-session/registry';
 import { PendingEdits } from './services/approval/pending-edits';
@@ -24,7 +22,6 @@ import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 
 let mainWindow: BrowserWindow | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
-let gateway: MessagingGateway | null = null;
 let piDriver: PiDriver | null = null;
 
 // M1: 长连接 Pi session 管理
@@ -133,7 +130,7 @@ function parseSimpleYamlProviders(content: string): PiAgentConfig['providers'] {
 
   for (const line of lines) {
     // provider 顶级键 (如 "  longcat:")
-    const providerMatch = line.match(/^  (\w[\w-]*):$/);
+    const providerMatch = line.match(/^ {2}(\w[\w-]{0,}):$/);
     if (providerMatch && !line.includes('baseUrl') && !line.includes('apiKey') && !line.includes('api:')) {
       if (currentProvider && currentModel) {
         currentProvider.models.push(currentModel as PiAgentModel);
@@ -478,11 +475,11 @@ function setupIPC(): void {
     return getGitStatus(workspacePath);
   });
 
-  // Git diff (指定文件或全部)
+  // Git diff (指定文件或全部) — 参数化执行
   ipcMain.handle('git:diff', async (_, workspacePath: string, filePath?: string) => {
     try {
-      const cmd = filePath ? `git diff "${filePath}"` : 'git diff';
-      return execSync(cmd, { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+      const args = filePath ? ['diff', '--', filePath] : ['diff'];
+      return execFileSync('git', args, { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
     } catch {
       return '';
     }
@@ -491,29 +488,28 @@ function setupIPC(): void {
   // Git staged diff
   ipcMain.handle('git:diff-staged', async (_, workspacePath: string) => {
     try {
-      return execSync('git diff --staged', { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+      return execFileSync('git', ['diff', '--staged'], { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
     } catch {
       return '';
     }
   });
 
-  // Git add
+  // Git add — 参数化, 杜绝文件路径 shell 注入
   ipcMain.handle('git:add', async (_, workspacePath: string, files: string[]) => {
-    const filesArg = files.map(f => `"${f}"`).join(' ');
-    execSync(`git add ${filesArg}`, { cwd: workspacePath });
+    if (files.length === 0) return;
+    execFileSync('git', ['add', '--', ...files], { cwd: workspacePath });
   });
 
-  // Git commit
+  // Git commit — 参数化, message 走 argv 不会被 shell 解析
   ipcMain.handle('git:commit', async (_, workspacePath: string, message: string) => {
-    const escaped = message.replace(/"/g, '\\"').replace(/\n/g, '\\n');
-    return execSync(`git commit -m "${escaped}"`, { cwd: workspacePath, encoding: 'utf-8' });
+    return execFileSync('git', ['commit', '-m', message], { cwd: workspacePath, encoding: 'utf-8' });
   });
 
-  // Git log (最近 N 条)
+  // Git log (最近 N 条) — count 是 number, 安全
   ipcMain.handle('git:log', async (_, workspacePath: string, count: number = 20) => {
     try {
       const format = '--pretty=format:{"hash":"%h","author":"%an","date":"%ai","message":"%s"}';
-      const output = execSync(`git log ${format} -n ${count}`, { cwd: workspacePath, encoding: 'utf-8' });
+      const output = execFileSync('git', ['log', format, '-n', String(count)], { cwd: workspacePath, encoding: 'utf-8' });
       return output.split('\n').filter(l => l.trim()).map(l => JSON.parse(l));
     } catch {
       return [];
@@ -523,7 +519,7 @@ function setupIPC(): void {
   // Git branches
   ipcMain.handle('git:branches', async (_, workspacePath: string) => {
     try {
-      const output = execSync('git branch -a', { cwd: workspacePath, encoding: 'utf-8' });
+      const output = execFileSync('git', ['branch', '-a'], { cwd: workspacePath, encoding: 'utf-8' });
       return output.split('\n').filter(l => l.trim()).map(l => ({
         name: l.replace(/^\*?\s+/, '').trim(),
         isCurrent: l.startsWith('*'),
@@ -662,44 +658,6 @@ function setupIPC(): void {
     }
   });
 
-  // ── Messaging Gateway IPC ────────────────────────────────────────
-
-  ipcMain.handle('gateway:status', async () => {
-    return gateway?.getStatus() || [];
-  });
-
-  ipcMain.handle('gateway:connect', async (_, platform: string) => {
-    if (!gateway) {
-      const config: GatewayConfig = {
-        wechat: { enabled: true },
-        feishu: { enabled: true },
-        qq: { enabled: true },
-        autoReply: false,
-        replyMode: 'pi',
-      };
-      gateway = new MessagingGateway(config);
-      if (mainWindow) gateway.setMainWindow(mainWindow);
-    }
-    return await gateway.connectPlatform(platform);
-  });
-
-  ipcMain.handle('gateway:disconnect', async (_, platform: string) => {
-    await gateway?.disconnectPlatform(platform);
-  });
-
-  ipcMain.handle('gateway:send', async (_, platform: string, chatId: string, content: string) => {
-    if (!gateway) throw new Error('Gateway not initialized');
-    await gateway.sendReply(platform, chatId, content);
-  });
-
-  ipcMain.handle('gateway:messages', async () => {
-    return gateway?.getMessageHistory() || [];
-  });
-
-  ipcMain.handle('gateway:config', async (_, config: Partial<GatewayConfig>) => {
-    gateway?.updateConfig(config);
-  });
-
   // ── Terminal IPC Handlers ──────────────────────────────────────────
 
   // ── Project Detection & File Tree ────────────────────────────────
@@ -750,12 +708,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // 清理消息网关
-  if (gateway) {
-    gateway.destroy();
-    gateway = null;
-  }
-
   // 清理 Pi Driver
   if (piDriver) {
     piDriver.destroy();

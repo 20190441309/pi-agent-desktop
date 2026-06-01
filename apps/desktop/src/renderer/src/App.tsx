@@ -15,16 +15,14 @@ import { SkillsPanel } from "./components/SkillsPanel/SkillsPanel";
 import { TerminalPanel } from "./components/Terminal/TerminalPanel";
 import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { PiStatusPanel } from "./components/PiStatusPanel/PiStatusPanel";
-import { GatewayPanel } from "./components/GatewayPanel/GatewayPanel";
 import { TaskSidebar } from "./components/FloatingPanel/TaskSidebar";
 import { useWorkspaceStore } from "./stores/workspace-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { usePiStatusStore } from "./stores/pi-status-store";
 import { useApprovalStore } from "./stores/approval-store";
-import { useGatewayStore } from "./stores/gateway-store";
 
 type Panel = "chat" | "search" | "plugins" | "automation" | "settings";
-type RightPanel = "git" | "approval" | "gateway" | null;
+type RightPanel = "git" | "approval" | null;
 
 function App(): React.ReactElement {
     const [activePanel, setActivePanel] = useState<Panel>("chat");
@@ -37,7 +35,6 @@ function App(): React.ReactElement {
     const { loadPiConfig, openSettings } = useSettingsStore();
     const { status, refreshStatus } = usePiStatusStore();
     const pendingApprovalCount = useApprovalStore((s) => s.changes.filter((c) => c.status === "pending").length);
-    const gatewayNewCount = useGatewayStore((s) => s.newMessageCount);
     const currentWorkspace = getCurrentWorkspace();
 
     // 启动时拉 Pi 状态
@@ -127,22 +124,6 @@ function App(): React.ReactElement {
                                 )}
                             </button>
                             <button
-                                onClick={() => setRightPanel(rightPanel === "gateway" ? null : "gateway")}
-                                className={`relative px-3 py-1.5 rounded text-xs transition-all flex items-center gap-1.5 ${
-                                    rightPanel === "gateway"
-                                        ? "bg-[#1a1a1a] text-white"
-                                        : "bg-white border border-[#e5e5e5] text-[#666] hover:bg-[#f0f0f0]"
-                                }`}
-                                title="消息网关"
-                            >
-                                🌐 网关
-                                {gatewayNewCount > 0 && rightPanel !== "gateway" && (
-                                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[9px] font-bold text-white bg-[#ef4444] px-1">
-                                        {gatewayNewCount > 99 ? "99+" : gatewayNewCount}
-                                    </span>
-                                )}
-                            </button>
-                            <button
                                 onClick={() => setShowTerminal((v) => !v)}
                                 className={`px-3 py-1.5 rounded text-xs transition-all ${
                                     showTerminal
@@ -218,12 +199,6 @@ function App(): React.ReactElement {
                 {rightPanel === "approval" && (
                     <ApprovalPanel
                         isOpen={rightPanel === "approval"}
-                        onToggle={() => setRightPanel(null)}
-                    />
-                )}
-                {rightPanel === "gateway" && (
-                    <GatewayPanel
-                        isOpen={rightPanel === "gateway"}
                         onToggle={() => setRightPanel(null)}
                     />
                 )}

@@ -23,7 +23,6 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
     componentDidCatch(error: Error, info: React.ErrorInfo): void {
         // 简单 log 到 console, 实际生产可以接 Sentry 等
-        // eslint-disable-next-line no-console
         console.error("[ErrorBoundary] Caught:", error, info);
     }
 

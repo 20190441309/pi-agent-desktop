@@ -208,21 +208,6 @@ contextBridge.exposeInMainWorld('piAPI', {
       ipcRenderer.removeListener('terminal:exit', subscription);
     };
   },
-
-  // Messaging Gateway
-  gatewayStatus: () => ipcRenderer.invoke('gateway:status'),
-  gatewayConnect: (platform: string) => ipcRenderer.invoke('gateway:connect', platform),
-  gatewayDisconnect: (platform: string) => ipcRenderer.invoke('gateway:disconnect', platform),
-  gatewaySend: (platform: string, chatId: string, content: string) => ipcRenderer.invoke('gateway:send', platform, chatId, content),
-  gatewayMessages: () => ipcRenderer.invoke('gateway:messages'),
-  gatewayConfig: (config: any) => ipcRenderer.invoke('gateway:config', config),
-  onGatewayMessage: (callback: (msg: any) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, msg: any) => callback(msg);
-    ipcRenderer.on('gateway:message', handler);
-    return () => {
-      ipcRenderer.removeListener('gateway:message', handler);
-    };
-  },
 });
 
 // Expose a limited set of node APIs

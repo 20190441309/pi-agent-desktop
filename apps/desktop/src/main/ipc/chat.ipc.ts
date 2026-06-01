@@ -3,10 +3,9 @@
 // 走 AgentSession 长连接 + ApprovalInterceptor + EventBridge
 
 import { ipcMain, BrowserWindow, type BrowserWindow as BrowserWindowType } from "electron";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { WorkspaceRegistry } from "../services/pi-session/registry";
-import { createEventBridge } from "../services/pi-session/event-bridge";
-import { createApprovalInterceptor } from "../services/approval/interceptor";
+import type { IpcSender } from "../services/pi-session/event-bridge";
 import { PendingEdits } from "../services/approval/pending-edits";
 import { resolveApprovalRequest } from "../services/approval/approval-bridge";
 
@@ -27,7 +26,7 @@ interface ChatIpcDeps {
 }
 
 export function setupChatIpc(deps: ChatIpcDeps): void {
-    const send = (channel: string, workspaceId: string, payload: unknown) => {
+    const send: IpcSender = (channel, workspaceId, payload) => {
         const win: BrowserWindowType | null = BrowserWindow.getAllWindows()[0] ?? null;
         if (win && !win.isDestroyed()) {
             win.webContents.send(channel, { workspaceId, payload });
@@ -43,29 +42,9 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         const ws = deps.getWorkspace(workspaceId) ?? deps.getDefaultWorkspace();
         if (!ws) throw new Error(`Workspace not found: ${workspaceId}`);
 
-        const wsSession = await deps.registry.get(ws.id, ws.path);
-        const bridge = createEventBridge(ws.id, send);
-        const interceptor = createApprovalInterceptor(ws.id, {
-            abort: () => wsSession.session.abort(),
-            pendingEdits: deps.pendingEdits,
-            send,
-            workspacePath: ws.path,
-        });
-
-        // 订阅事件: 先过 interceptor (决策), 再过 bridge (推 renderer)
-        wsSession.session.subscribe(async (event) => {
-            try {
-                await interceptor.handleEvent(event as any);
-            } catch (err) {
-                console.error("[chat.ipc] interceptor error:", err);
-            }
-            try {
-                bridge.handleEvent(event as any);
-            } catch (err) {
-                console.error("[chat.ipc] event-bridge error:", err);
-            }
-        });
-
+        // registry.get() 内部会 lazy-init: 第一次创建 session + bridge + interceptor
+        // 并只订阅一次 Pi 事件 (修复之前的订阅泄漏 + 重复处理 bug)
+        const wsSession = await deps.registry.get(ws.id, ws.path, deps.pendingEdits, send);
         await wsSession.session.prompt(text);
     });
 
@@ -78,14 +57,15 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     });
 
     // M1: Git undo (撤销 file_edit 类改动)
+    // 用 execFileSync 参数化 (避免 shell 注入)
     ipcMain.handle("git:undo", async (_event, workspacePath: string, filePath: string) => {
         try {
             // 先试 git checkout (tracked file)
-            execSync(`git checkout -- "${filePath}"`, { cwd: workspacePath, stdio: "ignore" });
+            execFileSync("git", ["checkout", "--", filePath], { cwd: workspacePath, stdio: "ignore" });
         } catch {
-            // fallback: rm (untracked new file)
+            // fallback: rm (untracked new file) — 参数化, 安全
             try {
-                execSync(`rm "${filePath}"`, { cwd: workspacePath, stdio: "ignore" });
+                execFileSync("rm", [filePath], { cwd: workspacePath, stdio: "ignore" });
             } catch {
                 // ignore
             }

@@ -40,9 +40,9 @@ const HIGH_RISK_PATH_PATTERNS: RegExp[] = [
     /^~?\/?\.profile$/,
     /^\/etc\//i,
     /^C:\\Windows\\System32/i,
-    /\.git[\\\/]hooks/,
-    /\.git[\\\/]config$/,
-    /\.pi[\\\/]agent[\\\/]settings\.json$/,
+    /\.git[\\/]hooks/,
+    /\.git[\\/]config$/,
+    /\.pi[\\/]agent[\\/]settings\.json$/,
 ];
 
 // 文件编辑类 bash

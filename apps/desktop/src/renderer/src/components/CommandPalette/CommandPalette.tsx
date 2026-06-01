@@ -53,6 +53,10 @@ export function CommandPalette({
         }
     }, [mode, workspacePath, isOpen]);
 
+    useEffect(() => {
+        setActiveIdx(0);
+    }, [mode, query]);
+
     if (!isOpen) return null;
 
     // 根据 mode 决定 results
@@ -105,10 +109,6 @@ export function CommandPalette({
             .slice(0, 20)
             .map((x) => x.r);
     }
-
-    useEffect(() => {
-        setActiveIdx(0);
-    }, [results.length, mode, query]);
 
     const onKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "ArrowDown") {

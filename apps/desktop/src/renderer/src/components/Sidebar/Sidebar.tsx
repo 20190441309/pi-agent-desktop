@@ -34,6 +34,7 @@ export function Sidebar(): React.JSX.Element {
       }
     };
     loadWorkspaces();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only
   }, []);
 
   const handleNewWorkspace = async () => {
