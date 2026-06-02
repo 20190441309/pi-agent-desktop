@@ -346,6 +346,41 @@ Week 8  ┃████ 缓冲 / 用户反馈处理           ┃
 - 并行 producer 任务共享文件（App.tsx/IconBar/CommandPalette）会在 main worktree 撞车，30min hard cap 触发后没法安全 retry。下次拆分时按文件边界分，每个 task 明确禁止改共享文件。
 - a11y 类任务范围要小（5 组件 + axe-core spec），上次塞了 9 组件 + axe-core + focus-visible + 4 test files，30min 装不下。
 
+### v1.0.4 — i18n 基建（已合 master）
+- i18next + react-i18next 接入，`I18nProvider` + locale 探测（`navigator.language` + localStorage 兜底）
+- 抽硬编码中文字符串到 `en.json` + `zh-CN.json`（Onboarding 3 步 + a11y 标签 + Tooltip + ShortcutsCheatsheet 8 条 + empty states + error 提示 + ChatView "立即安装" CTA）
+- Settings 加语言切换器（zh-CN ↔ en-US）
+- 7 个 I18nProvider 单测（locale 切换、missing key fallback、navigator 检测）
+- commit `3cea184`
+- 验证：typecheck ✓ lint ✓
+
+### v1.0.5 — 类型清零（已合 master）
+- 49 处 `any` / `as any` 全清，preload 强类型 + skills/settings store 类型收窄 + ToolCallCard/CommandCard JSX 序列化
+- 范围聚焦"消除 any"；store 内部 Date 类型保留（避免下游连锁改），v1.0.9 再统一
+- commit `1f9f490`
+
+### v1.0.6 — 日志统一（已合 master）
+- 12 处 console → electron-log 统一通道
+- 渲染层用 dynamic require + try/catch 兜底（vitest jsdom 下 electron-log/renderer 顶层调 window.ipcRenderer 会卡）
+- commit `7bb3de6`
+
+### v1.0.7 — lint 零容忍（已合 master）
+- 7 个 eslint-disable 全清，改 useRef 模式（zustand 派生值每次 render 都新，不能放 deps）
+- 2 个 TODO 清掉，6 处生产 any 清掉
+- `@typescript-eslint/no-explicit-any: error` 加进 lint
+- commit `3328c74`
+
+### v1.0.6.1 — IPC 错误结构化（已合 master）
+- 之前主进程 IPC handler `throw new Error('xxx 失败: e.message')` 把中文混进 IPC 通道，i18n 走不通
+- @shared 加 `IpcError` 契约 `{ code, params?, fallback }` + `ipcError()` 工厂 + `isIpcError()` 守卫
+- 4 个 setup 模块（chat/files/skills/terminal）+ main/index.ts 23 个 handler 改 return IpcError 而非 throw
+- 渲染层 `i18n/IpcError.ts` 加 `translateIpcError(err, t)` + `useTranslateIpcError()` hook — 找不到词条降级 fallback
+- en.json / zh-CN.json 各加 `ipcErrors.{pi,chat,workspace,skills,terminal,git,files}.*` 7 个 namespace，覆盖 27 个 IPC 错误场景
+- 8 个 IpcError 单测（类型守卫 / 翻译 / 降级 / params 插值 / locale 切换）
+- 验证：26 test files / 196 tests PASS (2 skipped, 0 fail)，lint --max-warnings 0 干净
+- commit `66e3ee7`
+- **未做（留给 v1.0.8）**：PiStatusPanel / settings-store 等 React 组件接入 `useTranslateIpcError` 把 IpcError 翻译后弹 toast — 这次只定契约和 helper，不动组件
+
 ## 12. v1.0.4 — i18n 基建（进行中）
 
 **目标**：让 Pi Desktop 支持中英双语切换，铺好未来更多语言的基建。
