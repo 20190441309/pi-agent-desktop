@@ -14,8 +14,9 @@ import React, { useEffect, useState, useCallback } from "react";
 import { usePiStatusStore } from "../../stores/pi-status-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { markFirstLaunchDone } from "../../utils/first-launch";
-import { useI18n } from "../../i18n";
+import { useI18n, useTranslateIpcError } from "../../i18n";
 import { logger } from "../../utils/logger";
+import type { IpcError } from "@shared";
 
 export interface OnboardingProps {
     /** 关闭回调（完成时由父组件调用） */
@@ -33,6 +34,13 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
     const { status, loading, error, progress, isOperating, refreshStatus, install } = usePiStatusStore();
     const { getCurrentWorkspace, addWorkspace } = useWorkspaceStore();
     const { t } = useI18n();
+    // v1.0.8: store.error 现在可能是 IpcError, 走 t() 翻译; string 兜底直接显示
+    const translateIpcError = useTranslateIpcError();
+    const errorMessage: string | null = error == null
+        ? null
+        : typeof error === "string"
+            ? error
+            : translateIpcError(error as IpcError);
 
     const currentWorkspace = getCurrentWorkspace();
     const piInstalled = forceSkipPiCheck || status?.installed === true;
@@ -162,9 +170,9 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                         : t("onboarding.step1.status.versionUnknown")
                                     : t("onboarding.step1.status.notInstalled")}
                             </p>
-                            {error && !piInstalled && (
+                            {errorMessage && !piInstalled && (
                                 <p className="text-xs text-[#ef4444] mt-1" role="alert">
-                                    {error}
+                                    {errorMessage}
                                 </p>
                             )}
                             {!piInstalled && isOperating && progress && (

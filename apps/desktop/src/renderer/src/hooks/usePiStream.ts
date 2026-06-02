@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PiEvent } from "@shared/events";
+import { isIpcError } from "@shared";
 import { useSessionStore } from "../stores/session-store";
 import { useApprovalStore } from "../stores/approval-store";
 
@@ -65,7 +66,11 @@ export function usePiStream(): UsePiStreamReturn {
     useEffect(() => {
         if (!window.piAPI) return;
         void window.piAPI.getStatus()
-            .then((s) => setIsConnected(s.installed))
+            .then((s) => {
+                // v1.0.8: getStatus 可能返 IpcError, 此时 Pi 未就绪 → not connected
+                if (isIpcError(s)) setIsConnected(false);
+                else setIsConnected(s.installed);
+            })
             .catch(() => setIsConnected(false));
     }, []);
 

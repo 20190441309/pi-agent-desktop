@@ -204,11 +204,11 @@ export interface PiAPI {
     onEvent(cb: (e: PiEvent) => void): Unsubscribe;
     onError(cb: (err: string) => void): Unsubscribe;
     onPiJsonEvent(cb: (data: Record<string, unknown>) => void): Unsubscribe;
-    getStatus(): Promise<PiStatus>;
-    refreshPiStatus(): Promise<PiStatus>;
-    installPi(): Promise<PiStatus>;
-    updatePi(): Promise<PiStatus>;
-    uninstallPi(): Promise<PiStatus>;
+    getStatus(): Promise<PiStatus | IpcError>;
+    refreshPiStatus(): Promise<PiStatus | IpcError>;
+    installPi(): Promise<PiStatus | IpcError>;
+    updatePi(): Promise<PiStatus | IpcError>;
+    uninstallPi(): Promise<PiStatus | IpcError>;
     cancelPiOperation(): Promise<void>;
     onPiStatusChanged(cb: (status: PiStatus) => void): Unsubscribe;
     onPiInstallProgress(cb: (progress: PiInstallProgress) => void): Unsubscribe;

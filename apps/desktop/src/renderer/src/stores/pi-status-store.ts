@@ -1,15 +1,18 @@
 /**
  * Pi Status Store — 管理 Pi CLI 的安装状态、检测、安装/更新进度
+ * v1.0.8: 错误类型从 string 改为 IpcError | string | null — 走 IpcError 时由 UI 层 t() 翻译
  */
 
 import { create } from 'zustand';
+import { isIpcError, type IpcError } from '@shared';
 import type { PiDriverStatus, PiInstallProgress } from '../types';
 
 interface PiStatusState {
   // 状态
   status: PiDriverStatus | null;
   loading: boolean;
-  error: string | null;
+  /** v1.0.8: IpcError 走 i18n code, string 兜底 (兼容老 throw 路径 / 内部异常) */
+  error: IpcError | string | null;
 
   // 安装/更新进度
   progress: PiInstallProgress | null;
@@ -29,6 +32,12 @@ interface PiStatusState {
   _cleanup: (() => void) | null;
   setupListeners: () => void;
   cleanupListeners: () => void;
+}
+
+/** IPC 返的值拆成 (data | err), 用 IpcError 判别 */
+function partition<T>(result: T | IpcError): { ok: true; data: T } | { ok: false; err: IpcError | string } {
+  if (isIpcError(result)) return { ok: false, err: result };
+  return { ok: true, data: result };
 }
 
 export const usePiStatusStore = create<PiStatusState>((set, get) => ({
@@ -86,10 +95,13 @@ export const usePiStatusStore = create<PiStatusState>((set, get) => ({
 
     set({ loading: true, error: null });
     try {
-      const status = await api.getStatus();
-      set({ status, loading: false });
-    } catch (err) {
-      set({ error: String(err), loading: false });
+      const result = await api.getStatus();
+      const p = partition(result);
+      if (p.ok) set({ status: p.data, loading: false });
+      else set({ error: p.err, loading: false });
+    } catch (e) {
+      // 兜底: 老 throw 路径 / preload 未桥接等
+      set({ error: String(e), loading: false });
     }
   },
 
@@ -99,10 +111,12 @@ export const usePiStatusStore = create<PiStatusState>((set, get) => ({
 
     set({ loading: true, error: null });
     try {
-      const status = await api.refreshPiStatus();
-      set({ status, loading: false });
-    } catch (err) {
-      set({ error: String(err), loading: false });
+      const result = await api.refreshPiStatus();
+      const p = partition(result);
+      if (p.ok) set({ status: p.data, loading: false });
+      else set({ error: p.err, loading: false });
+    } catch (e) {
+      set({ error: String(e), loading: false });
     }
   },
 
@@ -112,11 +126,16 @@ export const usePiStatusStore = create<PiStatusState>((set, get) => ({
 
     set({ isOperating: true, error: null, progress: { stage: 'downloading', message: '准备安装...' } });
     try {
-      await api.installPi();
-      set({ isOperating: false });
-      await get().refreshStatus();
-    } catch (err) {
-      set({ error: String(err), isOperating: false });
+      const result = await api.installPi();
+      const p = partition(result);
+      if (p.ok) {
+        set({ isOperating: false });
+        await get().refreshStatus();
+      } else {
+        set({ error: p.err, isOperating: false });
+      }
+    } catch (e) {
+      set({ error: String(e), isOperating: false });
     }
   },
 
@@ -126,11 +145,16 @@ export const usePiStatusStore = create<PiStatusState>((set, get) => ({
 
     set({ isOperating: true, error: null, progress: { stage: 'downloading', message: '准备更新...' } });
     try {
-      await api.updatePi();
-      set({ isOperating: false });
-      await get().refreshStatus();
-    } catch (err) {
-      set({ error: String(err), isOperating: false });
+      const result = await api.updatePi();
+      const p = partition(result);
+      if (p.ok) {
+        set({ isOperating: false });
+        await get().refreshStatus();
+      } else {
+        set({ error: p.err, isOperating: false });
+      }
+    } catch (e) {
+      set({ error: String(e), isOperating: false });
     }
   },
 
@@ -140,11 +164,16 @@ export const usePiStatusStore = create<PiStatusState>((set, get) => ({
 
     set({ isOperating: true, error: null, progress: { stage: 'downloading', message: '准备卸载...' } });
     try {
-      await api.uninstallPi();
-      set({ isOperating: false });
-      await get().refreshStatus();
-    } catch (err) {
-      set({ error: String(err), isOperating: false });
+      const result = await api.uninstallPi();
+      const p = partition(result);
+      if (p.ok) {
+        set({ isOperating: false });
+        await get().refreshStatus();
+      } else {
+        set({ error: p.err, isOperating: false });
+      }
+    } catch (e) {
+      set({ error: String(e), isOperating: false });
     }
   },
 

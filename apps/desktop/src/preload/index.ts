@@ -4,6 +4,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import type {
     PiStatus,
+    IpcError,
     PiInstallProgress,
     ApprovalRequest,
     DeferredEdit,
@@ -33,11 +34,11 @@ const piAPI: PiAPI = {
     onPiJsonEvent: (cb) => subscribe<Record<string, unknown>>("pi:json-event", cb),
 
     // Pi Driver 状态
-    getStatus: () => ipcRenderer.invoke("pi:status") as Promise<PiStatus>,
-    refreshPiStatus: () => ipcRenderer.invoke("pi:refresh-status") as Promise<PiStatus>,
-    installPi: () => ipcRenderer.invoke("pi:install") as Promise<PiStatus>,
-    updatePi: () => ipcRenderer.invoke("pi:update") as Promise<PiStatus>,
-    uninstallPi: () => ipcRenderer.invoke("pi:uninstall") as Promise<PiStatus>,
+    getStatus: () => ipcRenderer.invoke("pi:status") as Promise<PiStatus | IpcError>,
+    refreshPiStatus: () => ipcRenderer.invoke("pi:refresh-status") as Promise<PiStatus | IpcError>,
+    installPi: () => ipcRenderer.invoke("pi:install") as Promise<PiStatus | IpcError>,
+    updatePi: () => ipcRenderer.invoke("pi:update") as Promise<PiStatus | IpcError>,
+    uninstallPi: () => ipcRenderer.invoke("pi:uninstall") as Promise<PiStatus | IpcError>,
     cancelPiOperation: () => ipcRenderer.invoke("pi:cancel-operation"),
 
     onPiStatusChanged: (cb) => subscribe<PiStatus>("pi:status-changed", cb),

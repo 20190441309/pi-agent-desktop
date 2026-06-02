@@ -1,0 +1,152 @@
+// pi-status-store IpcError 路径测试 (v1.0.8)
+// 覆盖: partition 逻辑 + IPC 返 IpcError 时 error 字段是 IpcError (非 string)
+//       + 兼容 catch 路径 (老 throw / preload 未桥接)
+
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { ipcError } from "@shared";
+import type { PiStatus } from "@shared";
+
+// mock window.piAPI; 每个 case 单独覆盖
+const mockApi = {
+    onPiStatusChanged: vi.fn(),
+    onPiInstallProgress: vi.fn(),
+    getStatus: vi.fn(),
+    refreshPiStatus: vi.fn(),
+    installPi: vi.fn(),
+    updatePi: vi.fn(),
+    uninstallPi: vi.fn(),
+    cancelPiOperation: vi.fn(),
+};
+
+beforeEach(() => {
+    (globalThis as { window: unknown }).window = { piAPI: mockApi };
+    vi.clearAllMocks();
+});
+
+// 注: store 顶层会调 setupListeners 不需要, 这里我们只测 actions
+import { usePiStatusStore } from "../pi-status-store";
+
+const fakeStatus: PiStatus = {
+    installed: true,
+    localVersion: "0.75.5",
+    latestVersion: "0.75.5",
+    updateAvailable: false,
+    executablePath: "/usr/bin/pi",
+    installMethod: "npm",
+    configExists: true,
+    defaultProvider: "anthropic",
+    defaultModel: "claude-3-5-sonnet",
+};
+
+describe("pi-status-store: checkStatus", () => {
+    it("IPC 返 PiStatus → 写入 status, 清 error", async () => {
+        mockApi.getStatus.mockResolvedValue(fakeStatus);
+        usePiStatusStore.setState({ loading: false, error: null, status: null });
+        await usePiStatusStore.getState().checkStatus();
+        const s = usePiStatusStore.getState();
+        expect(s.status).toEqual(fakeStatus);
+        expect(s.error).toBeNull();
+        expect(s.loading).toBe(false);
+    });
+
+    it("IPC 返 IpcError → 写入 error (IpcError), status 保留旧值", async () => {
+        const err = ipcError("ipcErrors.pi.detectFailed", "检测 Pi 状态失败: EACCES", { message: "EACCES" });
+        mockApi.getStatus.mockResolvedValue(err);
+        usePiStatusStore.setState({ loading: false, error: null, status: fakeStatus });
+        await usePiStatusStore.getState().checkStatus();
+        const s = usePiStatusStore.getState();
+        expect(s.error).toEqual(err);
+        expect(s.status).toEqual(fakeStatus); // 没被覆盖
+        expect(s.loading).toBe(false);
+    });
+
+    it("IPC throw (老路径) → error 走 string 兜底", async () => {
+        mockApi.getStatus.mockRejectedValue(new Error("network down"));
+        usePiStatusStore.setState({ loading: false, error: null, status: null });
+        await usePiStatusStore.getState().checkStatus();
+        const s = usePiStatusStore.getState();
+        expect(typeof s.error).toBe("string");
+        expect(s.error).toContain("network down");
+    });
+});
+
+describe("pi-status-store: install", () => {
+    it("成功: 调 installPi, isOperating 翻 false, refreshStatus 接力调", async () => {
+        mockApi.installPi.mockResolvedValue(fakeStatus);
+        mockApi.refreshPiStatus.mockResolvedValue(fakeStatus);
+        usePiStatusStore.setState({ isOperating: false, error: null, status: null });
+        await usePiStatusStore.getState().install();
+        const s = usePiStatusStore.getState();
+        expect(mockApi.installPi).toHaveBeenCalledTimes(1);
+        expect(mockApi.refreshPiStatus).toHaveBeenCalledTimes(1);
+        expect(s.isOperating).toBe(false);
+        expect(s.status).toEqual(fakeStatus);
+        expect(s.error).toBeNull();
+    });
+
+    it("失败 (IpcError): isOperating 翻 false, error 写入 IpcError, 不调 refresh", async () => {
+        const err = ipcError("ipcErrors.pi.installFailed", "安装失败: EACCES", { message: "EACCES" });
+        mockApi.installPi.mockResolvedValue(err);
+        usePiStatusStore.setState({ isOperating: false, error: null, status: null });
+        await usePiStatusStore.getState().install();
+        const s = usePiStatusStore.getState();
+        expect(s.isOperating).toBe(false);
+        expect(s.error).toEqual(err);
+        expect(mockApi.refreshPiStatus).not.toHaveBeenCalled();
+    });
+});
+
+describe("pi-status-store: update", () => {
+    it("成功路径", async () => {
+        mockApi.updatePi.mockResolvedValue(fakeStatus);
+        mockApi.refreshPiStatus.mockResolvedValue(fakeStatus);
+        await usePiStatusStore.getState().update();
+        expect(mockApi.updatePi).toHaveBeenCalled();
+    });
+
+    it("失败: IpcError 写入 error", async () => {
+        const err = ipcError("ipcErrors.pi.updateFailed", "更新失败", { message: "x" });
+        mockApi.updatePi.mockResolvedValue(err);
+        usePiStatusStore.setState({ error: null, isOperating: false });
+        await usePiStatusStore.getState().update();
+        expect(usePiStatusStore.getState().error).toEqual(err);
+    });
+});
+
+describe("pi-status-store: uninstall", () => {
+    it("成功路径", async () => {
+        mockApi.uninstallPi.mockResolvedValue(fakeStatus);
+        mockApi.refreshPiStatus.mockResolvedValue(fakeStatus);
+        await usePiStatusStore.getState().uninstall();
+        expect(mockApi.uninstallPi).toHaveBeenCalled();
+    });
+
+    it("失败: IpcError 写入 error", async () => {
+        const err = ipcError("ipcErrors.pi.uninstallFailed", "卸载失败", { message: "x" });
+        mockApi.uninstallPi.mockResolvedValue(err);
+        usePiStatusStore.setState({ error: null, isOperating: false });
+        await usePiStatusStore.getState().uninstall();
+        expect(usePiStatusStore.getState().error).toEqual(err);
+    });
+});
+
+describe("pi-status-store: cancelOperation", () => {
+    it("调 cancelPiOperation, 清 isOperating 和 progress", async () => {
+        mockApi.cancelPiOperation.mockResolvedValue(undefined);
+        usePiStatusStore.setState({ isOperating: true, progress: { stage: "downloading", message: "x" } });
+        await usePiStatusStore.getState().cancelOperation();
+        const s = usePiStatusStore.getState();
+        expect(s.isOperating).toBe(false);
+        expect(s.progress).toBeNull();
+    });
+});
+
+describe("pi-status-store: refreshStatus", () => {
+    it("IPC 返 IpcError → error 字段是 IpcError", async () => {
+        const err = ipcError("ipcErrors.pi.detectFailed", "刷新失败", { message: "EIO" });
+        mockApi.refreshPiStatus.mockResolvedValue(err);
+        usePiStatusStore.setState({ error: null, status: null });
+        await usePiStatusStore.getState().refreshStatus();
+        expect(usePiStatusStore.getState().error).toEqual(err);
+    });
+});

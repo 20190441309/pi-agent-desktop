@@ -10,6 +10,8 @@
 
 import React, { useEffect, useRef } from 'react';
 import { usePiStatusStore } from '../../stores/pi-status-store';
+import { useTranslateIpcError } from '../../i18n';
+import type { IpcError } from '@shared';
 import type { PiInstallProgress } from '../../types';
 
 // ── 进度条组件 ──────────────────────────────────────────────────
@@ -105,6 +107,14 @@ export function PiStatusPanel(): React.JSX.Element {
     return () => cleanupListenersRef.current();
   }, []);
 
+  // v1.0.8: IpcError 走 i18n, string 兜底直接显示
+  const translateIpcError = useTranslateIpcError();
+  const errorMessage: string | null = error == null
+    ? null
+    : typeof error === 'string'
+      ? error
+      : translateIpcError(error as IpcError);
+
   const isInstalled = status?.installed ?? false;
   const updateAvailable = status?.updateAvailable ?? false;
 
@@ -161,9 +171,9 @@ export function PiStatusPanel(): React.JSX.Element {
       </div>
 
       {/* 错误信息 */}
-      {error && (
-        <div className="mb-3 p-2 bg-red-900/20 border border-red-800/30 rounded text-xs text-red-400">
-          {error}
+      {errorMessage && (
+        <div className="mb-3 p-2 bg-red-900/20 border border-red-800/30 rounded text-xs text-red-400" role="alert">
+          {errorMessage}
         </div>
       )}
 
