@@ -1,9 +1,11 @@
 // PtyManager (M4 Task M4-1)
 // node-pty 真 PTY 管理, 替代老的 child_process.spawn 模式
 // 修复: resize / TUI 应用支持
+// v1.0.6: console 换 electron-log
 
 import { IPty } from "node-pty";
 import { homedir, platform } from "os";
+import log from "electron-log/main";
 
 export interface PtyOptions {
     id: string;
@@ -115,7 +117,7 @@ export class PtyManager {
             try {
                 entry.pty.write(data);
             } catch (err) {
-                console.error(`[PtyManager] write error for ${id}:`, err);
+                log.error(`[PtyManager] write error for ${id}:`, err);
             }
         }
     }
@@ -126,7 +128,7 @@ export class PtyManager {
             try {
                 entry.pty.resize(cols, rows);
             } catch (err) {
-                console.error(`[PtyManager] resize error for ${id}:`, err);
+                log.error(`[PtyManager] resize error for ${id}:`, err);
             }
         }
     }
@@ -137,7 +139,7 @@ export class PtyManager {
             try {
                 entry.pty.kill();
             } catch (err) {
-                console.error(`[PtyManager] close error for ${id}:`, err);
+                log.error(`[PtyManager] close error for ${id}:`, err);
             }
             this.map.delete(id);
         }

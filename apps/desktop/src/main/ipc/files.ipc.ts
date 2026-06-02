@@ -1,7 +1,9 @@
 // Files IPC (M2 Task M2-1)
 // 文件搜索 IPC, 给 @ 引用和 CommandPalette 用
+// v1.0.6: console 换 electron-log
 
 import { ipcMain } from "electron";
+import log from "electron-log/main";
 import { scanFiles } from "../services/search/file-scanner";
 
 export function setupFilesIpc(): void {
@@ -12,7 +14,7 @@ export function setupFilesIpc(): void {
             const q = query.toLowerCase();
             return files.filter((f) => f.toLowerCase().includes(q)).slice(0, 50);
         } catch (err) {
-            console.error("[files.ipc] scan error:", err);
+            log.error("[files.ipc] scan error:", err);
             return [];
         }
     });

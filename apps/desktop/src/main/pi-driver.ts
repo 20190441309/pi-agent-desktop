@@ -13,6 +13,7 @@ import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { homedir, platform } from 'os';
 import { EventEmitter } from 'events';
+import log from 'electron-log/main';
 
 // ── 类型 ────────────────────────────────────────────────────────
 
@@ -144,7 +145,7 @@ export class PiDriver extends EventEmitter {
         result.updateAvailable = this.compareVersions(result.localVersion, result.latestVersion) < 0;
       }
     } catch (err) {
-      console.warn('[PiDriver] Failed to fetch latest version:', err);
+      log.warn('[PiDriver] Failed to fetch latest version:', err);
     }
 
     this._cachedStatus = result;
@@ -287,7 +288,7 @@ export class PiDriver extends EventEmitter {
 
       return { defaultProvider, defaultModel, providers };
     } catch (err) {
-      console.warn('[PiDriver] Failed to load config:', err);
+      log.warn('[PiDriver] Failed to load config:', err);
       return null;
     }
   }

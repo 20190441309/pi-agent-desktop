@@ -9,6 +9,7 @@ import { createEventBridge, type IpcSender } from "./event-bridge";
 import { createApprovalInterceptor } from "../approval/interceptor";
 import type { PiEvent } from "@shared/events";
 import type { PendingEdits } from "../approval/pending-edits";
+import log from "electron-log/main";
 
 /** 内部存储: session + 已初始化的 bridge/interceptor/subscription */
 interface WorkspaceEntry {
@@ -66,12 +67,12 @@ export class WorkspaceRegistry {
             try {
                 await interceptor.handleEvent(event);
             } catch (err) {
-                console.error("[chat.ipc] interceptor error:", err);
+                log.error("[chat.ipc] interceptor error:", err);
             }
             try {
                 bridge.handleEvent(event);
             } catch (err) {
-                console.error("[chat.ipc] event-bridge error:", err);
+                log.error("[chat.ipc] event-bridge error:", err);
             }
         });
         entry.subscribed = true;

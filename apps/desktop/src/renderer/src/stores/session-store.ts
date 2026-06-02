@@ -1,7 +1,9 @@
 // Session Store - Manages chat sessions and messages
 // v1.0.5: 内部类型保持本地 (Date) 避免下游连锁改; input/output 仍是 unknown 收窄
+// v1.0.6: console 换 logger
 
 import { create } from 'zustand';
+import { logger } from '../utils/logger';
 
 export interface Message {
   id: string;
@@ -76,7 +78,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
         set({ sessions, currentSessionId: sessions[sessions.length - 1]?.id || null });
       }
     } catch (e) {
-      console.error('Failed to load sessions:', e);
+      logger.error('[session-store] Failed to load sessions:', e);
     }
   };
   loadSessions();
@@ -102,7 +104,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
 
     // Sync to main process
     if (window.piAPI) {
-      window.piAPI.createSession(workspaceId, newSession.title).catch(console.error);
+      window.piAPI.createSession(workspaceId, newSession.title).catch((e) =>
+        logger.error('[session-store] createSession failed:', e)
+      );
     }
 
     return newSession;
@@ -123,7 +127,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
 
     // Sync to main process
     if (window.piAPI) {
-      window.piAPI.deleteSession(sessionId).catch(console.error);
+      window.piAPI.deleteSession(sessionId).catch((e) =>
+        logger.error('[session-store] deleteSession failed:', e)
+      );
     }
   },
   

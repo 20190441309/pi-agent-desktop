@@ -1,7 +1,9 @@
 // Workspace Store - Manages workspaces
 // v1.0.5: 本地类型保留 (Date) 避免下游连锁改; lastActiveAt 用类型守卫
+// v1.0.6: console 换 logger
 
 import { create } from 'zustand';
+import { logger } from '../utils/logger';
 
 export interface Workspace {
   id: string;
@@ -55,7 +57,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         set({ workspaces, currentWorkspaceId: workspaces[0]?.id ?? null });
       }
     } catch (e) {
-      console.error('Failed to load workspaces:', e);
+      logger.error('[workspace-store] Failed to load workspaces:', e);
     }
   };
   loadWorkspaces();
@@ -96,7 +98,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
 
     // Sync to main process
     if (window.piAPI) {
-      window.piAPI.deleteWorkspace(workspaceId).catch(console.error);
+      window.piAPI.deleteWorkspace(workspaceId).catch((e) =>
+        logger.error('[workspace-store] deleteWorkspace failed:', e)
+      );
     }
   },
   

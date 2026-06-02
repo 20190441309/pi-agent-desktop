@@ -1,6 +1,8 @@
 // Plugin Store - 管理技能和插件状态
+// v1.0.6: console.error 换 logger (走主进程 electron-log)
 
 import { create } from 'zustand';
+import { logger } from '../utils/logger';
 
 export interface SkillData {
   name: string;
@@ -42,7 +44,7 @@ export const usePluginStore = create<PluginState>((set, get) => ({
         set({ skills });
       }
     } catch (error) {
-      console.error('Failed to load skills:', error);
+      logger.error('[plugin-store] Failed to load skills:', error);
       set({ error: 'Failed to load skills' });
     }
   },
@@ -54,7 +56,7 @@ export const usePluginStore = create<PluginState>((set, get) => ({
         set({ plugins });
       }
     } catch (error) {
-      console.error('Failed to load plugins:', error);
+      logger.error('[plugin-store] Failed to load plugins:', error);
       set({ error: 'Failed to load plugins' });
     }
   },

@@ -1,6 +1,7 @@
 // 左侧面板 - 220px 宽，项目信息 + 文件树 + 对话列表
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { logger } from '../../utils/logger';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { useSessionStore } from '../../stores/session-store';
 import { usePluginStore } from '../../stores/plugin-store';
@@ -48,8 +49,7 @@ export const ProjectPanel: React.FC<ProjectPanelProps> = ({ activePanel, onSendT
       const info = await window.piAPI.detectProject(currentWorkspace.path);
       setProjectInfo(info as ProjectInfo);
     } catch (e) {
-      console.error('Failed to detect project:', e);
-      setProjectInfo(null);
+      logger.error('[ProjectPanel] Failed to detect project:', e);
     }
   }, [currentWorkspace?.path]);
 

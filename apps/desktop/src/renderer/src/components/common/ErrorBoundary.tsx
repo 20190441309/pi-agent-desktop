@@ -27,7 +27,7 @@ export function reportError(error: Error, info?: React.ErrorInfo): void {
     // TODO(sentry): 接入 Sentry 后, 在此调用
     //   Sentry.captureException(error, { extra: info })
     //   并保留 console.error 作为本地开发 fallback.
-    console.error("[ErrorBoundary] Caught:", error, info);
+    console.error("[ErrorBoundary] Caught:", error, info); // v1.0.6: 留给 ErrorBoundary — 这里是预期兜底, 走 console 即可 (logger 在 ErrorBoundary 内部可能崩)
 }
 
 export class ErrorBoundary extends React.Component<Props, State> {

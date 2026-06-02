@@ -1,8 +1,10 @@
 // Settings Store - Manages application settings
 // v1.0.5: AppSettings / PiModelInfo 跟 @shared 重复, 改用 re-export + 本地 alias 保留 store 旧代码
+// v1.0.6: console 换 logger
 
 import { create } from 'zustand';
 import type { AppSettings } from '@shared';
+import { logger } from '../utils/logger';
 
 export type { AppSettings };
 
@@ -56,7 +58,7 @@ export const useSettingsStore = create<SettingsState>((set) => {
         set({ settings: { ...defaultSettings, ...persisted } });
       }
     } catch (e) {
-      console.error('Failed to load settings:', e);
+      logger.error('[settings-store] Failed to load settings:', e);
     }
   };
   loadSettings();
@@ -86,7 +88,7 @@ export const useSettingsStore = create<SettingsState>((set) => {
           }
         }
       } catch (e) {
-        console.log('Pi config not available, using defaults:', e);
+        logger.info('[settings-store] Pi config not available, using defaults:', e);
       }
     },
 
@@ -94,7 +96,9 @@ export const useSettingsStore = create<SettingsState>((set) => {
       set((state) => {
         const newSettings = { ...state.settings, ...updates };
         if (window.piAPI) {
-          window.piAPI.setSettings(updates).catch(console.error);
+          window.piAPI.setSettings(updates).catch((e) =>
+            logger.error('[settings-store] setSettings failed:', e)
+          );
         }
         return { settings: newSettings };
       });
@@ -103,7 +107,9 @@ export const useSettingsStore = create<SettingsState>((set) => {
     resetSettings: () => {
       set({ settings: defaultSettings });
       if (window.piAPI) {
-        window.piAPI.setSettings(defaultSettings).catch(console.error);
+        window.piAPI.setSettings(defaultSettings).catch((e) =>
+          logger.error('[settings-store] setSettings (reset) failed:', e)
+        );
       }
     },
 

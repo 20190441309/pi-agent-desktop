@@ -1,6 +1,8 @@
 // Code Block Component
+// v1.0.6: console 换 logger
 
 import React, { useState } from 'react';
+import { logger } from '../../utils/logger';
 
 interface CodeBlockProps {
   language: string;
@@ -16,7 +18,7 @@ export function CodeBlock({ language, value }: CodeBlockProps): React.JSX.Elemen
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy:', err);
+      logger.error('[CodeBlock] Failed to copy:', err);
     }
   };
   
