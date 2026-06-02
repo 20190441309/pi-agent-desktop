@@ -12,7 +12,11 @@ interface AttachmentChipProps {
 export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): React.ReactElement {
     if (attachment.kind === "image") {
         return (
-            <div className="inline-flex items-center gap-2 bg-white border border-[#e5e5e5] rounded-lg pl-1 pr-2 py-1">
+            <div
+                className="inline-flex items-center gap-2 bg-white border border-[#e5e5e5] rounded-lg pl-1 pr-2 py-1"
+                role="listitem"
+                aria-label={`图片附件: ${attachment.name}`}
+            >
                 <img
                     src={attachment.value}
                     alt={attachment.name}
@@ -22,9 +26,11 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): R
                     {attachment.name}
                 </span>
                 <button
+                    type="button"
                     onClick={() => onRemove(attachment.id)}
                     className="text-[#999] hover:text-[#ef4444] text-sm leading-none"
                     title="移除"
+                    aria-label={`移除附件 ${attachment.name}`}
                 >
                     ✕
                 </button>
@@ -32,15 +38,21 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): R
         );
     }
     return (
-        <div className="inline-flex items-center gap-2 bg-white border border-[#e5e5e5] rounded-lg px-2 py-1">
-            <span className="text-sm">📄</span>
+        <div
+            className="inline-flex items-center gap-2 bg-white border border-[#e5e5e5] rounded-lg px-2 py-1"
+            role="listitem"
+            aria-label={`文件附件: ${attachment.name}`}
+        >
+            <span className="text-sm" aria-hidden="true">📄</span>
             <span className="text-xs text-[#1a1a1a] truncate max-w-[180px]" title={attachment.name}>
                 {attachment.name}
             </span>
             <button
+                type="button"
                 onClick={() => onRemove(attachment.id)}
                 className="text-[#999] hover:text-[#ef4444] text-sm leading-none"
                 title="移除"
+                aria-label={`移除附件 ${attachment.name}`}
             >
                 ✕
             </button>

@@ -232,7 +232,9 @@ export function CommandPalette({
                         aria-expanded={results.length > 0}
                         aria-controls="command-palette-listbox"
                         aria-activedescendant={
-                            results[activeIdx] ? `command-palette-option-${results[activeIdx].id}` : undefined
+                            // 用 listbox 内的序号做 activedescendant 目标, 避免 file path 含
+                            // '\' / ':' 等字符导致 ID 无效 (axe aria-valid-attr-value 违规)
+                            results[activeIdx] ? `command-palette-option-${activeIdx}` : undefined
                         }
                     />
                 </div>
@@ -282,7 +284,7 @@ export function CommandPalette({
                                 return (
                                     <li
                                         key={r.id}
-                                        id={`command-palette-option-${r.id}`}
+                                        id={`command-palette-option-${i}`}
                                         role="option"
                                         aria-selected={isSelected}
                                         className="list-none"

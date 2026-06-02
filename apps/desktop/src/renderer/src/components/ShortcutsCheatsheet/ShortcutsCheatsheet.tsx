@@ -1,0 +1,158 @@
+// ShortcutsCheatsheet (M7+ 可用度-C)
+// 速查弹窗: 显示所有已注册 shortcut, 按 category 分组
+// 唤起: ? 或 Shift+/
+// 关闭: Esc / 点击背景 / 点击关闭按钮
+// 风格沿用 CommandPalette (dialog + 列表 + 键盘导航)
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { SHORTCUTS, groupByCategory, type ShortcutDef } from "../../shortcuts/registry";
+
+export interface ShortcutsCheatsheetProps {
+    isOpen: boolean;
+    onClose: () => void;
+}
+
+export function ShortcutsCheatsheet({
+    isOpen,
+    onClose,
+}: ShortcutsCheatsheetProps): React.ReactElement | null {
+    const [activeIdx, setActiveIdx] = useState(0);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const groups = useMemo(() => groupByCategory(SHORTCUTS), []);
+    // 扁平化, 用于键盘上下导航
+    const flat: ShortcutDef[] = useMemo(
+        () => groups.flatMap((g) => g.items),
+        [groups],
+    );
+
+    useEffect(() => {
+        if (isOpen) {
+            setActiveIdx(0);
+            // 模态打开后焦点锁在容器 (用 ref focus 第一项)
+            setTimeout(() => containerRef.current?.focus(), 50);
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const onKey = (e: KeyboardEvent): void => {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                onClose();
+            } else if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setActiveIdx((i) => Math.min(i + 1, flat.length - 1));
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setActiveIdx((i) => Math.max(i - 1, 0));
+            } else if (e.key === "Home") {
+                e.preventDefault();
+                setActiveIdx(0);
+            } else if (e.key === "End") {
+                e.preventDefault();
+                setActiveIdx(flat.length - 1);
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [isOpen, onClose, flat.length]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/30 backdrop-blur-sm"
+            onClick={onClose}
+            role="dialog"
+            aria-modal="true"
+            aria-label="快捷键速查"
+        >
+            <div
+                ref={containerRef}
+                tabIndex={-1}
+                className="bg-white rounded-2xl shadow-2xl w-[640px] max-h-[70vh] flex flex-col overflow-hidden focus:outline-none"
+                onClick={(e) => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div className="px-5 py-4 border-b border-[#e5e5e5] flex items-center justify-between">
+                    <div>
+                        <h2 className="text-base font-semibold text-[#1a1a1a]">快捷键速查</h2>
+                        <p className="text-xs text-[#999] mt-0.5">
+                            按 <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded text-[10px]">?</kbd> 随时唤起,
+                            <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded text-[10px] ml-1">Esc</kbd> 关闭
+                        </p>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        aria-label="关闭"
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[#999] hover:bg-[#f5f5f5] hover:text-[#1a1a1a] transition-colors"
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                {/* Body: 按 category 分组 */}
+                <div className="flex-1 overflow-auto px-5 py-3">
+                    {groups.map((g) => (
+                        <section key={g.category} className="mb-4 last:mb-0">
+                            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[#999] mb-1.5">
+                                {g.category}
+                            </h3>
+                            <ul className="divide-y divide-[#f0f0f0]" role="list">
+                                {g.items.map((s) => {
+                                    const idx = flat.indexOf(s);
+                                    const active = idx === activeIdx;
+                                    return (
+                                        <li
+                                            key={`${s.id}-${s.keys}`}
+                                            role="option"
+                                            aria-selected={active}
+                                            onMouseEnter={() => setActiveIdx(idx)}
+                                            className={`flex items-center justify-between py-2 px-2 rounded-md cursor-default transition-colors ${
+                                                active ? "bg-[#f0f0f0]" : ""
+                                            }`}
+                                        >
+                                            <span className="text-sm text-[#1a1a1a]">{s.label}</span>
+                                            <KeyChip keys={s.keys} />
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </section>
+                    ))}
+                </div>
+
+                {/* Footer */}
+                <div className="px-5 py-2.5 border-t border-[#e5e5e5] text-xs text-[#999] flex items-center gap-3">
+                    <span>
+                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">↑↓</kbd> 选择
+                    </span>
+                    <span>
+                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">Esc</kbd> 关闭
+                    </span>
+                    <span className="ml-auto">{flat.length} 个快捷键</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function KeyChip({ keys }: { keys: string }): React.ReactElement {
+    // "Ctrl+Shift+K" → ["Ctrl", "Shift", "K"]
+    const parts = keys.split("+");
+    return (
+        <span className="flex items-center gap-1">
+            {parts.map((p, i) => (
+                <React.Fragment key={`${p}-${i}`}>
+                    {i > 0 && <span className="text-[#ccc] text-[10px]">+</span>}
+                    <kbd className="px-1.5 py-0.5 bg-[#f5f5f5] border border-[#e5e5e5] rounded text-[11px] font-mono text-[#666] min-w-[20px] inline-block text-center">
+                        {p}
+                    </kbd>
+                </React.Fragment>
+            ))}
+        </span>
+    );
+}

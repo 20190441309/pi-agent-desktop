@@ -111,6 +111,9 @@ importers:
       autoprefixer:
         specifier: ^10.4.0
         version: 10.5.0(postcss@8.5.15)
+      axe-core:
+        specifier: ^4.11.4
+        version: 4.11.4
       electron:
         specifier: ^34.0.0
         version: 34.5.8

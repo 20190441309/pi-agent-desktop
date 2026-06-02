@@ -14,26 +14,37 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message, isStreaming = false }: MessageBubbleProps): React.JSX.Element {
   const isUser = message.role === 'user';
-  
+  const timeText = new Date(message.timestamp).toLocaleTimeString();
+  const authorLabel = isUser ? '你说' : 'Pi 说';
+  const articleLabel = `${authorLabel} · ${timeText}`;
+
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <article
+      className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
+      role="article"
+      aria-label={articleLabel}
+      aria-busy={isStreaming}
+    >
       <div className={`max-w-[80%] ${isUser ? 'order-2' : 'order-1'}`}>
         <div className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
           {/* 头像 */}
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-            isUser 
-              ? 'bg-[#1a1a1a]' 
-              : 'bg-[#1a1a1a]'
-          }`}>
+          <div
+            className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+              isUser
+                ? 'bg-[#1a1a1a]'
+                : 'bg-[#1a1a1a]'
+            }`}
+            aria-hidden="true"
+          >
             <span className="text-white text-xs font-bold">
               {isUser ? 'U' : 'π'}
             </span>
           </div>
-          
+
           {/* 消息内容 */}
           <div className={`rounded-2xl ${
-            isUser 
-              ? 'bg-[#1a1a1a] text-white px-4 py-3' 
+            isUser
+              ? 'bg-[#1a1a1a] text-white px-4 py-3'
               : 'bg-white border border-[#e5e5e5] text-[#1a1a1a] px-4 py-3'
           }`}>
             {isUser ? (
@@ -57,13 +68,13 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
 
                 {/* 流式状态下显示打字光标（尚无内容时） */}
                 {isStreaming && !message.content && !message.thinking && (
-                  <div className="flex items-center gap-2 py-1">
+                  <div className="flex items-center gap-2 py-1" aria-hidden="true">
                     <span className="inline-block w-0.5 h-4 bg-[#1a1a1a] animate-pulse" />
                   </div>
                 )}
               </>
             )}
-            
+
             {/* 工具调用 */}
             {message.toolCalls && message.toolCalls.length > 0 && (
               <div className={`space-y-2 ${isUser ? 'mt-3' : 'mt-4'}`}>
@@ -72,14 +83,16 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
                 ))}
               </div>
             )}
-            
+
             {/* 时间戳 */}
-            <div className={`text-xs mt-2 ${isUser ? 'text-white/70' : 'text-[#999]'}`}>
-              {new Date(message.timestamp).toLocaleTimeString()}
+            <div
+              className={`text-xs mt-2 ${isUser ? 'text-white/70' : 'text-[#999]'}`}
+            >
+              <time dateTime={new Date(message.timestamp).toISOString()}>{timeText}</time>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </article>
   );
 }

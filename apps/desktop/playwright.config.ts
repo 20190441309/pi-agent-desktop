@@ -19,12 +19,8 @@ export default defineConfig({
     testDir: './e2e',
     // Spec files: *.spec.ts under ./e2e
     testMatch: /.*\.spec\.ts$/,
-    // Skip any *.spec.ts that is a vitest placeholder (e.g. the
-    // `a11y.spec.ts` shipped by the observability task) — they import
-    // from "vitest" and are not yet wired to the Playwright runner.
-    // Real Playwright e2e specs use `import { test, expect, _electron }`
-    // from '@playwright/test'.
-    testIgnore: /a11y\.spec\.ts$/,
+    // Note: a11y.spec.ts is now a real Playwright spec (was previously a
+    // vitest placeholder; see a11y-baseline slice M7). Do NOT ignore it.
     // Electron is single-instance by design; do not run specs in parallel.
     fullyParallel: false,
     workers: 1,

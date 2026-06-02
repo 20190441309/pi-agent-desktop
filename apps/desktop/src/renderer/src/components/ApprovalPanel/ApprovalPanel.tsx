@@ -20,26 +20,35 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
   if (!isOpen) return <></>;
 
   return (
-    <div className="w-[420px] flex-shrink-0 bg-[#ffffff] border-l border-[#e5e5e5] flex flex-col h-full">
+    <div
+      className="w-[420px] flex-shrink-0 bg-[#ffffff] border-l border-[#e5e5e5] flex flex-col h-full"
+      role="region"
+      aria-label="文件变更审批"
+    >
       {/* 头部 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#e5e5e5] bg-[#fafafa]">
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-[#666666]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-4 h-4 text-[#666666]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
           <h2 className="text-sm font-medium text-[#1a1a1a]">文件变更审批</h2>
           {pendingCount > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold text-white bg-[#f59e0b]">
+            <span
+              className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold text-white bg-[#f59e0b]"
+              aria-label={`${pendingCount} 个待审批`}
+            >
               {pendingCount}
             </span>
           )}
         </div>
         <button
+          type="button"
           onClick={onToggle}
           className="p-1 rounded hover:bg-[#e5e5e5] transition-colors text-[#999999]"
           title="关闭面板"
+          aria-label="关闭审批面板"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
@@ -57,27 +66,32 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
       )}
 
       {/* 变更列表 */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <ul
+        className="flex-1 overflow-y-auto p-3 space-y-3 list-none"
+        role="list"
+        aria-label="待审批变更列表"
+      >
         {totalChanges === 0 ? (
           /* 空状态 */
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <svg className="w-12 h-12 text-[#e5e5e5] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <li className="flex flex-col items-center justify-center h-full text-center" role="listitem">
+            <svg className="w-12 h-12 text-[#e5e5e5] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
             </svg>
             <p className="text-sm text-[#999999]">暂无待审批的变更</p>
             <p className="text-xs text-[#cccccc] mt-1">AI 修改文件时将在此处显示</p>
-          </div>
+          </li>
         ) : (
           changes.map((change) => (
-            <ChangeApprovalCard
-              key={change.id}
-              change={change}
-              onApprove={approveChange}
-              onReject={rejectChange}
-            />
+            <li key={change.id} role="listitem">
+              <ChangeApprovalCard
+                change={change}
+                onApprove={approveChange}
+                onReject={rejectChange}
+              />
+            </li>
           ))
         )}
-      </div>
+      </ul>
 
       {/* 底部操作栏 */}
       {totalChanges > 0 && (
@@ -88,19 +102,23 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
               {pendingCount > 0 && (
                 <>
                   <button
+                    type="button"
                     onClick={approveAll}
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium text-white bg-[#10b981] hover:bg-[#059669] transition-colors"
+                    aria-label="全部接受"
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                     全部接受
                   </button>
                   <button
+                    type="button"
                     onClick={rejectAll}
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium text-white bg-[#ef4444] hover:bg-[#dc2626] transition-colors"
+                    aria-label="全部拒绝"
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                     全部拒绝
@@ -108,8 +126,10 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
                 </>
               )}
               <button
+                type="button"
                 onClick={clearChanges}
                 className="px-2.5 py-1.5 rounded text-xs text-[#666666] hover:bg-[#e5e5e5] transition-colors"
+                aria-label="清除所有变更"
               >
                 清除
               </button>
@@ -117,7 +137,11 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
 
             {/* 右侧: 自动审批开关 */}
             <button
+              type="button"
               onClick={toggleAutoApprove}
+              role="switch"
+              aria-checked={autoApprove}
+              aria-label="自动审批"
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors ${
                 autoApprove
                   ? 'bg-[#dcfce7] text-[#166534]'
@@ -125,7 +149,10 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
               }`}
               title={autoApprove ? '自动审批已开启' : '自动审批已关闭'}
             >
-              <div className={`w-3 h-3 rounded-full ${autoApprove ? 'bg-[#10b981]' : 'bg-[#cccccc]'}`} />
+              <span
+                aria-hidden="true"
+                className={`w-3 h-3 rounded-full ${autoApprove ? 'bg-[#10b981]' : 'bg-[#cccccc]'}`}
+              />
               自动审批
             </button>
           </div>

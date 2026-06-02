@@ -69,13 +69,43 @@ html, body {
   transition-duration: var(--transition-fast);
 }
 
-/* 焦点样式 */
+/* 焦点样式 - 全局 :focus-visible, 高对比度 outline, 满足 WCAG 2.4.7 */
+:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.2);
+}
+
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
-select:focus-visible {
+select:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="option"]:focus-visible,
+[role="switch"]:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.2);
+}
+
+/* 鼠标点击时移除 :focus-visible outline (避免视觉噪声) */
+:focus:not(:focus-visible) {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(26, 26, 26, 0.2);
+  box-shadow: none;
+}
+
+/* Screen reader only utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* 代码块 */

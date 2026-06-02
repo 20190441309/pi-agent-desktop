@@ -26,48 +26,74 @@ export function SettingsPanel(): React.JSX.Element {
   
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+      <div
+        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-label="设置"
+      >
         {/* 头部 */}
         <div className="flex items-center justify-between p-4 border-b border-[#e5e5e5]">
           <h2 className="text-lg font-semibold text-[#1a1a1a]">设置</h2>
           <button
+            type="button"
             onClick={closeSettings}
             className="p-2 hover:bg-[#f0f0f0] rounded-lg transition-colors"
+            aria-label="关闭设置"
+            title="关闭"
           >
-            <svg className="w-4 h-4 text-[#666]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-4 h-4 text-[#666]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
-        
+
         <div className="flex flex-1 overflow-hidden">
           {/* 侧边栏 */}
-          <div className="w-48 border-r border-[#e5e5e5] p-2">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center px-3 py-2 rounded-lg text-sm transition-colors ${
-                  activeTab === tab.id
-                    ? 'bg-[#1a1a1a] text-white'
-                    : 'text-[#666] hover:bg-[#f0f0f0]'
-                }`}
-              >
-                <span>{tab.label}</span>
-              </button>
-            ))}
+          <div
+            className="w-48 border-r border-[#e5e5e5] p-2"
+            role="tablist"
+            aria-label="设置分类"
+          >
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-controls={`settings-tabpanel-${tab.id}`}
+                  id={`settings-tab-${tab.id}`}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`w-full flex items-center px-3 py-2 rounded-lg text-sm transition-colors ${
+                    isActive
+                      ? 'bg-[#1a1a1a] text-white'
+                      : 'text-[#666] hover:bg-[#f0f0f0]'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
-          
+
           {/* 内容 */}
           <div className="flex-1 p-6 overflow-y-auto">
             {activeTab === 'general' && (
-              <div className="space-y-6">
+              <div
+                className="space-y-6"
+                role="tabpanel"
+                id="settings-tabpanel-general"
+                aria-labelledby="settings-tab-general"
+              >
                 <h3 className="text-base font-medium text-[#1a1a1a]">通用设置</h3>
                 
                 {/* 主题 */}
                 <div>
-                  <label className="block text-sm text-[#666] mb-2">主题</label>
+                  <label htmlFor="settings-theme" className="block text-sm text-[#666] mb-2">主题</label>
                   <select
+                    id="settings-theme"
                     value={settings.theme}
                     onChange={(e) => updateSettings({ theme: e.target.value as 'dark' | 'light' })}
                     className="w-full bg-[#f5f5f5] text-[#1a1a1a] rounded-lg px-3 py-2.5 border border-[#e5e5e5] focus:outline-none focus:border-[#1a1a1a]"
@@ -76,77 +102,109 @@ export function SettingsPanel(): React.JSX.Element {
                     <option value="dark">深色</option>
                   </select>
                 </div>
-                
+
                 {/* 字体大小 */}
                 <div>
-                  <label className="block text-sm text-[#666] mb-2">
+                  <label htmlFor="settings-font-size" className="block text-sm text-[#666] mb-2">
                     字体大小：{settings.fontSize}px
                   </label>
                   <input
+                    id="settings-font-size"
                     type="range"
                     min="12"
                     max="20"
                     value={settings.fontSize}
                     onChange={(e) => updateSettings({ fontSize: parseInt(e.target.value) })}
                     className="w-full"
+                    aria-label="字体大小"
                   />
                 </div>
-                
+
                 {/* 自动保存 */}
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#666]">自动保存</span>
+                  <label htmlFor="settings-auto-save" className="text-sm text-[#666]">自动保存</label>
                   <button
+                    id="settings-auto-save"
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.autoSave}
+                    aria-label="自动保存"
                     onClick={() => updateSettings({ autoSave: !settings.autoSave })}
                     className={`w-12 h-6 rounded-full transition-colors ${
                       settings.autoSave ? 'bg-[#1a1a1a]' : 'bg-[#e5e5e5]'
                     }`}
                   >
-                    <div className={`w-5 h-5 bg-white rounded-full transition-transform ${
-                      settings.autoSave ? 'translate-x-6' : 'translate-x-1'
-                    }`} />
+                    <span
+                      aria-hidden="true"
+                      className={`block w-5 h-5 bg-white rounded-full transition-transform ${
+                        settings.autoSave ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
                   </button>
                 </div>
-                
+
                 {/* 显示行号 */}
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#666]">显示行号</span>
+                  <label htmlFor="settings-line-numbers" className="text-sm text-[#666]">显示行号</label>
                   <button
+                    id="settings-line-numbers"
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.showLineNumbers}
+                    aria-label="显示行号"
                     onClick={() => updateSettings({ showLineNumbers: !settings.showLineNumbers })}
                     className={`w-12 h-6 rounded-full transition-colors ${
                       settings.showLineNumbers ? 'bg-[#1a1a1a]' : 'bg-[#e5e5e5]'
                     }`}
                   >
-                    <div className={`w-5 h-5 bg-white rounded-full transition-transform ${
-                      settings.showLineNumbers ? 'translate-x-6' : 'translate-x-1'
-                    }`} />
+                    <span
+                      aria-hidden="true"
+                      className={`block w-5 h-5 bg-white rounded-full transition-transform ${
+                        settings.showLineNumbers ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
                   </button>
                 </div>
-                
+
                 {/* 自动换行 */}
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#666]">自动换行</span>
+                  <label htmlFor="settings-word-wrap" className="text-sm text-[#666]">自动换行</label>
                   <button
+                    id="settings-word-wrap"
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.wordWrap}
+                    aria-label="自动换行"
                     onClick={() => updateSettings({ wordWrap: !settings.wordWrap })}
                     className={`w-12 h-6 rounded-full transition-colors ${
                       settings.wordWrap ? 'bg-[#1a1a1a]' : 'bg-[#e5e5e5]'
                     }`}
                   >
-                    <div className={`w-5 h-5 bg-white rounded-full transition-transform ${
-                      settings.wordWrap ? 'translate-x-6' : 'translate-x-1'
-                    }`} />
+                    <span
+                      aria-hidden="true"
+                      className={`block w-5 h-5 bg-white rounded-full transition-transform ${
+                        settings.wordWrap ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
                   </button>
                 </div>
               </div>
             )}
             
             {activeTab === 'model' && (
-              <div className="space-y-6">
+              <div
+                className="space-y-6"
+                role="tabpanel"
+                id="settings-tabpanel-model"
+                aria-labelledby="settings-tab-model"
+              >
                 <h3 className="text-base font-medium text-[#1a1a1a]">模型设置</h3>
                 
                 {/* 当前模型 */}
                 <div>
-                  <label className="block text-sm text-[#666] mb-2">当前模型</label>
+                  <label htmlFor="settings-model" className="block text-sm text-[#666] mb-2">当前模型</label>
                   <select
+                    id="settings-model"
                     value={settings.model}
                     onChange={(e) => updateSettings({ model: e.target.value })}
                     className="w-full bg-[#f5f5f5] text-[#1a1a1a] rounded-lg px-3 py-2.5 border border-[#e5e5e5] focus:outline-none focus:border-[#1a1a1a]"
@@ -169,10 +227,11 @@ export function SettingsPanel(): React.JSX.Element {
                 
                 {/* 温度 */}
                 <div>
-                  <label className="block text-sm text-[#666] mb-2">
+                  <label htmlFor="settings-temperature" className="block text-sm text-[#666] mb-2">
                     温度：{settings.temperature}
                   </label>
                   <input
+                    id="settings-temperature"
                     type="range"
                     min="0"
                     max="2"
@@ -180,13 +239,15 @@ export function SettingsPanel(): React.JSX.Element {
                     value={settings.temperature}
                     onChange={(e) => updateSettings({ temperature: parseFloat(e.target.value) })}
                     className="w-full"
+                    aria-label="温度"
                   />
                 </div>
-                
+
                 {/* 最大 Token */}
                 <div>
-                  <label className="block text-sm text-[#666] mb-2">最大 Token</label>
+                  <label htmlFor="settings-max-tokens" className="block text-sm text-[#666] mb-2">最大 Token</label>
                   <input
+                    id="settings-max-tokens"
                     type="number"
                     value={settings.maxTokens}
                     onChange={(e) => updateSettings({ maxTokens: parseInt(e.target.value) })}
@@ -197,7 +258,12 @@ export function SettingsPanel(): React.JSX.Element {
             )}
             
             {activeTab === 'piagent' && (
-              <div className="space-y-6">
+              <div
+                className="space-y-6"
+                role="tabpanel"
+                id="settings-tabpanel-piagent"
+                aria-labelledby="settings-tab-piagent"
+              >
                 {/* Pi CLI 状态管理 */}
                 <PiStatusPanel />
 
@@ -256,7 +322,12 @@ export function SettingsPanel(): React.JSX.Element {
             )}
             
             {activeTab === 'about' && (
-              <div className="space-y-4">
+              <div
+                className="space-y-4"
+                role="tabpanel"
+                id="settings-tabpanel-about"
+                aria-labelledby="settings-tab-about"
+              >
                 <h3 className="text-base font-medium text-[#1a1a1a]">关于 Pi 桌面</h3>
                 <div className="text-sm text-[#666]">
                   <p>版本：0.2.0</p>
@@ -276,14 +347,18 @@ export function SettingsPanel(): React.JSX.Element {
         {/* 底部 */}
         <div className="flex items-center justify-between p-4 border-t border-[#e5e5e5]">
           <button
+            type="button"
             onClick={resetSettings}
             className="px-4 py-2 text-sm text-[#666] hover:text-[#1a1a1a] hover:bg-[#f0f0f0] rounded-lg transition-colors"
+            aria-label="恢复默认设置"
           >
             恢复默认
           </button>
           <button
+            type="button"
             onClick={closeSettings}
             className="px-4 py-2 text-sm bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors"
+            aria-label="关闭设置"
           >
             完成
           </button>
