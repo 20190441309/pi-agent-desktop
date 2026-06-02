@@ -1,10 +1,12 @@
 // Sidebar Component
+// v1.0.9: formatTime 走 utils/format.formatRelative
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { useSessionStore } from '../../stores/session-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { logger } from '../../utils/logger';
+import { formatRelative } from '../../utils/format';
 import { ThreadList } from './ThreadList';
 
 export function Sidebar(): React.JSX.Element {
@@ -68,19 +70,7 @@ export function Sidebar(): React.JSX.Element {
     }
   };
 
-  const formatTime = (date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - new Date(date).getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return '刚刚';
-    if (minutes < 60) return `${minutes}分钟前`;
-    if (hours < 24) return `${hours}小时前`;
-    if (days < 7) return `${days}天前`;
-    return new Date(date).toLocaleDateString();
-  };
+  const formatTime = (date: Date) => formatRelative(date);
 
   const currentWorkspaceSessions = sessions.filter(s => s.workspaceId === currentWorkspaceId);
 

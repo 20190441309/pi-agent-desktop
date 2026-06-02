@@ -1,5 +1,6 @@
 // 消息气泡 - 用户消息右侧，AI 消息左侧（黑色头像）
 // v1.0.4: author 走 t()
+// v1.0.9: 时间戳走 utils/format.{formatTime, formatIso}, 无效输入不渲染 "Invalid Date"
 
 import React from 'react';
 import { Message } from '../../stores/session-store';
@@ -7,6 +8,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { CommandCard } from './CommandCard';
 import { ThinkingBlock } from './ThinkingBlock';
 import { useI18n } from '../../i18n';
+import { formatTime, formatIso } from '../../utils/format';
 
 interface MessageBubbleProps {
   message: Message;
@@ -17,7 +19,8 @@ interface MessageBubbleProps {
 export function MessageBubble({ message, isStreaming = false }: MessageBubbleProps): React.JSX.Element {
   const { t } = useI18n();
   const isUser = message.role === 'user';
-  const timeText = new Date(message.timestamp).toLocaleTimeString();
+  const timeText = formatTime(message.timestamp);
+  const timeIso = formatIso(message.timestamp);
   const authorLabel = isUser ? t('messageBubble.userAuthor') : t('messageBubble.piAuthor');
   const articleLabel = `${authorLabel} · ${timeText}`;
 
@@ -91,7 +94,7 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
             <div
               className={`text-xs mt-2 ${isUser ? 'text-white/70' : 'text-[#999]'}`}
             >
-              <time dateTime={new Date(message.timestamp).toISOString()}>{timeText}</time>
+              <time dateTime={timeIso}>{timeText}</time>
             </div>
           </div>
         </div>

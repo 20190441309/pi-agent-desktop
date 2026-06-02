@@ -1,9 +1,10 @@
 // Settings Store - Manages application settings
 // v1.0.5: AppSettings / PiModelInfo 跟 @shared 重复, 改用 re-export + 本地 alias 保留 store 旧代码
 // v1.0.6: console 换 logger
+// v1.0.9: 写错误经 _onError listener 走 IpcError 路径, SettingsPanel 翻译后显示
 
 import { create } from 'zustand';
-import type { AppSettings } from '@shared';
+import { isIpcError, type AppSettings, type IpcError } from '@shared';
 import { logger } from '../utils/logger';
 
 export type { AppSettings };
@@ -27,6 +28,8 @@ interface SettingsState {
   settings: AppSettings;
   isOpen: boolean;
   piModels: PiModelInfo[] | null;
+  /** v1.0.9: 最近一次写错误 (IpcError | string | null). SettingsPanel 订阅后翻译显示. */
+  lastWriteError: IpcError | string | null;
 
   // Actions
   updateSettings: (updates: Partial<AppSettings>) => void;
@@ -35,6 +38,8 @@ interface SettingsState {
   openSettings: () => void;
   closeSettings: () => void;
   loadPiConfig: () => Promise<void>;
+  /** 清除最近写错误 (用户点 close 后清) */
+  clearWriteError: () => void;
 }
 
 const defaultSettings: AppSettings = {
@@ -48,6 +53,12 @@ const defaultSettings: AppSettings = {
   showLineNumbers: true,
   wordWrap: true
 };
+
+/** 内部 helper: 把 setSettings 返的 (void | IpcError) / throw 统一成 lastWriteError */
+function reportWriteError(e: unknown): IpcError | string {
+  if (isIpcError(e)) return e;
+    return String(e);
+}
 
 export const useSettingsStore = create<SettingsState>((set) => {
   // Load persisted settings from main process
@@ -67,6 +78,7 @@ export const useSettingsStore = create<SettingsState>((set) => {
     settings: defaultSettings,
     isOpen: false,
     piModels: null,
+    lastWriteError: null,
 
     // 从 Pi CLI 加载本地配置
     loadPiConfig: async () => {
@@ -96,9 +108,17 @@ export const useSettingsStore = create<SettingsState>((set) => {
       set((state) => {
         const newSettings = { ...state.settings, ...updates };
         if (window.piAPI) {
-          window.piAPI.setSettings(updates).catch((e) =>
-            logger.error('[settings-store] setSettings failed:', e)
-          );
+          // v1.0.6.1 后 setSettings 不再 throw, 但仍 try/catch 兜底老 throw 路径
+          window.piAPI.setSettings(updates)
+            .then((result) => {
+              if (isIpcError(result)) {
+                set({ lastWriteError: result });
+              }
+            })
+            .catch((e) => {
+              logger.error('[settings-store] setSettings failed:', e);
+              set({ lastWriteError: reportWriteError(e) });
+            });
         }
         return { settings: newSettings };
       });
@@ -107,9 +127,16 @@ export const useSettingsStore = create<SettingsState>((set) => {
     resetSettings: () => {
       set({ settings: defaultSettings });
       if (window.piAPI) {
-        window.piAPI.setSettings(defaultSettings).catch((e) =>
-          logger.error('[settings-store] setSettings (reset) failed:', e)
-        );
+        window.piAPI.setSettings(defaultSettings)
+          .then((result) => {
+            if (isIpcError(result)) {
+              set({ lastWriteError: result });
+            }
+          })
+          .catch((e) => {
+            logger.error('[settings-store] setSettings (reset) failed:', e);
+            set({ lastWriteError: reportWriteError(e) });
+          });
       }
     },
 
@@ -123,6 +150,10 @@ export const useSettingsStore = create<SettingsState>((set) => {
 
     closeSettings: () => {
       set({ isOpen: false });
+    },
+
+    clearWriteError: () => {
+      set({ lastWriteError: null });
     },
   };
 });

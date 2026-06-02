@@ -1,9 +1,11 @@
 // Workspace Store - Manages workspaces
 // v1.0.5: 本地类型保留 (Date) 避免下游连锁改; lastActiveAt 用类型守卫
 // v1.0.6: console 换 logger
+// v1.0.9: 类型守卫收进 utils/format (复用)
 
 import { create } from 'zustand';
 import { logger } from '../utils/logger';
+import { isNumberOrUndefined } from '../utils/format';
 
 export interface Workspace {
   id: string;
@@ -46,12 +48,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         const wsList = await window.piAPI.listWorkspaces();
         const workspaces = wsList.map((ws) => {
           const w = ws as { id: string; name: string; path: string; createdAt: number; lastActiveAt?: number };
+          // v1.0.9: 守卫复用 isNumberOrUndefined — undefined 时降级 createdAt
+          const lastActive = w.lastActiveAt ?? w.createdAt;
           return {
             id: w.id,
             name: w.name,
             path: w.path,
             createdAt: new Date(w.createdAt),
-            lastActiveAt: new Date(typeof w.lastActiveAt === "number" ? w.lastActiveAt : w.createdAt),
+            lastActiveAt: new Date(isNumberOrUndefined(lastActive) ? lastActive : w.createdAt),
           };
         });
         set({ workspaces, currentWorkspaceId: workspaces[0]?.id ?? null });

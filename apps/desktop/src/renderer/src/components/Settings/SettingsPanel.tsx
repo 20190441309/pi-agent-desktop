@@ -1,16 +1,30 @@
 // 设置面板 - Codex 浅色主题
 // v1.0.4: 用户可见文案 + 语言切换器走 t()
+// v1.0.9: 写错误 (lastWriteError) 走 IpcError 翻译后顶部红条显示
 
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '../../stores/settings-store';
 import { PiStatusPanel } from '../PiStatusPanel';
-import { useI18n, SUPPORTED_LOCALES, type Locale } from '../../i18n';
+import { useI18n, useTranslateIpcError, SUPPORTED_LOCALES, type Locale } from '../../i18n';
+import type { IpcError } from '@shared';
 
 export function SettingsPanel(): React.JSX.Element {
-    const { settings, isOpen, closeSettings, updateSettings, resetSettings, piModels } = useSettingsStore();
+    const { settings, isOpen, closeSettings, updateSettings, resetSettings, piModels, lastWriteError, clearWriteError } = useSettingsStore();
     const [activeTab, setActiveTab] = useState<'general' | 'model' | 'piagent' | 'about'>('general');
     const [piFullConfig, setPiFullConfig] = useState<Awaited<ReturnType<typeof window.piAPI.getFullConfig>> | null>(null);
     const { t, locale, setLocale } = useI18n();
+    // v1.0.9: 翻译 IpcError, string 兜底
+    const translateIpcError = useTranslateIpcError();
+    const writeErrorMessage: string | null = lastWriteError == null
+        ? null
+        : typeof lastWriteError === "string"
+            ? lastWriteError
+            : translateIpcError(lastWriteError as IpcError);
+
+    // 切换 tab / 关闭时清错误, 避免陈旧消息粘在面板
+    useEffect(() => {
+        if (!isOpen) clearWriteError();
+    }, [isOpen, clearWriteError]);
 
     useEffect(() => {
         if (isOpen && window.piAPI?.getFullConfig) {
@@ -38,6 +52,23 @@ export function SettingsPanel(): React.JSX.Element {
                 {/* 头部 */}
                 <div className="flex items-center justify-between p-4 border-b border-[#e5e5e5]">
                     <h2 className="text-lg font-semibold text-[#1a1a1a]">{t('settings.title')}</h2>
+                    {/* v1.0.9: 写错误内联条 (顶部右侧) */}
+                    {writeErrorMessage && (
+                        <div
+                            className="ml-4 flex-1 mx-4 px-3 py-1.5 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-center justify-between"
+                            role="alert"
+                        >
+                            <span className="truncate">{writeErrorMessage}</span>
+                            <button
+                                type="button"
+                                onClick={clearWriteError}
+                                className="ml-2 text-red-500 hover:text-red-700"
+                                aria-label="Dismiss"
+                            >
+                                ×
+                            </button>
+                        </div>
+                    )}
                     <button
                         type="button"
                         onClick={closeSettings}

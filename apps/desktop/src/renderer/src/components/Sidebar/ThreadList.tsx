@@ -1,8 +1,10 @@
 // Thread List Component
+// v1.0.9: formatRelativeTime 走 utils/format.formatRelative
 
 import React from 'react';
 import { useThreadStore, type Thread } from '../../stores/thread-store';
 import { useWorkspaceStore } from '../../stores/workspace-store';
+import { formatRelative } from '../../utils/format';
 
 interface ThreadListProps {
   isCollapsed: boolean;
@@ -26,17 +28,7 @@ function StatusIndicator({ status }: { status: Thread['status'] }) {
 }
 
 function formatRelativeTime(date: Date): string {
-  const now = new Date();
-  const diff = now.getTime() - new Date(date).getTime();
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return '刚刚';
-  if (minutes < 60) return `${minutes}分钟前`;
-  if (hours < 24) return `${hours}小时前`;
-  if (days < 7) return `${days}天前`;
-  return new Date(date).toLocaleDateString();
+  return formatRelative(date);
 }
 
 export function ThreadList({ isCollapsed }: ThreadListProps): React.JSX.Element {

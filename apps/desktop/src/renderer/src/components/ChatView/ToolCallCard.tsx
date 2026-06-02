@@ -1,8 +1,10 @@
 // Tool Call Card Component
+// v1.0.9: 时间 + 耗时走 utils/format
 
 import React, { useState } from 'react';
 import { ToolCall } from '../../stores/session-store';
 import { DiffViewer, extractDiffFromOutput } from '../DiffView';
+import { formatTime, formatDuration } from '../../utils/format';
 
 interface ToolCallCardProps {
   toolCall: ToolCall;
@@ -143,7 +145,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps): React.JSX.Element
         <div className="flex items-center gap-2">
           {toolCall.startTime && (
             <span className="text-xs text-[#999999]">
-              {new Date(toolCall.startTime).toLocaleTimeString()}
+              {formatTime(toolCall.startTime)}
             </span>
           )}
           <svg
@@ -193,7 +195,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps): React.JSX.Element
           {/* Duration */}
           {toolCall.startTime && toolCall.endTime && (
             <div className="mt-2 text-xs text-[#999999]">
-              耗时：{Math.round((new Date(toolCall.endTime).getTime() - new Date(toolCall.startTime).getTime()) / 1000)}秒
+              耗时：{formatDuration(toolCall.startTime, toolCall.endTime)}
             </div>
           )}
           

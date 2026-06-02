@@ -1,7 +1,9 @@
 // useSession Hook - Session management utilities
+// v1.0.9: formatTimestamp 走 utils/format.formatRelative 统一入口
 
 import { useCallback } from 'react';
 import { useSessionStore, Session, Message } from '../stores/session-store';
+import { formatRelative } from '../utils/format';
 
 interface UseSessionReturn {
   sessions: Session[];
@@ -28,6 +30,7 @@ export function useSession(): UseSessionReturn {
   
   const currentSession = getCurrentSession();
   
+
   const createSession = useCallback(() => {
     return storeCreateSession('default');
   }, [storeCreateSession]);
@@ -52,22 +55,13 @@ export function useSession(): UseSessionReturn {
     }
     return session.title;
   }, []);
-  
+
+  // v1.0.9: 走 utils/format.formatRelative, 接受 Date / number / string 任意时间值
+  // (注: 此函数目前返中文格式 "刚刚/分钟前", 因为不在 t() 抽取范围 — v1.0.10 收)
   const formatTimestamp = useCallback((date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-    
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-    
-    return date.toLocaleDateString();
+    return formatRelative(date);
   }, []);
-  
+
   return {
     sessions,
     currentSession,
