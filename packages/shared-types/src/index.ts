@@ -283,6 +283,10 @@ export interface PiAPI {
     listTerminals(): Promise<TerminalInfo[]>;
     onTerminalOutput(terminalId: string, cb: (data: string) => void): Unsubscribe;
     onTerminalExit(terminalId: string, cb: (code: number | null) => void): Unsubscribe;
+
+    // v1.0.10 (H3): renderer 日志转发主进程 electron-log 落文件
+    // fire-and-forget, 同步即可, 不阻塞 UI. main 端用 log[level] 接收.
+    log(level: "error" | "warn" | "info" | "debug", message: string, extra?: string[]): void;
 }
 
 export interface NodeAPI {

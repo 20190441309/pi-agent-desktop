@@ -124,6 +124,11 @@ const piAPI: PiAPI = {
         subscribe<{ id: string; code: number | null }>("terminal:exit", (payload) => {
             if (payload.id === terminalId) cb(payload.code);
         }),
+
+    // v1.0.10 (H3): renderer 日志转主进程 electron-log, fire-and-forget
+    log: (level, message, extra) => {
+        ipcRenderer.send("log:write", level, message, extra ?? []);
+    },
 };
 
 const nodeAPI: NodeAPI = {

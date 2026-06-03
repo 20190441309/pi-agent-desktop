@@ -98,6 +98,30 @@ describe("settings-store: updateSettings 走 IPC 错误路径", () => {
         expect(typeof s.lastWriteError).toBe("string");
         expect(s.lastWriteError).toContain("network down");
     });
+
+    // v1.0.10 (H2 修复): 失败时本地 settings 也要回滚, 跟磁盘保持一致
+    it("失败 (IpcError): 本地 settings 回滚到写之前, 跟磁盘一致", async () => {
+        const err = ipcError("ipcErrors.settings.saveFailed", "保存失败: EACCES");
+        mockApi.setSettings.mockResolvedValue(err);
+        // 起点 fontSize = 14 (default)
+        useSettingsStore.setState({
+            settings: {
+                theme: "light", fontSize: 14, model: "gpt-4", provider: "openai",
+                temperature: 0.7, maxTokens: 4096, autoSave: true,
+                showLineNumbers: true, wordWrap: true,
+            },
+            lastWriteError: null,
+        });
+        useSettingsStore.getState().updateSettings({ fontSize: 18 });
+        // 乐观更新立刻生效
+        expect(useSettingsStore.getState().settings.fontSize).toBe(18);
+        // 等 IPC 失败回调跑完
+        await Promise.resolve();
+        await Promise.resolve();
+        const s = useSettingsStore.getState();
+        expect(s.settings.fontSize).toBe(14); // 回滚
+        expect(s.lastWriteError).toEqual(err);
+    });
 });
 
 describe("settings-store: resetSettings 走 IPC 错误路径", () => {

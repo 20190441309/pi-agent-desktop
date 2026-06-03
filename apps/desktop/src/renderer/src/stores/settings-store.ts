@@ -60,7 +60,7 @@ function reportWriteError(e: unknown): IpcError | string {
     return String(e);
 }
 
-export const useSettingsStore = create<SettingsState>((set) => {
+export const useSettingsStore = create<SettingsState>((set, get) => {
   // Load persisted settings from main process
   const loadSettings = async () => {
     try {
@@ -105,39 +105,39 @@ export const useSettingsStore = create<SettingsState>((set) => {
     },
 
     updateSettings: (updates: Partial<AppSettings>) => {
-      set((state) => {
-        const newSettings = { ...state.settings, ...updates };
-        if (window.piAPI) {
-          // v1.0.6.1 后 setSettings 不再 throw, 但仍 try/catch 兜底老 throw 路径
-          window.piAPI.setSettings(updates)
-            .then((result) => {
-              if (isIpcError(result)) {
-                set({ lastWriteError: result });
-              }
-            })
-            .catch((e) => {
-              logger.error('[settings-store] setSettings failed:', e);
-              set({ lastWriteError: reportWriteError(e) });
-            });
-        }
-        return { settings: newSettings };
-      });
+      const previous = get().settings;
+      const merged = { ...previous, ...updates };
+      // 乐观更新: 立刻改本地, 失败时回滚
+      set({ settings: merged });
+      if (!window.piAPI) return;
+      // v1.0.6.1 后 setSettings 不再 throw, 但仍 try/catch 兜底老 throw 路径
+      window.piAPI.setSettings(updates)
+        .then((result) => {
+          if (isIpcError(result)) {
+            // 写失败: 本地回滚 + 暴露错误
+            set({ settings: previous, lastWriteError: result });
+          }
+        })
+        .catch((e) => {
+          logger.error('[settings-store] setSettings failed:', e);
+          set({ settings: previous, lastWriteError: reportWriteError(e) });
+        });
     },
 
     resetSettings: () => {
+      const previous = get().settings;
       set({ settings: defaultSettings });
-      if (window.piAPI) {
-        window.piAPI.setSettings(defaultSettings)
-          .then((result) => {
-            if (isIpcError(result)) {
-              set({ lastWriteError: result });
-            }
-          })
-          .catch((e) => {
-            logger.error('[settings-store] setSettings (reset) failed:', e);
-            set({ lastWriteError: reportWriteError(e) });
-          });
-      }
+      if (!window.piAPI) return;
+      window.piAPI.setSettings(defaultSettings)
+        .then((result) => {
+          if (isIpcError(result)) {
+            set({ settings: previous, lastWriteError: result });
+          }
+        })
+        .catch((e) => {
+          logger.error('[settings-store] setSettings (reset) failed:', e);
+          set({ settings: previous, lastWriteError: reportWriteError(e) });
+        });
     },
 
     toggleSettings: () => {
