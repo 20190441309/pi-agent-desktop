@@ -11,7 +11,13 @@
     "confirm": "Confirm",
     "search": "Search",
     "loading": "Loading...",
-    "noResults": "No matches"
+    "noResults": "No matches",
+    "time": {
+      "justNow": "just now",
+      "minutesAgo": "{{count}} min ago",
+      "hoursAgo": "{{count}} h ago",
+      "daysAgo": "{{count}} d ago"
+    }
   },
   "onboarding": {
     "step1": {
@@ -38,15 +44,18 @@
         "selectedDetail": "{{name}} — {{path}}",
         "hint": "Click the button below to pick a directory."
       },
-      "select": "Select directory"
+      "select": "Select directory",
+      "workspaceFallback": "New Workspace"
     },
     "step3": {
       "title": "All set",
       "description": "Everything is ready. Click Done to start using Pi Desktop.",
       "checkedOk": "All checks passed",
-      "details": "Pi CLI{{version}} · Workspace{{workspace}}",
-      "workspaceSelected": ": {{name}}",
-      "noWorkspace": " not selected (you can add one later in Settings)"
+      "details": "Pi CLI {{cli}} · {{workspace}}",
+      "cliReady": "v{{version}}",
+      "cliMissing": "not installed",
+      "workspaceReady": "Workspace: {{name}}",
+      "workspaceMissing": "Workspace not selected (you can add one later in Settings)"
     },
     "skip": "Skip onboarding",
     "steps": {

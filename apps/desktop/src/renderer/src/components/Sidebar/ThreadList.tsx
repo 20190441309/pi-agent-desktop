@@ -1,10 +1,12 @@
 // Thread List Component
 // v1.0.9: formatRelativeTime 走 utils/format.formatRelative
+// v1.0.10 (M1): 传 t 走 i18n
 
 import React from 'react';
 import { useThreadStore, type Thread } from '../../stores/thread-store';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { formatRelative } from '../../utils/format';
+import { useI18n } from '../../i18n';
 
 interface ThreadListProps {
   isCollapsed: boolean;
@@ -27,8 +29,8 @@ function StatusIndicator({ status }: { status: Thread['status'] }) {
   }
 }
 
-function formatRelativeTime(date: Date): string {
-  return formatRelative(date);
+function formatRelativeTime(date: Date, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  return formatRelative(date, t);
 }
 
 export function ThreadList({ isCollapsed }: ThreadListProps): React.JSX.Element {
@@ -40,6 +42,7 @@ export function ThreadList({ isCollapsed }: ThreadListProps): React.JSX.Element 
     getThreadsByWorkspace,
   } = useThreadStore();
   const { currentWorkspaceId } = useWorkspaceStore();
+  const { t } = useI18n();
 
   const workspaceThreads = currentWorkspaceId
     ? getThreadsByWorkspace(currentWorkspaceId)
@@ -89,7 +92,7 @@ export function ThreadList({ isCollapsed }: ThreadListProps): React.JSX.Element 
                     {thread.mode}
                   </span>
                   <span className="text-xs text-[#999999]">
-                    {formatRelativeTime(thread.updatedAt)}
+                    {formatRelativeTime(thread.updatedAt, t)}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-xs text-[#999999]">

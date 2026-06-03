@@ -50,20 +50,30 @@ export function formatIso(value: unknown): string {
     return d.toISOString();
 }
 
-/** 相对时间 (e.g. "2 分钟前"). null/无效 → 空串. */
-export function formatRelative(value: unknown, now: Date = new Date()): string {
+/**
+ * 相对时间 (e.g. "2 分钟前" / "2 minutes ago").
+ * t 必传, 走 i18n. null/无效 → 空串.
+ *
+ * 翻译键 (common.time.*):
+ *   justNow, minutesAgo (count), hoursAgo (count), daysAgo (count)
+ */
+export function formatRelative(
+    value: unknown,
+    t: (key: string, opts?: Record<string, unknown>) => string,
+    now: Date = new Date(),
+): string {
     const d = toDate(value);
     if (!d) return "";
     const diffMs = now.getTime() - d.getTime();
-    if (diffMs < 0) return "刚刚"; // 未来时间 (本地时钟漂移) 兜底
+    if (diffMs < 0) return t("common.time.justNow"); // 未来时间 (本地时钟漂移) 兜底
     const sec = Math.floor(diffMs / 1000);
-    if (sec < 60) return "刚刚";
+    if (sec < 60) return t("common.time.justNow");
     const min = Math.floor(sec / 60);
-    if (min < 60) return `${min} 分钟前`;
+    if (min < 60) return t("common.time.minutesAgo", { count: min });
     const hr = Math.floor(min / 60);
-    if (hr < 24) return `${hr} 小时前`;
+    if (hr < 24) return t("common.time.hoursAgo", { count: hr });
     const day = Math.floor(hr / 24);
-    if (day < 30) return `${day} 天前`;
+    if (day < 30) return t("common.time.daysAgo", { count: day });
     // > 30 天退化到短日期
     return formatDate(d);
 }

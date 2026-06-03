@@ -11,7 +11,13 @@
     "confirm": "确认",
     "search": "搜索",
     "loading": "加载中...",
-    "noResults": "无匹配"
+    "noResults": "无匹配",
+    "time": {
+      "justNow": "刚刚",
+      "minutesAgo": "{{count}} 分钟前",
+      "hoursAgo": "{{count}} 小时前",
+      "daysAgo": "{{count}} 天前"
+    }
   },
   "onboarding": {
     "step1": {
@@ -38,15 +44,18 @@
         "selectedDetail": "{{name}} — {{path}}",
         "hint": "点下面的按钮选一个目录。"
       },
-      "select": "选择目录"
+      "select": "选择目录",
+      "workspaceFallback": "新工作区"
     },
     "step3": {
       "title": "准备就绪",
       "description": "一切就绪。点完成开始使用。",
       "checkedOk": "检查通过",
-      "details": "Pi CLI{{version}} · 工作区{{workspace}}",
-      "workspaceSelected": ": {{name}}",
-      "noWorkspace": " 未选（可稍后在设置里加）"
+      "details": "Pi CLI {{cli}} · {{workspace}}",
+      "cliReady": "v{{version}}",
+      "cliMissing": "未安装",
+      "workspaceReady": "工作区：{{name}}",
+      "workspaceMissing": "工作区未选（可稍后在设置里加）"
     },
     "skip": "跳过引导",
     "steps": {

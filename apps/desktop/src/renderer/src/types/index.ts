@@ -99,39 +99,10 @@ export interface PiConfigData {
     } | null;
 }
 
-// ── Messaging Gateway Types (v1.0.0 残留, v1.0.1 已砍 IM 桥, 留接口防回归) ──
-
-export type GatewayPlatform = "wechat" | "feishu" | "qq";
-
-export interface PlatformMessage {
-    id: string;
-    platform: GatewayPlatform;
-    chatId: string;
-    chatName: string;
-    chatType: "private" | "group";
-    senderId: string;
-    senderName: string;
-    content: string;
-    contentType: "text" | "image" | "file" | "voice";
-    timestamp: number;
-}
-
-export interface PlatformStatus {
-    platform: string;
-    connected: boolean;
-    accountName?: string;
-    lastMessageAt?: number;
-    messageCount: number;
-    error?: string;
-}
-
-export interface GatewayConfig {
-    wechat: { enabled: boolean; appId?: string; appSecret?: string };
-    feishu: { enabled: boolean; appId?: string; appSecret?: string };
-    qq: { enabled: boolean; appId?: string; appSecret?: string };
-    autoReply: boolean;
-    replyMode: "pi" | "echo";
-}
+// ── Messaging Gateway Types 已删除 (v1.0.10 L4) ──
+// v1.0.1 hotfix 已砍 IM bridge, GatewayPlatform / PlatformMessage / PlatformStatus /
+// GatewayConfig 在源码中无任何外部引用, 留在这里会误导后来人误以为还有 IM 功能.
+// 若以后真要重新引入 IM 桥, 从 git history 取回即可.
 
 // PiAPI / NodeAPI / Window — 全部从 @shared 来, 这里不再重复声明.
 // 若需要扩展 renderer 独有字段, 用 interface merge:

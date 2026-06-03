@@ -75,7 +75,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
         if (!window.piAPI?.selectDirectory) return;
         const path = await window.piAPI.selectDirectory();
         if (!path) return;
-        const name = path.split(/[\\/]/).pop() || "New Workspace";
+        const name = path.split(/[\\/]/).pop() || t("onboarding.step2.workspaceFallback");
         try {
             if (window.piAPI.createWorkspace) {
                 const ws = await window.piAPI.createWorkspace(name, path);
@@ -89,7 +89,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
         } catch (e) {
             logger.error("[Onboarding] failed to create workspace:", e);
         }
-    }, [addWorkspace]);
+    }, [addWorkspace, t]);
 
     // 步骤 3：完成
     const handleFinish = useCallback(() => {
@@ -280,13 +280,13 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                 </span>
                             </div>
                             <p className="text-xs text-[#666]">
-                                Pi CLI
-                                {status?.localVersion ? ` (v${status.localVersion})` : ""}
                                 {t("onboarding.step3.details", {
-                                    version: status?.localVersion ? ` (v${status.localVersion})` : "",
+                                    cli: status?.localVersion
+                                        ? t("onboarding.step3.cliReady", { version: status.localVersion })
+                                        : t("onboarding.step3.cliMissing"),
                                     workspace: currentWorkspace
-                                        ? t("onboarding.step3.workspaceSelected", { name: currentWorkspace.name })
-                                        : t("onboarding.step3.noWorkspace"),
+                                        ? t("onboarding.step3.workspaceReady", { name: currentWorkspace.name })
+                                        : t("onboarding.step3.workspaceMissing"),
                                 })}
                             </p>
                         </div>

@@ -3,6 +3,13 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
+import { readFileSync } from 'fs';
+
+// v1.0.10 (L2): 把 package.json 的 version 注入 renderer 当作 __APP_VERSION__ 常量,
+// 避免 status bar / About 面板写死字符串, 跟实际 release 不同步.
+const pkg = JSON.parse(
+  readFileSync(resolve(__dirname, 'package.json'), 'utf-8'),
+) as { version: string };
 
 export default defineConfig({
   main: {
@@ -62,6 +69,9 @@ export default defineConfig({
           index: resolve(__dirname, 'src/renderer/index.html')
         }
       }
+    },
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
     },
     plugins: [react()],
     resolve: {

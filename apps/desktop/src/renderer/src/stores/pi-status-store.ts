@@ -50,14 +50,14 @@ export const usePiStatusStore = create<PiStatusState>((set, get) => ({
 
   _setStatus: (status) => set({ status, loading: false, error: null }),
 
+  // v1.0.10 (M3): _setProgress 只管 progress 状态, 不再清 isOperating
+  // isOperating 的 reset 由 install/update/uninstall/cancelOperation 自己负责
+  // (避免跟 install() 里的 set({ isOperating: false }) 重复 / 竞态)
   _setProgress: (progress) => {
     set({ progress });
-    // 操作完成时自动刷新状态
     if (progress.stage === 'done') {
-      set({ isOperating: false });
-      get().refreshStatus();
-    } else if (progress.stage === 'error') {
-      set({ isOperating: false });
+      // 操作完成: 拉一次最新状态. isOperating 由对应 action 重置.
+      void get().refreshStatus();
     }
   },
 

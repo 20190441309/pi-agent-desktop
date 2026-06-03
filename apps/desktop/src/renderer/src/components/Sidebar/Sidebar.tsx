@@ -1,5 +1,6 @@
 // Sidebar Component
 // v1.0.9: formatTime 走 utils/format.formatRelative
+// v1.0.10 (M1): 传 t 走 i18n
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useWorkspaceStore } from '../../stores/workspace-store';
@@ -7,6 +8,7 @@ import { useSessionStore } from '../../stores/session-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { logger } from '../../utils/logger';
 import { formatRelative } from '../../utils/format';
+import { useI18n } from '../../i18n';
 import { ThreadList } from './ThreadList';
 
 export function Sidebar(): React.JSX.Element {
@@ -15,6 +17,7 @@ export function Sidebar(): React.JSX.Element {
   const { workspaces, currentWorkspaceId, setCurrentWorkspace, addWorkspace } = useWorkspaceStore();
   const { sessions, currentSessionId, setCurrentSession, createSession, deleteSession } = useSessionStore();
   const { openSettings } = useSettingsStore();
+  const { t } = useI18n();
 
   // Load workspaces from main process on mount
   // mount-only: 用 ref 持有 store workspaces 引用避开 deps 警告
@@ -70,7 +73,7 @@ export function Sidebar(): React.JSX.Element {
     }
   };
 
-  const formatTime = (date: Date) => formatRelative(date);
+  const formatTime = (date: Date) => formatRelative(date, t);
 
   const currentWorkspaceSessions = sessions.filter(s => s.workspaceId === currentWorkspaceId);
 

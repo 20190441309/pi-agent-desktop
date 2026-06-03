@@ -243,7 +243,7 @@ function AppShell(): React.ReactElement {
                         </span>
                         <span>{currentWorkspace?.path ?? ""}</span>
                     </div>
-                    <span>Pi Desktop v0.1.0</span>
+                    <span>Pi Desktop v{__APP_VERSION__}</span>
                 </footer>
             </main>
 

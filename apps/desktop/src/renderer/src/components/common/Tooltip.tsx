@@ -1,8 +1,9 @@
 // Tooltip (可用度-C)
 // 简单的 hover/focus tooltip 组件, IconBar 侧栏用
 // 特点: 纯 CSS 定位 (右侧弹出, 避免 48px 宽栏位被裁), hover/focus 都触发, 150ms 延迟
+// v1.0.10 (M2): timer 改 useRef, 避免组件 re-render 丢失旧 setTimeout 句柄
 
-import React, { useId, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 
 export interface TooltipProps {
     /** 显示文本 (必填) */
@@ -29,16 +30,25 @@ export function Tooltip({
 }: TooltipProps): React.ReactElement {
     const [visible, setVisible] = useState(false);
     const id = useId();
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    // v1.0.10 (M2): 用 ref 持有 timer, 跨 render 保持稳定, 防止 mouseEnter/mouseLeave
+    // 紧挨着触发时, 旧 setTimeout 句柄丢失导致延迟 show 仍触发 → tooltip 闪烁
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const show = (): void => {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => setVisible(true), delay);
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setVisible(true), delay);
     };
     const hide = (): void => {
-        if (timer) clearTimeout(timer);
+        if (timerRef.current) clearTimeout(timerRef.current);
         setVisible(false);
     };
+
+    // 组件 unmount 时清理 pending timer, 避免 setState on unmounted
+    useEffect(() => {
+        return () => {
+            if (timerRef.current) clearTimeout(timerRef.current);
+        };
+    }, []);
 
     // 注入 props 到 children (用 React.cloneElement 避免 children 自己管理这些事件)
     // children 类型是泛型 React.ReactElement, props 推断为 unknown, 这里 cast 到标准 HTML attrs

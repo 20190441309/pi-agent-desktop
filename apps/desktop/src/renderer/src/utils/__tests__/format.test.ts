@@ -95,37 +95,63 @@ describe("formatTime / formatDateTime / formatDate / formatIso", () => {
 
 describe("formatRelative", () => {
     const now = new Date(2026, 5, 2, 14, 32, 5);
+    // 简版 t: 跟 v1.0.9 中文映射一致, 验证函数本身不依赖具体 i18next 实例
+    const tZh = (key: string, opts?: Record<string, unknown>): string => {
+        const n = opts?.count as number | undefined;
+        switch (key) {
+            case "common.time.justNow": return "刚刚";
+            case "common.time.minutesAgo": return `${n} 分钟前`;
+            case "common.time.hoursAgo": return `${n} 小时前`;
+            case "common.time.daysAgo": return `${n} 天前`;
+            default: return key;
+        }
+    };
 
     it("< 60s → 刚刚", () => {
-        expect(formatRelative(new Date(now.getTime() - 30_000), now)).toBe("刚刚");
+        expect(formatRelative(new Date(now.getTime() - 30_000), tZh, now)).toBe("刚刚");
     });
 
     it("1 分钟前", () => {
-        expect(formatRelative(new Date(now.getTime() - 60_000), now)).toBe("1 分钟前");
+        expect(formatRelative(new Date(now.getTime() - 60_000), tZh, now)).toBe("1 分钟前");
     });
 
     it("1 小时前", () => {
-        expect(formatRelative(new Date(now.getTime() - 60 * 60_000), now)).toBe("1 小时前");
+        expect(formatRelative(new Date(now.getTime() - 60 * 60_000), tZh, now)).toBe("1 小时前");
     });
 
     it("1 天前", () => {
-        expect(formatRelative(new Date(now.getTime() - 24 * 60 * 60_000), now)).toBe("1 天前");
+        expect(formatRelative(new Date(now.getTime() - 24 * 60 * 60_000), tZh, now)).toBe("1 天前");
     });
 
     it("> 30 天 → 退化到 formatDate (短日期)", () => {
         const past = new Date(now.getTime() - 60 * 24 * 60 * 60_000);
-        const s = formatRelative(past, now);
+        const s = formatRelative(past, tZh, now);
         expect(s).toMatch(/2025|2026/); // 短日期格式
         expect(s).not.toContain("天前");
     });
 
     it("未来时间 (本地时钟漂移) → '刚刚'", () => {
-        expect(formatRelative(new Date(now.getTime() + 60_000), now)).toBe("刚刚");
+        expect(formatRelative(new Date(now.getTime() + 60_000), tZh, now)).toBe("刚刚");
     });
 
-    it("无效输入 → 空串", () => {
-        expect(formatRelative(null, now)).toBe("");
-        expect(formatRelative("bad", now)).toBe("");
+    it("无效输入 → 空串 (t 不会被调)", () => {
+        const tSpy = vi.fn(tZh);
+        expect(formatRelative(null, tSpy, now)).toBe("");
+        expect(formatRelative("bad", tSpy, now)).toBe("");
+        expect(tSpy).not.toHaveBeenCalled();
+    });
+
+    it("en locale 走分钟/小时分支 → 英文串", () => {
+        const tEn = (key: string, opts?: Record<string, unknown>): string => {
+            const n = opts?.count as number | undefined;
+            switch (key) {
+                case "common.time.minutesAgo": return `${n} min ago`;
+                case "common.time.hoursAgo": return `${n} h ago`;
+                default: return key;
+            }
+        };
+        expect(formatRelative(new Date(now.getTime() - 5 * 60_000), tEn, now)).toBe("5 min ago");
+        expect(formatRelative(new Date(now.getTime() - 3 * 60 * 60_000), tEn, now)).toBe("3 h ago");
     });
 });
 
