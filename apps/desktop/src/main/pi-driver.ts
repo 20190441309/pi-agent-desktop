@@ -8,7 +8,7 @@
  *  4. 读取 Pi Agent 配置（~/.pi/agent/）
  */
 
-import { spawn, execSync, type ChildProcess } from 'child_process';
+import { spawn, spawnSync, execSync, execFileSync, type ChildProcess } from 'child_process';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { homedir, platform } from 'os';
@@ -297,22 +297,55 @@ export class PiDriver extends EventEmitter {
 
   /**
    * 在 PATH 和常见路径中查找 pi 可执行文件
+   * v1.0.x fix: `where pi` 在 PowerShell alias / 多输出场景会拿到非可执行文件,需逐项验证
+   *              且 Windows 走 `npm config get prefix` 拿真实 global bin
    */
   private findPiExecutable(): { path: string; method: string } | null {
-    // 1. 用 which/where 检查 PATH
+    const isWin = platform() === 'win32';
+
+    // 1. 用 which/where 检查 PATH,逐行验证是真实文件
     try {
-      const cmd = platform() === 'win32' ? 'where pi' : 'which pi';
+      const cmd = isWin ? 'where pi' : 'which pi';
       const result = execSync(cmd, { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] }).trim();
-      const firstLine = result.split(/\r?\n/)[0].trim();
-      if (firstLine && existsSync(firstLine)) {
-        return { path: firstLine, method: 'path' };
+      for (const line of result.split(/\r?\n/)) {
+        const candidate = line.trim();
+        if (!candidate) continue;
+        // Windows 上 .cmd/.bat/.exe/.ps1 都算可执行,Unix 只要文件存在
+        if (isWin) {
+          if (/\.(cmd|bat|exe|ps1)$/i.test(candidate) && existsSync(candidate)) {
+            return { path: candidate, method: 'path' };
+          }
+        } else if (existsSync(candidate)) {
+          return { path: candidate, method: 'path' };
+        }
       }
     } catch {
       // not in PATH, continue
     }
 
-    // 2. 检查常见安装路径
-    const piCmd = platform() === 'win32' ? 'pi.cmd' : 'pi';
+    // 2. 用 npm config get prefix 拿真实 npm global bin 目录
+    try {
+      const npm = isWin ? 'npm.cmd' : 'npm';
+      const prefix = execSync(`${npm} config get prefix`, {
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'ignore'],
+        // Windows 上 .cmd 必须通过 shell 解析;Unix 直接 exec
+        ...(isWin ? { shell: process.env.ComSpec || 'cmd.exe' as string } : {}),
+      }).trim();
+      if (prefix) {
+        const piCmd = isWin ? 'pi.cmd' : 'pi';
+        const candidate = join(prefix, piCmd);
+        if (existsSync(candidate)) {
+          return { path: candidate, method: 'npm-global' };
+        }
+      }
+    } catch {
+      // npm not found, continue
+    }
+
+    // 3. 兜底: 检查常见安装路径
+    const piCmd = isWin ? 'pi.cmd' : 'pi';
     for (const dir of COMMON_PATHS) {
       const candidate = join(dir, piCmd);
       if (existsSync(candidate)) {
@@ -320,7 +353,7 @@ export class PiDriver extends EventEmitter {
       }
     }
 
-    // 3. 检查 node_modules/.bin（局部安装）
+    // 4. 检查 node_modules/.bin（局部安装）
     const localBin = join(homedir(), 'node_modules', '.bin', piCmd);
     if (existsSync(localBin)) {
       return { path: localBin, method: 'npm-global' };
@@ -331,32 +364,87 @@ export class PiDriver extends EventEmitter {
 
   /**
    * 获取本地 pi 版本
+   * v1.0.x fix: Windows 上 .cmd 文件不能直接 execSync,必须走 cmd.exe /c 包装
+   *              也加 spawnSync + shell: true 作为兜底
    */
   private getLocalVersion(piPath: string): string | null {
-    try {
-      const output = execSync(`"${piPath}" --version`, {
-        encoding: 'utf-8',
-        timeout: 10000,
-        stdio: ['pipe', 'pipe', 'ignore'],
-      }).trim();
-
-      // 解析版本号（可能带 v 前缀）
+    const isWin = platform() === 'win32';
+    const parseVersion = (output: string): string | null => {
       const match = output.match(/v?(\d+\.\d+\.\d+)/);
-      return match ? match[1] : output;
-    } catch {
-      // fallback: 尝试不带引号
+      return match ? match[1] : output.trim() || null;
+    };
+
+    // v1.0.x fix: 关键 — pi CLI 把 --version 输出打到 stderr(不是 stdout),
+    //              且 Windows .cmd 文件必须通过 cmd.exe / spawnSync+shell 才能执行.
+    //              三个方案都同步收 stdout+stderr,任一成功就返回.
+
+    // 1. Windows: spawnSync + shell, 合并 stdout + stderr
+    if (isWin) {
       try {
-        const output = execSync(`${piPath} --version`, {
+        const r = spawnSync(piPath, ['--version'], {
           encoding: 'utf-8',
           timeout: 10000,
-          stdio: ['pipe', 'pipe', 'ignore'],
-        }).trim();
-        const match = output.match(/v?(\d+\.\d+\.\d+)/);
-        return match ? match[1] : output;
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: process.env.ComSpec || 'cmd.exe',
+        });
+        if (r.status === 0) {
+          const merged = `${r.stdout || ''}${r.stderr || ''}`;
+          const v = parseVersion(merged);
+          if (v) return v;
+        }
       } catch {
-        return null;
+        // 失败继续尝试
+      }
+      // 兜底: execFileSync cmd.exe /c
+      try {
+        const r: string = execFileSync('cmd.exe', ['/c', piPath, '--version'], {
+          encoding: 'utf-8',
+          timeout: 10000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        const v = parseVersion(r);
+        if (v) return v;
+      } catch (e: unknown) {
+        // 同步拿 stderr(e.stderr 在 execFileSync 抛出时是 Buffer)
+        const stderr = (e as { stderr?: Buffer | string }).stderr;
+        const stderrStr = stderr ? (typeof stderr === 'string' ? stderr : stderr.toString()) : '';
+        const v = parseVersion(stderrStr);
+        if (v) return v;
       }
     }
+
+    // 2. Unix / .exe: 直接 execSync, 同时通过 stdio 收 stderr 失败时拿
+    try {
+      const r = spawnSync(piPath, ['--version'], {
+        encoding: 'utf-8',
+        timeout: 10000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      if (r.status === 0) {
+        const merged = `${r.stdout || ''}${r.stderr || ''}`;
+        const v = parseVersion(merged);
+        if (v) return v;
+      }
+    } catch {
+      // continue
+    }
+
+    // 3. 最后兜底: execSync(对 .exe 有效)
+    try {
+      const r: string = execSync(`"${piPath}" --version`, {
+        encoding: 'utf-8',
+        timeout: 10000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      const v = parseVersion(r);
+      if (v) return v;
+    } catch (e: unknown) {
+      const stderr = (e as { stderr?: Buffer | string }).stderr;
+      const stderrStr = stderr ? (typeof stderr === 'string' ? stderr : stderr.toString()) : '';
+      const v = parseVersion(stderrStr);
+      if (v) return v;
+    }
+    return null;
   }
 
   /**
