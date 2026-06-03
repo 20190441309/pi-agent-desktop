@@ -1,6 +1,6 @@
 // 左侧面板 - 220px 宽，项目信息 + 文件树 + 对话列表
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { logger } from '../../utils/logger';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { useSessionStore } from '../../stores/session-store';
@@ -33,11 +33,20 @@ const TYPE_COLORS: Record<string, string> = {
 
 export const ProjectPanel: React.FC<ProjectPanelProps> = ({ activePanel, onSendToPi }) => {
   const { getCurrentWorkspace } = useWorkspaceStore();
-  const { sessions, currentSessionId, createSession, setCurrentSession } = useSessionStore();
+  const { sessions, currentSessionId, createSession, renameSession, deleteSession, setCurrentSession } = useSessionStore();
   const { skills, plugins, isLoading, refresh } = usePluginStore();
   const currentWorkspace = getCurrentWorkspace();
   const [searchQuery, setSearchQuery] = useState('');
   const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null);
+
+  // Inline rename UI state
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const editInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Delete confirmation modal state
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
+  const confirmDeleteBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // Detect project when workspace changes
   const detectProjectInfo = useCallback(async () => {
@@ -72,6 +81,72 @@ export const ProjectPanel: React.FC<ProjectPanelProps> = ({ activePanel, onSendT
     const newSession = createSession(workspaceId);
     setCurrentSession(newSession.id);
   };
+
+  // ── Rename handlers ───────────────────────────────────────────
+  const startEditing = useCallback((sessionId: string, currentTitle: string) => {
+    setEditingSessionId(sessionId);
+    setEditingTitle(currentTitle);
+  }, []);
+
+  const cancelEditing = useCallback(() => {
+    setEditingSessionId(null);
+    setEditingTitle('');
+  }, []);
+
+  const commitEdit = useCallback(() => {
+    if (!editingSessionId) return;
+    const trimmed = editingTitle.trim();
+    if (!trimmed) {
+      cancelEditing();
+      return;
+    }
+    renameSession(editingSessionId, trimmed);
+    cancelEditing();
+  }, [editingSessionId, editingTitle, renameSession, cancelEditing]);
+
+  // Focus the input when entering edit mode
+  useEffect(() => {
+    if (editingSessionId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingSessionId]);
+
+  // ── Delete handlers ───────────────────────────────────────────
+  const askDelete = useCallback((sessionId: string, title: string) => {
+    setPendingDelete({ id: sessionId, title });
+  }, []);
+
+  const cancelDelete = useCallback(() => {
+    setPendingDelete(null);
+  }, []);
+
+  const confirmDelete = useCallback(() => {
+    if (!pendingDelete) return;
+    deleteSession(pendingDelete.id);
+    setPendingDelete(null);
+  }, [pendingDelete, deleteSession]);
+
+  // Focus the confirm button when the delete modal opens
+  useEffect(() => {
+    if (pendingDelete && confirmDeleteBtnRef.current) {
+      confirmDeleteBtnRef.current.focus();
+    }
+  }, [pendingDelete]);
+
+  // Esc cancels the active modal/input
+  useEffect(() => {
+    if (!editingSessionId && !pendingDelete) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (editingSessionId) cancelEditing();
+        else if (pendingDelete) cancelDelete();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editingSessionId, pendingDelete, cancelEditing, cancelDelete]);
 
   const renderContent = () => {
     switch (activePanel) {
@@ -202,19 +277,98 @@ export const ProjectPanel: React.FC<ProjectPanelProps> = ({ activePanel, onSendT
               </div>
               <div className="max-h-40 overflow-y-auto px-3">
                 <div className="space-y-1">
-                  {filteredSessions.map((session) => (
-                    <button
-                      key={session.id}
-                      onClick={() => setCurrentSession(session.id)}
-                      className={`w-full text-left px-3 py-2 rounded-lg transition-all ${
-                        currentSessionId === session.id
-                          ? 'bg-[#f0f0f0] text-[#1a1a1a]'
-                          : 'text-[#666] hover:bg-[#f5f5f5] hover:text-[#1a1a1a]'
-                      }`}
-                    >
-                      <div className="text-sm truncate">{session.title}</div>
-                    </button>
-                  ))}
+                  {filteredSessions.map((session) => {
+                    const isEditing = editingSessionId === session.id;
+                    const isActive = currentSessionId === session.id;
+                    const rowClass = `group w-full flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all ${
+                      isActive
+                        ? 'bg-[#f0f0f0] text-[#1a1a1a]'
+                        : 'text-[#666] hover:bg-[#f5f5f5] hover:text-[#1a1a1a]'
+                    }`;
+
+                    if (isEditing) {
+                      return (
+                        <div key={session.id} className={rowClass}>
+                          <input
+                            ref={editInputRef}
+                            type="text"
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                commitEdit();
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                cancelEditing();
+                              }
+                            }}
+                            onBlur={commitEdit}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="重命名对话"
+                            className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-[#1a1a1a] rounded text-sm text-[#1a1a1a] focus:outline-none"
+                          />
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={session.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setCurrentSession(session.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setCurrentSession(session.id);
+                          } else if (e.key === 'F2') {
+                            e.preventDefault();
+                            startEditing(session.id, session.title);
+                          }
+                        }}
+                        className={`${rowClass} cursor-pointer`}
+                      >
+                        <span
+                          className="flex-1 min-w-0 text-sm truncate"
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            startEditing(session.id, session.title);
+                          }}
+                        >
+                          {session.title}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startEditing(session.id, session.title);
+                          }}
+                          aria-label={`重命名: ${session.title}`}
+                          className="shrink-0 p-1 rounded text-[#999] hover:text-[#1a1a1a] hover:bg-[#e5e5e5] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                        >
+                          {/* pencil icon */}
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            askDelete(session.id, session.title);
+                          }}
+                          aria-label={`删除: ${session.title}`}
+                          className="shrink-0 p-1 rounded text-[#999] hover:text-[#ef4444] hover:bg-[#e5e5e5] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                        >
+                          {/* trash icon */}
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+                          </svg>
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -392,6 +546,47 @@ export const ProjectPanel: React.FC<ProjectPanelProps> = ({ activePanel, onSendT
       <div className="flex-1 overflow-hidden flex flex-col">
         {renderContent()}
       </div>
+
+      {/* 删除确认弹窗 */}
+      {pendingDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          role="presentation"
+          onClick={cancelDelete}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-delete-title"
+            className="bg-white rounded-lg shadow-xl w-80 max-w-[90vw] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="confirm-delete-title" className="text-base font-semibold text-[#1a1a1a] mb-2">
+              删除对话
+            </h2>
+            <p className="text-sm text-[#666] mb-4">
+              确定要删除「<span className="text-[#1a1a1a] font-medium break-all">{pendingDelete.title}</span>」吗？此操作无法撤销。
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelDelete}
+                className="px-3 py-1.5 text-sm rounded-md text-[#666] hover:bg-[#f5f5f5] focus:outline-none focus:ring-2 focus:ring-[#1a1a1a]/30"
+              >
+                取消
+              </button>
+              <button
+                ref={confirmDeleteBtnRef}
+                type="button"
+                onClick={confirmDelete}
+                className="px-3 py-1.5 text-sm rounded-md bg-[#ef4444] text-white hover:bg-[#dc2626] focus:outline-none focus:ring-2 focus:ring-[#ef4444]/50"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

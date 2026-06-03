@@ -69,6 +69,7 @@ const piAPI: PiAPI = {
     // Session
     listSessions: () => ipcRenderer.invoke("session:list"),
     createSession: (workspaceId, title) => ipcRenderer.invoke("session:create", workspaceId, title),
+    renameSession: (id, title) => ipcRenderer.invoke("session:rename", id, title),
     deleteSession: (id) => ipcRenderer.invoke("session:delete", id),
 
     // Git

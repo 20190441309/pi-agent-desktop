@@ -233,6 +233,7 @@ export interface PiAPI {
     // Session
     listSessions(): Promise<Session[]>;
     createSession(workspaceId: string, title?: string): Promise<Session>;
+    renameSession(id: string, title: string): Promise<Session>;
     deleteSession(id: string): Promise<void>;
 
     // Git

@@ -40,6 +40,7 @@ interface SessionState {
   
   // Actions
   createSession: (workspaceId: string) => Session;
+  renameSession: (sessionId: string, newTitle: string) => void;
   deleteSession: (sessionId: string) => void;
   setCurrentSession: (sessionId: string) => void;
   addMessage: (sessionId: string, message: Message) => void;
@@ -120,6 +121,29 @@ export const useSessionStore = create<SessionState>((set, get) => {
     if (window.piAPI) {
       window.piAPI.deleteSession(sessionId).catch((e) =>
         logger.error('[session-store] deleteSession failed:', e)
+      );
+    }
+  },
+
+  renameSession: (sessionId: string, newTitle: string) => {
+    const trimmed = (newTitle ?? '').trim();
+    if (!trimmed) {
+      logger.warn('[session-store] renameSession ignored empty title for', sessionId);
+      return;
+    }
+
+    set(state => ({
+      sessions: state.sessions.map(s =>
+        s.id === sessionId
+          ? { ...s, title: trimmed, updatedAt: new Date() }
+          : s
+      )
+    }));
+
+    // Sync to main process (fire-and-forget; local state already updated)
+    if (window.piAPI?.renameSession) {
+      window.piAPI.renameSession(sessionId, trimmed).catch((e) =>
+        logger.error('[session-store] renameSession failed:', e)
       );
     }
   },

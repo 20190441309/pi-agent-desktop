@@ -532,6 +532,19 @@ function setupIPC(): void {
     return session;
   });
 
+  ipcMain.handle('session:rename', async (_, id: string, title: string) => {
+    const sessions = store.get('sessions');
+    const target = sessions.find((s: { id: string }) => s.id === id);
+    if (!target) {
+      throw new Error(`Session not found: ${id}`);
+    }
+    const trimmed = (title || '').trim() || target.title;
+    target.title = trimmed;
+    target.updatedAt = Date.now();
+    store.set('sessions', sessions);
+    return target;
+  });
+
   ipcMain.handle('session:delete', async (_, id: string) => {
     const sessions = store.get('sessions').filter(s => s.id !== id);
     store.set('sessions', sessions);
