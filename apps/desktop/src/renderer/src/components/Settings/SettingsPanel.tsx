@@ -269,31 +269,30 @@ export function SettingsPanel(): React.JSX.Element {
                                     {t('settings.modelTab.heading')}
                                 </h3>
 
-                                {/* 当前模型 */}
+                                {/* 当前模型 — v1.0.15 不再 hardcode fallback 列表 */}
                                 <div>
                                     <label htmlFor="settings-model" className="block text-sm text-[#666] mb-2">
                                         {t('settings.modelTab.current')}
                                     </label>
-                                    <select
-                                        id="settings-model"
-                                        value={settings.model}
-                                        onChange={(e) => updateSettings({ model: e.target.value })}
-                                        className="w-full bg-[#f5f5f5] text-[#1a1a1a] rounded-lg px-3 py-2.5 border border-[#e5e5e5] focus:outline-none focus:border-[#1a1a1a]"
-                                    >
-                                        {piModels ? (
-                                            piModels.map((model) => (
+                                    {piModels && piModels.length > 0 ? (
+                                        <select
+                                            id="settings-model"
+                                            value={settings.model}
+                                            onChange={(e) => updateSettings({ model: e.target.value })}
+                                            className="w-full bg-[#f5f5f5] text-[#1a1a1a] rounded-lg px-3 py-2.5 border border-[#e5e5e5] focus:outline-none focus:border-[#1a1a1a]"
+                                        >
+                                            {piModels.map((model) => (
                                                 <option key={model.id} value={model.id}>
                                                     {model.name} ({model.providerName})
                                                 </option>
-                                            ))
-                                        ) : (
-                                            <>
-                                                <option value="mimo-v2.5-pro">mimo-v2.5-pro</option>
-                                                <option value="gpt-4">GPT-4</option>
-                                                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                                            </>
-                                        )}
-                                    </select>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        // v1.0.15: piModels 没加载时显示空态,不再 hardcode 假模型
+                                        <div className="text-sm text-[#999] py-2">
+                                            暂未检测到模型配置 (Pi CLI 未配置)
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* 温度 */}

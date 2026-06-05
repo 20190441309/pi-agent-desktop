@@ -34,8 +34,8 @@ const fakeStatus: PiStatus = {
     executablePath: "/usr/bin/pi",
     installMethod: "npm",
     configExists: true,
-    defaultProvider: "anthropic",
-    defaultModel: "claude-3-5-sonnet",
+    defaultProvider: "",
+    defaultModel: "",
 };
 
 describe("pi-status-store: checkStatus", () => {

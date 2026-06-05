@@ -1,7 +1,8 @@
 // a11y-baseline JSDOM tests (M7) — axe-core 在 React Testing Library 渲染的核心组件上跑
 //
-// 目的: 给 5 个目标组件的 a11y 改动做单元级的可执行验证. E2E Playwright 走法见
-// apps/desktop/e2e/a11y.spec.ts (因 Electron 34 + node:sqlite 已 BLOCKED, 见 commit d951db0).
+// v1.0.16: 删 IconBar 2 个 case — IconBar 是 v1.0.x 老 UI 死代码 (App.tsx 不引),
+//          之前 v1.0.x 留在测试里当回归 baseline。剩 2 个 case 测 MessageBubble
+//          (真接的 ChatView 子组件)。
 //
 // 运行: pnpm --filter @pi-desktop/desktop test
 //   包含此文件: src/renderer/src/__tests__/a11y-baseline.test.tsx
@@ -14,7 +15,6 @@ import { describe, it, expect, beforeAll, vi } from "vitest";
 import { render, cleanup } from "@testing-library/react";
 import React from "react";
 import axe, { type Result, type Spec } from "axe-core";
-import { IconBar } from "../components/IconBar/IconBar";
 import { MessageBubble } from "../components/ChatView/MessageBubble";
 import { I18nProvider } from "../i18n";
 
@@ -44,8 +44,8 @@ beforeAll(() => {
                 onchange: null,
                 addListener: vi.fn(),
                 removeListener: vi.fn(),
-                addEventListener: vi.fn(),
                 removeEventListener: vi.fn(),
+                addEventListener: vi.fn(),
                 dispatchEvent: vi.fn(),
             })),
         });
@@ -82,27 +82,7 @@ function logViolations(label: string, violations: Result[]): void {
     );
 }
 
-describe("a11y baseline — 5 core components (JSDOM)", () => {
-    it("IconBar: 0 critical/serious violations", async () => {
-        const { container } = renderWithI18n(
-            <IconBar activePanel="chat" onPanelChange={() => {}} />
-        );
-        const violations = await runAxe(container, "IconBar");
-        logViolations("IconBar", violations);
-        expect(violations, `IconBar should have 0 critical/serious violations`).toHaveLength(0);
-        cleanup();
-    });
-
-    it("IconBar (active=search, 切换激活态): 0 critical/serious violations", async () => {
-        const { container } = renderWithI18n(
-            <IconBar activePanel="search" onPanelChange={() => {}} />
-        );
-        const violations = await runAxe(container, "IconBar-search");
-        logViolations("IconBar-search", violations);
-        expect(violations).toHaveLength(0);
-        cleanup();
-    });
-
+describe("a11y baseline — 1 core component (JSDOM)", () => {
     it("MessageBubble (user): 0 critical/serious violations", async () => {
         const { container } = renderWithI18n(
             <MessageBubble

@@ -1,7 +1,8 @@
 // 聊天主区域 - 欢迎屏幕 + 消息列表 + 输入框
 // v1.0.4: 用户可见文案走 t()
+// v1.0.11: welcome cards 接 onClick → 注入 prompt 到 ChatInput
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { usePiStream } from '../../hooks/usePiStream';
 import { useSessionStore } from '../../stores/session-store';
 import { useWorkspaceStore } from '../../stores/workspace-store';
@@ -10,7 +11,14 @@ import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
 import { useI18n } from '../../i18n';
 
-export function ChatView(): React.JSX.Element {
+interface ChatViewProps {
+    /** v1.0.14: 外部注入的预填文本(由 App.tsx 监听 'chatpanel:prefill' 事件传来,用于跨组件切到 chat 时把 prompt 灌进 ChatInput) */
+    prefillText?: string | null;
+    /** prefill 已被 ChatInput 消费后回调 */
+    onPrefillConsumed?: () => void;
+}
+
+export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {}): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const {
     isStreaming,
@@ -46,6 +54,30 @@ export function ChatView(): React.JSX.Element {
 
   const messages = currentSession?.messages || [];
 
+  // welcome card 点击 → 把预填 prompt 注入 ChatInput
+  //  - text: 注入的初始文案,光标停在末尾方便用户继续
+  //  - nonce: 每次点击 +1,保证同 card 重复点击 ChatInput effect 也会重跑
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number }>({ text: '', nonce: 0 });
+  const handleWelcomeCardClick = useCallback((key: string) => {
+    const prompts: Record<string, string> = {
+      newFeature: '我想添加一个新功能:\n\n',
+      fixBug: '我遇到了一个 bug:\n\n',
+      review: '请帮我审查以下代码:\n\n',
+      explain: '请解释以下代码:\n\n',
+    };
+    setPrefill({ text: prompts[key] ?? '', nonce: Date.now() });
+  }, []);
+
+  // v1.0.14: 外部传进来的 prefillText(走 'chatpanel:prefill' 事件)
+  //  - 用 Date.now() 做 nonce 保证 effect 重跑
+  //  - 消费后回调 onPrefillConsumed 让 App 清 state
+  useEffect(() => {
+    if (typeof prefillText === 'string' && prefillText.length > 0) {
+      setPrefill({ text: prefillText, nonce: Date.now() });
+      onPrefillConsumed?.();
+    }
+  }, [prefillText, onPrefillConsumed]);
+
   const welcomeCards: Array<{ key: string; icon: string }> = [
     { key: 'newFeature', icon: '🚀' },
     { key: 'fixBug', icon: '🐛' },
@@ -80,7 +112,10 @@ export function ChatView(): React.JSX.Element {
               {welcomeCards.map((card) => (
                 <button
                   key={card.key}
-                  className="w-[180px] p-4 bg-white border border-[#e5e5e5] rounded-xl text-left hover:bg-[#f5f5f5] hover:border-[#d1d5db] transition-all"
+                  type="button"
+                  onClick={() => handleWelcomeCardClick(card.key)}
+                  disabled={!isConnected}
+                  className="w-[180px] p-4 bg-white border border-[#e5e5e5] rounded-xl text-left hover:bg-[#f5f5f5] hover:border-[#d1d5db] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="text-xl mb-2">{card.icon}</div>
                   <div className="text-sm font-medium text-[#1a1a1a] mb-1">
@@ -215,6 +250,10 @@ export function ChatView(): React.JSX.Element {
         isProcessing={isStreaming}
         onSend={handleSend}
         onStop={stopStreaming}
+        workspaceId={currentWorkspace?.id}
+        prefill={prefill.text}
+        prefillKey={prefill.nonce}
+        onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
       />
     </div>
   );

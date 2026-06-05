@@ -2,6 +2,8 @@
 // v1.0.5: AppSettings / PiModelInfo 跟 @shared 重复, 改用 re-export + 本地 alias 保留 store 旧代码
 // v1.0.6: console 换 logger
 // v1.0.9: 写错误经 _onError listener 走 IpcError 路径, SettingsPanel 翻译后显示
+// v1.0.15: default model/provider 改成空串 — 不再 hardcode 'gpt-4' / 'openai' 假数据;
+//          启动时由 loadPiConfig 真从 Pi CLI 配置读;读不到时 Pi ChatInput / SettingsPanel 走空态
 
 import { create } from 'zustand';
 import { isIpcError, type AppSettings, type IpcError } from '@shared';
@@ -45,13 +47,15 @@ interface SettingsState {
 const defaultSettings: AppSettings = {
   theme: 'light',
   fontSize: 14,
-  model: 'gpt-4',
-  provider: 'openai',
+  // v1.0.15: 不 hardcode 'gpt-4' / 'openai' — 空串启动,由 loadPiConfig 真读 Pi CLI 配置覆盖
+  model: '',
+  provider: '',
   temperature: 0.7,
   maxTokens: 4096,
   autoSave: true,
   showLineNumbers: true,
-  wordWrap: true
+  wordWrap: true,
+  permissionLevel: 'full',  // v1.0.13: ChatInput 权限下拉默认
 };
 
 /** 内部 helper: 把 setSettings 返的 (void | IpcError) / throw 统一成 lastWriteError */

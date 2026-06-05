@@ -519,6 +519,30 @@ function setupIPC(): void {
     }
   });
 
+  // v1.0.13: 多选文件 picker,ChatInput 附件按钮
+  ipcMain.handle('files:select', async (
+    _,
+    opts?: { multiSelections?: boolean; filters?: { name: string; extensions: string[] }[] },
+  ) => {
+    if (!mainWindow) return [];
+    try {
+      const properties: Array<'openFile' | 'multiSelections'> = ['openFile'];
+      if (opts?.multiSelections !== false) properties.push('multiSelections');
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties,
+        title: '选择附件',
+        filters: opts?.filters,
+      });
+      return result.canceled ? [] : result.filePaths;
+    } catch (err) {
+      log.error("[index.ts] files:select failed:", err);
+      return ipcError(
+        "ipcErrors.files.selectFailed",
+        `打开文件选择器失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+
   // Session management
   ipcMain.handle('session:list', async () => {
     return store.get('sessions');
@@ -795,24 +819,6 @@ function setupIPC(): void {
       return skills;
     } catch (error) {
       log.error('Failed to list skills:', error);
-      return [];
-    }
-  });
-
-  // List plugins (providers) from Pi Agent config
-  ipcMain.handle('pi:list-plugins', async () => {
-    try {
-      if (!piAgentConfig) return [];
-
-      return piAgentConfig.providers.map(p => ({
-        name: p.name,
-        description: `${p.models.length} 个模型${p.baseUrl ? ` · ${p.baseUrl}` : ''}`,
-        version: '1.0',
-        enabled: true,
-        type: 'provider' as const
-      }));
-    } catch (error) {
-      log.error('Failed to list plugins:', error);
       return [];
     }
   });

@@ -93,12 +93,14 @@ const piAPI: PiAPI = {
     loadPiConfig: () => ipcRenderer.invoke("settings:load-pi-config"),
     getFullConfig: () => ipcRenderer.invoke("pi:get-full-config"),
 
-    // Skills & Plugins
+    // Skills
     listSkills: () => ipcRenderer.invoke("pi:list-skills"),
-    listPlugins: () => ipcRenderer.invoke("pi:list-plugins"),
 
     // M2: 文件搜索
     filesList: (workspacePath, query) => ipcRenderer.invoke("files:list", workspacePath, query),
+
+    // v1.0.13: 多选文件,ChatInput 附件按钮
+    selectFiles: (opts) => ipcRenderer.invoke("files:select", opts) as Promise<string[]>,
 
     // M3: SkillHub
     skillsCheck: () => ipcRenderer.invoke("skills:check"),

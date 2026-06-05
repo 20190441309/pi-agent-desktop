@@ -1,12 +1,14 @@
 // Pi Desktop v1.0 - 整合 App (M7) — MiniMax Code 风格 (1:1 还原目标 UI)
-// 三栏布局: MiniMaxCodeLayout (左 220px MiniMaxCodeSidebar / 中 flex-1 Welcome+Input / 右 280px TaskProgress)
-// 旧架构 usePiDriver / usePiStream 老事件类型 → 新 usePiStream 用 @shared/events PiEvent
+// 三栏布局: MiniMaxCodeLayout (左 220px MiniMaxCodeSidebar / 中 flex-1 ChatView / 右 280px TaskProgress)
 // v1.0.4: 包了 I18nProvider 顶层, 顶部标题栏 / 状态栏 / 占位文案走 t()
 // v1.1: 接入 MiniMaxCode 三栏 layout, 移除非必需的旧 UI hook(保留 modal 触发能力)
 // v1.2: Modal/浮层用 createPortal 挂到 body(避免 layout overflow:hidden 裁剪)
-// v1.3: 右栏接 useTaskStore, 任务列表实时反映 store; 首启播种 demo 任务
+// v1.0.12: chat panel 改用真 ChatView(已接通 usePiStream/useSessionStore/MessageBubble),
+//          删 demo 任务 / 删 5 个假按钮 / 删 routeToSkillSearch; TaskProgressPanel 走空态
+//          UI 一概不动,只把链路接通
+// v1.0.16: 删 task-store(死代码) + CommandPalette 3 callback 真接通
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
@@ -17,24 +19,21 @@ import { TerminalPanel } from "./components/Terminal/TerminalPanel";
 import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { PiStatusPanel } from "./components/PiStatusPanel/PiStatusPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
-import { AutomationPanel } from "./components/Automation";
+import { ChatView } from "./components/ChatView/ChatView";
 import {
     MiniMaxCodeLayout,
     MiniMaxCodeSidebar,
-    WelcomeScreen,
     TaskProgressPanel,
-    type WelcomeQuickAction,
-    type TaskProgressItem,
 } from "./components/MiniMaxCode";
 import { useWorkspaceStore } from "./stores/workspace-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { usePiStatusStore } from "./stores/pi-status-store";
 import { useApprovalStore } from "./stores/approval-store";
-import { useTaskStore } from "./stores/task-store";
-import { useSkillsStore } from "./stores/skills-store";
+import { useSessionStore } from "./stores/session-store";
 import { isFirstLaunch } from "./utils/first-launch";
 import { useShortcuts } from "./shortcuts";
 import { I18nProvider, useI18n } from "./i18n";
+import { logger } from "./utils/logger";
 
 function App(): React.ReactElement {
     return (
@@ -54,7 +53,7 @@ function AppShell(): React.ReactElement {
     const [showOnboarding, setShowOnboarding] = useState(false);
 
     const { getCurrentWorkspace, workspaces } = useWorkspaceStore();
-    const { loadPiConfig, openSettings, settings } = useSettingsStore();
+    const { loadPiConfig, openSettings } = useSettingsStore();
     const { status, refreshStatus } = usePiStatusStore();
     const pendingApprovalCount = useApprovalStore(
         (s) => s.changes.filter((c) => c.status === "pending").length,
@@ -85,6 +84,83 @@ function AppShell(): React.ReactElement {
         }
     }, [workspaces.length, currentWorkspace]);
 
+    // v1.0.14: SkillsPanel 等子组件用 window event 触发切到 chat + 注入 prompt
+    //   (绕开"通过 prop 链层层传递" — 简单解耦,跟已有 skills-panel:set-tab 事件一致风格)
+    const [chatPrefill, setChatPrefill] = useState<string | null>(null);
+    // v1.0.14: 审批面板的"关闭"开关 — 之前 onToggle={undefined} 是个死函数
+    //   pendingApprovalCount > 0 时挂载, 用户点 X 调 onToggle 调 approvalStore 的 clearChanges
+    //   让 store 变空 → pendingCount = 0 → portal 不再挂载
+    const [approvalVisible, setApprovalVisible] = useState(false);
+    useEffect(() => {
+        // 当 pendingApprovalCount > 0 时自动显示
+        if (pendingApprovalCount > 0) setApprovalVisible(true);
+    }, [pendingApprovalCount]);
+    const closeApproval = useCallback(() => {
+        setApprovalVisible(false);
+        useApprovalStore.getState().clearChanges();
+    }, []);
+    useEffect(() => {
+        const onPrefill = (e: Event): void => {
+            const detail = (e as CustomEvent<{ text: string }>).detail;
+            setActiveSection("chat");
+            setChatPrefill(detail?.text ?? "");
+        };
+        window.addEventListener("chatpanel:prefill", onPrefill);
+        return () => window.removeEventListener("chatpanel:prefill", onPrefill);
+    }, []);
+
+    // v1.0.16: CommandPalette 3 个 callback 真接通
+    //  - onSelectFile: 用 chatpanel:prefill 事件把 @path 灌进 ChatInput(走 mention 格式)
+    //  - onSelectHistory: 切到 chat + 切到该 session
+    //  - onRunCommand: case 分发到 setActiveSection / openSettings / setShowTerminal / selectDirectory
+    const handleSelectFile = useCallback((path: string) => {
+        setActiveSection("chat");
+        window.dispatchEvent(
+            new CustomEvent("chatpanel:prefill", { detail: { text: `@${path} ` } }),
+        );
+    }, []);
+    const handleSelectHistory = useCallback((sessionId: string) => {
+        setActiveSection("chat");
+        useSessionStore.getState().setCurrentSession(sessionId);
+    }, []);
+    const handleRunCommand = useCallback((cmdId: string) => {
+        switch (cmdId) {
+            case "new_chat":
+                setActiveSection("chat");
+                return;
+            case "open_skills":
+                setActiveSection("skills");
+                return;
+            case "open_settings":
+                openSettings();
+                return;
+            case "switch_workspace":
+                void (async () => {
+                    if (!window.piAPI?.selectDirectory) return;
+                    const path = await window.piAPI.selectDirectory();
+                    if (!path) return;
+                    const name = path.split(/[\\/]/).pop() ?? path;
+                    try {
+                        if (window.piAPI.createWorkspace) {
+                            const ws = await window.piAPI.createWorkspace(name, path);
+                            useWorkspaceStore.getState().addWorkspace(ws.name, ws.path);
+                        } else {
+                            useWorkspaceStore.getState().addWorkspace(name, path);
+                        }
+                        await window.piAPI.selectWorkspace?.(path);
+                    } catch (e) {
+                        logger.error("[App] switch_workspace failed:", e);
+                    }
+                })();
+                return;
+            case "toggle_terminal":
+                setShowTerminal((v) => !v);
+                return;
+            default:
+                logger.warn("[App] unknown command palette cmd:", cmdId);
+        }
+    }, [openSettings]);
+
     // 全局快捷键
     const shortcutHandlers = useMemo(
         () => ({
@@ -108,85 +184,14 @@ function AppShell(): React.ReactElement {
     useShortcuts(shortcutHandlers);
 
     // 解析当前 section → 决定中间内容
-    const activePanel: "chat" | "skills" | "automation" | "settings" =
+    // v1.0.16: 删 "automation" — 整个 AutomationPanel 组件已删(Pi CLI 没定时任务 API,
+    // 之前的 AutomationPanel 是自己撸的内存 store,没接通任何 IPC,关 app 全没)
+    const activePanel: "chat" | "skills" | "settings" =
         activeSection === "skills"
             ? "skills"
-            : activeSection === "automation"
-              ? "automation"
-              : activeSection === "settings"
-                ? "settings"
-                : "chat";
-
-    // 快捷动作:切到 skills section + 触发 tab=market + 预设搜索词
-    // SkillsPanel 监听 'skills-panel:set-tab' 事件,marketQuery 在 store 里改
-    const setMarketQuery = useSkillsStore((s) => s.setMarketQuery);
-    const routeToSkillSearch = (query: string): void => {
-        setActiveSection("skills");
-        setMarketQuery(query);
-        if (typeof window !== "undefined") {
-            window.dispatchEvent(
-                new CustomEvent<"market" | "mine">("skills-panel:set-tab", {
-                    detail: "market",
-                }),
-            );
-        }
-    };
-
-    // 任务列表:从 useTaskStore 派生。
-    //  - progress: 完成 step 数 / 总 step 数
-    //  - timestamp: 已完成用 completedAt,否则用 startedAt
-    //  - 反序(最新在顶)符合进度列表的视觉习惯
-    const rawTasks = useTaskStore((s) => s.tasks);
-    const setCurrentTask = useTaskStore((s) => s.setCurrentTask);
-    const seedDemoTasks = useTaskStore((s) => s.addTask);
-    const addStep = useTaskStore((s) => s.addStep);
-    const tasks: TaskProgressItem[] = useMemo(
-        () =>
-            [...rawTasks]
-                .sort(
-                    (a, b) =>
-                        (b.completedAt?.getTime() ?? b.startedAt.getTime()) -
-                        (a.completedAt?.getTime() ?? a.startedAt.getTime()),
-                )
-                .map((t) => {
-                    const totalSteps = t.steps.length;
-                    const doneSteps = t.steps.filter(
-                        (s) => s.status === "completed",
-                    ).length;
-                    const progress =
-                        totalSteps > 0
-                            ? Math.round((doneSteps / totalSteps) * 100)
-                            : undefined;
-                    return {
-                        id: t.id,
-                        name: t.title,
-                        status: t.status,
-                        progress,
-                        timestamp:
-                            (t.completedAt ?? t.startedAt).getTime(),
-                    };
-                }),
-        [rawTasks],
-    );
-
-    // 首启播种 demo 任务(空 store 时跑一次,idempotent)
-    const seedRef = useRef(false);
-    useEffect(() => {
-        if (seedRef.current) return;
-        if (rawTasks.length > 0) {
-            seedRef.current = true;
-            return;
-        }
-        const t1 = seedDemoTasks("了解项目");
-        addStep(t1.id, "扫描目录树");
-        addStep(t1.id, "汇总文件统计");
-        const t2 = seedDemoTasks("对项目的看法");
-        addStep(t2.id, "分析代码风格");
-        addStep(t2.id, "列出改进点");
-        const t3 = seedDemoTasks("生成 README 草稿");
-        addStep(t3.id, "收集 README 章节");
-        seedRef.current = true;
-    }, [rawTasks.length, seedDemoTasks, addStep]);
+            : activeSection === "settings"
+              ? "settings"
+              : "chat";
 
     // modal/浮层 portal 目标(SSR-safe)
     const portalTarget = typeof document !== "undefined" ? document.body : null;
@@ -198,13 +203,12 @@ function AppShell(): React.ReactElement {
                     <MiniMaxCodeSidebar
                         currentSection={activeSection}
                         onSectionChange={(s: string) => {
-                            // Sidebar section 路由表:
-                            //  - new-task          → 切到 chat(WelcomeScreen,光标会自动落在 input)
-                            //  - scheduled-tasks   → 切到 automation(原 AutomationPanel 即定时任务)
+                            // Sidebar section 路由表 (v1.0.16 删 "scheduled-tasks" 路由):
+                            //  - new-task          → 切到 chat(ChatView 接管)
                             //  - mobile-control    → 打开 CommandPalette(没真接入手机操控,先给个搜索入口)
                             //  - settings          → 打开设置面板
-                            //  - history-*         → 切到 chat + 把对应历史任务标记为 current
-                            //  - skills/automation → 已有 view, 直接切
+                            //  - history-*         → 切到 chat(历史 task 路由由 ChatView 内部处理)
+                            //  - skills            → 已有 view, 直接切
                             if (s === "settings") {
                                 openSettings();
                                 return;
@@ -213,23 +217,7 @@ function AppShell(): React.ReactElement {
                                 setPaletteOpen(true);
                                 return;
                             }
-                            if (s === "history-opinion" || s === "history-about") {
-                                const title =
-                                    s === "history-opinion"
-                                        ? "对项目的看法"
-                                        : "了解项目";
-                                const found = useTaskStore
-                                    .getState()
-                                    .tasks.find((t) => t.title === title);
-                                if (found) useTaskStore.getState().setCurrentTask(found.id);
-                                setActiveSection("chat");
-                                return;
-                            }
-                            if (s === "scheduled-tasks") {
-                                setActiveSection("automation");
-                                return;
-                            }
-                            // new-task / skills / automation / chat 默认 fallback
+                            // new-task / skills / chat / history-* 默认 fallback
                             setActiveSection(s);
                         }}
                     />
@@ -237,36 +225,11 @@ function AppShell(): React.ReactElement {
                 centerSlot={
                     <>
                         {activePanel === "chat" && (
-                            <WelcomeScreen
-                                workspaceName={currentWorkspace?.name ?? "pi-desktop"}
-                                modelName={settings.model}
-                                onQuickAction={(action: WelcomeQuickAction) => {
-                                    // 快捷动作:5 个按钮全路由到 skills 市场
-                                    // tab=market,query 预填匹配关键词(模糊搜索会兜底)
-                                    const QUERY_MAP: Record<WelcomeQuickAction, string> = {
-                                        team: "team",
-                                        slides: "slides pptx presentation",
-                                        pdf: "pdf",
-                                        doc: "doc document",
-                                        sheet: "sheet xlsx spreadsheet",
-                                    };
-                                    routeToSkillSearch(QUERY_MAP[action]);
-                                }}
-                                onSend={(text: string) => {
-                                    if (window.piAPI && currentWorkspace) {
-                                        void window.piAPI.sendPrompt(currentWorkspace.id, text);
-                                    }
-                                }}
-                            />
+                            <ChatView prefillText={chatPrefill} onPrefillConsumed={() => setChatPrefill(null)} />
                         )}
                         {activePanel === "skills" && (
                             <div className="flex-1 overflow-hidden">
                                 <SkillsPanel />
-                            </div>
-                        )}
-                        {activePanel === "automation" && (
-                            <div className="flex-1 overflow-hidden">
-                                <AutomationPanel />
                             </div>
                         )}
                         {activePanel === "settings" && (
@@ -277,12 +240,8 @@ function AppShell(): React.ReactElement {
                     </>
                 }
                 rightSlot={
-                    <TaskProgressPanel
-                        tasks={tasks}
-                        onTaskClick={(id: string) => {
-                            setCurrentTask(id);
-                        }}
-                    />
+                    // v1.0.12: 不传 tasks → 走空态,不再硬塞 3 个 demo 任务
+                    <TaskProgressPanel />
                 }
             />
 
@@ -295,6 +254,9 @@ function AppShell(): React.ReactElement {
                             isOpen={paletteOpen}
                             onClose={() => setPaletteOpen(false)}
                             workspacePath={currentWorkspace?.path ?? ""}
+                            onSelectFile={handleSelectFile}
+                            onSelectHistory={handleSelectHistory}
+                            onRunCommand={handleRunCommand}
                         />
                         <ShortcutsCheatsheet
                             isOpen={showCheatsheet}
@@ -330,11 +292,12 @@ function AppShell(): React.ReactElement {
                 </div>
             )}
 
-            {/* 审批浮窗(有点击行为时显示) */}
-            {pendingApprovalCount > 0 &&
+            {/* 审批浮窗(有点击行为时显示) — v1.0.14 关闭按钮真接 */}
+            {approvalVisible &&
+                pendingApprovalCount > 0 &&
                 portalTarget &&
                 createPortal(
-                    <ApprovalPanel isOpen onToggle={() => undefined} />,
+                    <ApprovalPanel isOpen onToggle={closeApproval} />,
                     portalTarget,
                 )}
         </>

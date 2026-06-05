@@ -70,6 +70,8 @@ export interface AppSettings {
     wordWrap: boolean;
     language?: string;
     piConfig?: PiConfig;
+    /** v1.0.13: ChatInput 权限下拉,影响 Pi 工具调用的拦截档位 */
+    permissionLevel?: "read" | "partial" | "full";
 }
 
 // ── Pi Driver ─────────────────────────────────────────────────────
@@ -229,6 +231,8 @@ export interface PiAPI {
     deleteWorkspace(id: string): Promise<void>;
     selectWorkspace(path: string): Promise<unknown>;
     selectDirectory(): Promise<string | null>;
+    /** v1.0.13: 多选文件,ChatInput 附件按钮 */
+    selectFiles(opts?: { multiSelections?: boolean; filters?: { name: string; extensions: string[] }[] }): Promise<string[]>;
 
     // Session
     listSessions(): Promise<Session[]>;
@@ -255,9 +259,8 @@ export interface PiAPI {
     loadPiConfig(): Promise<unknown>;
     getFullConfig(): Promise<PiAgentFullConfig>;
 
-    // Skills & Plugins
+    // Skills
     listSkills(): Promise<InstalledSkillInfo[]>;
-    listPlugins(): Promise<PluginInfo[]>;
 
     // File search (M2)
     filesList(workspacePath: string, query?: string): Promise<FileEntry[]>;

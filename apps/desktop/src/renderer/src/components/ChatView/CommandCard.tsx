@@ -1,5 +1,6 @@
 // Command Card Component
 // v1.0.9: 时间 + 耗时走 utils/format
+// v1.0.15: 删 commandCount prop — 之前 MessageBubble 没传,chip 永远不显示
 
 import React, { useState } from 'react';
 import { ToolCall } from '../../stores/session-store';
@@ -8,10 +9,9 @@ import { formatTime, formatDuration } from '../../utils/format';
 
 interface CommandCardProps {
   toolCall: ToolCall;
-  commandCount?: number;
 }
 
-export function CommandCard({ toolCall, commandCount = 1 }: CommandCardProps): React.JSX.Element {
+export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
   const [isExpanded, setIsExpanded] = useState(false);
   
   const getStatusColor = () => {
@@ -112,11 +112,6 @@ export function CommandCard({ toolCall, commandCount = 1 }: CommandCardProps): R
                toolCall.name === 'edit' ? '编辑文件' : toolCall.name}
             </span>
           </div>
-          {commandCount > 1 && (
-            <span className="text-xs text-[#666666] bg-white px-2 py-0.5 rounded-full">
-              已运行 {commandCount} 条命令
-            </span>
-          )}
         </div>
         
         <div className="flex items-center gap-2">

@@ -1,1 +1,0 @@
-export { ProjectPanel } from './ProjectPanel';

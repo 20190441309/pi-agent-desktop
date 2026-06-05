@@ -32,6 +32,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+.pnpm-dev.err
+.pnpm-dev.out
+.pnpm-test.out
 
 # Runtime data
 pids/
@@ -71,6 +74,7 @@ apps/desktop/test-results/
 .cursor/
 .idea/
 .vscode/
+.mavis/
 
 # Stale artifacts (M5 cleanup)
 *.tserrors.txt
@@ -90,3 +94,10 @@ screenshot*.png
 
 # package-lock.json (we use pnpm)
 package-lock.json
+
+# Manual testing scripts (PowerShell helpers for screenshot / click, not part of build)
+scripts/click.ps1
+scripts/click-hwnd.ps1
+scripts/focus-window.ps1
+scripts/screenshot.ps1
+scripts/manual-launch-screenshot.png

@@ -43,9 +43,10 @@
 //
 // 不持有任何业务状态: 父级通过 props 决定 currentSection;
 // 数据(分组/项目)用本地 const 静态声明,不做异步加载。
+// v1.0.15: MiniMaxCodeUserCard 已删(死代码) — 之前 sidebar 底部固定一个
+// "Ayase / Plus Plan" 用户卡片,现在直接 inline 渲染,避免再维护一个空组件。
 
 import React from "react";
-import { MiniMaxCodeUserCard } from "./MiniMaxCodeUserCard";
 
 // ----------------------------------------------------------------------
 // 类型
@@ -72,9 +73,6 @@ export interface MiniMaxCodeSidebarProps {
     currentSection: string;
     /** 点击某项时回调,父级决定路由切换 */
     onSectionChange: (section: string) => void;
-    /** 用户卡片(可选) */
-    userName?: string;
-    planLabel?: string;
 }
 
 // ----------------------------------------------------------------------
@@ -120,25 +118,6 @@ function IconPuzzle(): React.JSX.Element {
     );
 }
 
-function IconClock(): React.JSX.Element {
-    return (
-        <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
-        >
-            <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-        </svg>
-    );
-}
-
 function IconPhone(): React.JSX.Element {
     return (
         <svg
@@ -158,7 +137,7 @@ function IconPhone(): React.JSX.Element {
     );
 }
 
-function IconFolder(): React.JSX.Element {
+function IconSettings(): React.JSX.Element {
     return (
         <svg
             className="h-4 w-4"
@@ -171,55 +150,46 @@ function IconFolder(): React.JSX.Element {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={1.5}
-                d="M3 7a2 2 0 012-2h4l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+            />
+            <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
             />
         </svg>
     );
 }
 
-function IconMessage(): React.JSX.Element {
-    return (
-        <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
-        >
-            <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-            />
-        </svg>
-    );
-}
+// v1.0.14: 删 IconFolder / IconMessage — 之前给"对项目的看法" / "了解项目"硬编码
+// 历史项用,这 2 项已删,icon 也跟着删。后续 v1.1 接真历史 task 时再加回来。
 
 // ----------------------------------------------------------------------
 // 静态配置 (本期纯占位,后续可改由 props/数据驱动)
 // ----------------------------------------------------------------------
 
+// v1.0.16: 不再写死 userName/planLabel 默认 ("Ayase" / "Plus Plan") — 之前 v1.0.15
+// inline 渲染用户卡片时这么写,被用户截图指出是假数据。改成 sidebar 内部
+// 不再渲染 "用户卡片", 底部固定一个设置按钮 (与老 IconBar ⚙️ 图标对应位置),
+// 点击调 onSectionChange("settings") → App.tsx 调 openSettings() 打开 SettingsPanel。
+// 这次新增一个 settings 主操作图标,放在底部 5 个图标的最后(原 IconBar 设计如此)。
+// v1.0.16: 删 "scheduled-tasks" 主操作 + "定时任务" 分组 — Pi CLI 没定时任务 API,
+//          整个 AutomationPanel 之前是内存 store 假功能(关 app 全没),已删。
 const MAIN_SECTIONS: MiniMaxCodeSection[] = [
     { id: "new-task", label: "新建任务", icon: <IconPlus /> },
     { id: "skills", label: "技能", icon: <IconPuzzle /> },
-    { id: "scheduled-tasks", label: "定时任务", icon: <IconClock /> },
     { id: "mobile-control", label: "手机操控", icon: <IconPhone /> },
+    { id: "settings", label: "设置", icon: <IconSettings /> },
 ];
 
 const GROUPED_SECTIONS: MiniMaxCodeSidebarGroup[] = [
     {
-        title: "定时任务",
-        items: [
-            // 当前无占位项,保留空数组 — 标题照常渲染
-        ],
-    },
-    {
         title: "任务历史",
-        items: [
-            { id: "history-opinion", label: "对项目的看法", icon: <IconFolder /> },
-            { id: "history-about", label: "了解项目", icon: <IconMessage /> },
-        ],
+        // v1.0.14: 删 2 条写死历史项("对项目的看法" / "了解项目") — 之前是 demo 任务
+        // 对应的"占位文案",v1.0.16 砍 task-store 之后这 2 项是孤儿路由,点了啥都不会发生。
+        // 历史项待 v1.1 接真历史 task(从 useSessionStore 派生已建 session 列表)再恢复。
+        items: [],
     },
     {
         title: "Agents",
@@ -287,7 +257,7 @@ function NavItem({ section, active, onClick }: NavItemProps): React.JSX.Element 
  *   - 顶部 logo (12x12 圆角黑底,内嵌 "M")
  *   - 主操作列表(无分组标题,4 个一级入口)
  *   - 中间 scroll 区: 4 个分组(标题 + 占位项)
- *   - 底部固定: <MiniMaxCodeUserCard />
+ *   - 底部固定: 用户卡片 (inline 渲染, v1.0.15 删了 MiniMaxCodeUserCard 死组件)
  *
  * 设计约束:
  *   - 所有颜色/字号/圆角走 --mm-* token
@@ -297,8 +267,6 @@ function NavItem({ section, active, onClick }: NavItemProps): React.JSX.Element 
 export function MiniMaxCodeSidebar({
     currentSection,
     onSectionChange,
-    userName = "Ayase",
-    planLabel = "Plus Plan",
 }: MiniMaxCodeSidebarProps): React.JSX.Element {
     return (
         <div
@@ -324,9 +292,13 @@ export function MiniMaxCodeSidebar({
             </div>
 
             {/* ============== 中间 scroll 区 ============== */}
+            {/* v1.0.16: aria-label 改回 "主导航" — 兼容 a11y.spec.ts 等老测试 selector
+                (v1.0.16 sweep 删了 IconBar/ 整个目录,新 MiniMaxCodeSidebar 接管导航;
+                原 IconBar 用 aria-label="主导航",新 Sidebar 一开始用 "MiniMax Code primary navigation"
+                导致 a11y.spec.ts 找主导航 15s timeout fail, 改回 "主导航" 修复回归) */}
             <nav
                 className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pb-2"
-                aria-label="MiniMax Code primary navigation"
+                aria-label="主导航"
             >
                 {/* 主操作分组(无标题) */}
                 <div className="flex flex-col gap-0.5">
@@ -372,13 +344,10 @@ export function MiniMaxCodeSidebar({
                 ))}
             </nav>
 
-            {/* ============== 底部固定用户卡片 ============== */}
-            <div
-                className="shrink-0 border-t border-transparent"
-                data-mmcode-region="user-card"
-            >
-                <MiniMaxCodeUserCard userName={userName} planLabel={planLabel} />
-            </div>
+            {/* v1.0.16: 删底部 "Ayase / Plus Plan" 假用户卡片 — 这个位置原来
+                v1.0.x 老 UI 是 IconBar ⚙️ 设置图标。设置入口现在合并到上面 5
+                个主操作的第 5 项(settings) — 跟其他主操作一起渲染,无需
+                额外底部固定块。 */}
         </div>
     );
 }

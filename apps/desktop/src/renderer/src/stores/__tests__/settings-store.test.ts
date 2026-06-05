@@ -26,7 +26,7 @@ describe("settings-store: 初始状态", () => {
     it("默认 settings 是 defaultSettings", () => {
         useSettingsStore.setState({
             settings: {
-                theme: "light", fontSize: 14, model: "gpt-4", provider: "openai",
+                theme: "light", fontSize: 14, model: "", provider: "",
                 temperature: 0.7, maxTokens: 4096, autoSave: true,
                 showLineNumbers: true, wordWrap: true,
             },
@@ -106,7 +106,7 @@ describe("settings-store: updateSettings 走 IPC 错误路径", () => {
         // 起点 fontSize = 14 (default)
         useSettingsStore.setState({
             settings: {
-                theme: "light", fontSize: 14, model: "gpt-4", provider: "openai",
+                theme: "light", fontSize: 14, model: "", provider: "",
                 temperature: 0.7, maxTokens: 4096, autoSave: true,
                 showLineNumbers: true, wordWrap: true,
             },

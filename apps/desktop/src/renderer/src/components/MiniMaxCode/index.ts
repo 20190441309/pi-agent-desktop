@@ -1,7 +1,7 @@
 // MiniMaxCode components barrel export
-//
-// MiniMax Code 风格子组件统一入口. 后续 M2+ 子组件 (Sidebar / ChatPanel /
-// ContextPanel 等) 在此追加导出.
+// v1.0.15: 删 MiniMaxCodeInput / WelcomeScreen / MiniMaxCodeUserCard —
+//          死代码 (App.tsx 只引 MiniMaxCodeLayout / MiniMaxCodeSidebar / TaskProgressPanel),
+//          且包含假 placeholder / 假按钮 ("现在这项目完成度太低了。" / 5 个旧快捷按钮).
 
 export {
     MiniMaxCodeLayout,
@@ -9,25 +9,9 @@ export {
 } from "./MiniMaxCodeLayout";
 
 export {
-    MiniMaxCodeInput,
-    type MiniMaxCodeInputProps,
-} from "./MiniMaxCodeInput";
-
-export {
-    WelcomeScreen,
-    type WelcomeScreenProps,
-    type WelcomeQuickAction,
-} from "./WelcomeScreen";
-
-export {
     MiniMaxCodeSidebar,
     type MiniMaxCodeSidebarProps,
 } from "./MiniMaxCodeSidebar";
-
-export {
-    MiniMaxCodeUserCard,
-    type MiniMaxCodeUserCardProps,
-} from "./MiniMaxCodeUserCard";
 
 export {
     TaskProgressPanel,

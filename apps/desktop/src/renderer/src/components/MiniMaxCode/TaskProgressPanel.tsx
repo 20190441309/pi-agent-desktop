@@ -15,7 +15,7 @@
 //   └─────────────────────────────┘
 //
 // 设计约束:
-//  - 不持有任何业务状态,任务数据由父级传入(后续 T5 阶段接 useTaskStore)
+//  - 纯展示组件,不持有任何业务状态;任务数据由父级传入(props.tasks)
 //  - 颜色/尺寸优先 --mm-* token;进度条/时间戳等 MiniMax Code 未提供 token 的
 //    视觉细节,按本组件 spec 硬编码(本轮不改 globals.css)
 //  - a11y: role=list / role=listitem,整行作为可点击 button
