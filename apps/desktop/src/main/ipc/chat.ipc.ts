@@ -41,6 +41,12 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         resolveApprovalRequest(requestId, approved);
     });
 
+    // v1.1: renderer 同步 autoApprove 标志到主进程
+    ipcMain.on("approval:set-auto-approve", (_event, value: boolean) => {
+        deps.pendingEdits.autoApprove = value;
+        log.info(`[chat.ipc] autoApprove set to: ${value}`);
+    });
+
     ipcMain.handle("pi:send", async (_event, workspaceId: string, text: string) => {
         const ws = deps.getWorkspace(workspaceId) ?? deps.getDefaultWorkspace();
         if (!ws) {

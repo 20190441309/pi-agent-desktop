@@ -63,15 +63,23 @@ export function usePiStream(): UsePiStreamReturn {
     const approvalStore = useApprovalStore();
 
     // ── 连接状态 ────────────────────────────────────────────────────────────
+    // v1.0.17: 初次检测 + 每 30 秒心跳重检，断了自动设为 false
     useEffect(() => {
         if (!window.piAPI) return;
-        void window.piAPI.getStatus()
-            .then((s) => {
-                // v1.0.8: getStatus 可能返 IpcError, 此时 Pi 未就绪 → not connected
-                if (isIpcError(s)) setIsConnected(false);
-                else setIsConnected(s.installed);
-            })
-            .catch(() => setIsConnected(false));
+
+        const check = (): void => {
+            void window.piAPI.getStatus()
+                .then((s) => {
+                    // v1.0.8: getStatus 可能返 IpcError, 此时 Pi 未就绪 → not connected
+                    if (isIpcError(s)) setIsConnected(false);
+                    else setIsConnected(s.installed);
+                })
+                .catch(() => setIsConnected(false));
+        };
+
+        check();
+        const id = setInterval(check, 30000);
+        return () => clearInterval(id);
     }, []);
 
     // ── 事件订阅 ────────────────────────────────────────────────────────────
@@ -194,10 +202,17 @@ export function usePiStream(): UsePiStreamReturn {
             }
 
             case "turn_end":
+                setIsStreaming(false);
+                setStreamingMessageId(null);
+                messageIdRef.current = null;
+                break;
+
             case "agent_end":
                 setIsStreaming(false);
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
+                // v1.0.17: 通知 useTaskProgress agent 结束
+                window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
 
             case "extension_error":
@@ -222,6 +237,9 @@ export function usePiStream(): UsePiStreamReturn {
         setCurrentThinking("");
         setToolCalls(new Map());
 
+        // v1.0.17: 通知 useTaskProgress 流式开始
+        window.dispatchEvent(new CustomEvent("pi:stream-start"));
+
         // 用户消息
         const session = getCurrentSession();
         if (session) {
@@ -239,6 +257,8 @@ export function usePiStream(): UsePiStreamReturn {
         } catch (err) {
             setError(String(err));
             setIsStreaming(false);
+            // v1.0.17: 通知 useTaskProgress 流式异常结束
+            window.dispatchEvent(new CustomEvent("pi:stream-end"));
         }
     }, [getCurrentSession, addMessage]);
 
@@ -250,6 +270,8 @@ export function usePiStream(): UsePiStreamReturn {
             // ignore
         }
         setIsStreaming(false);
+        // v1.0.17: 通知 useTaskProgress 流式结束
+        window.dispatchEvent(new CustomEvent("pi:stream-end"));
     }, []);
 
     const clearError = useCallback(() => {

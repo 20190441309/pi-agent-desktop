@@ -119,7 +119,7 @@ export function Popover({
         <div
             ref={contentRef}
             role="menu"
-            className={`fixed z-[60] min-w-[180px] bg-white border border-[#e5e5e5] rounded-lg shadow-lg py-1 overflow-y-auto ${contentClassName}`}
+            className={`fixed z-[60] min-w-[180px] bg-[var(--mm-bg-sidebar)] border border-[var(--color-border)] rounded-lg shadow-lg py-1 overflow-y-auto ${contentClassName}`}
             style={
                 pos
                     ? {

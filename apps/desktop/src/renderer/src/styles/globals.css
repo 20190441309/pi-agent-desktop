@@ -185,6 +185,108 @@ select:focus-visible,
   box-shadow: none;
 }
 
+/* ===== Dark Theme =====
+ * 当 <html data-theme="dark"> 时覆盖所有颜色变量.
+ * 组件用 --mm-*, --color-* 或 Tailwind 硬编码颜色(#xxx)的, 逐步迁移.
+ * 目前覆盖: 全局变量 + MiniMax Code tokens + 滚动条 + 代码块.
+ */
+[data-theme="dark"] {
+  /* 全局颜色 */
+  --color-bg: #1a1a1a;
+  --color-panel: #242424;
+  --color-border: #333333;
+  --color-text-primary: #e5e5e5;
+  --color-text-secondary: #999999;
+  --color-text-tertiary: #666666;
+  --color-accent: #ffffff;
+  --color-success: #34d399;
+  --color-error: #f87171;
+  --color-danger: #f87171;
+  --color-warn: #fbbf24;
+  --color-info: #60a5fa;
+  --color-hover: rgba(255, 255, 255, 0.08);
+  --color-active: rgba(255, 255, 255, 0.15);
+  --color-selected: rgba(96, 165, 250, 0.18);
+
+  /* MiniMax Code tokens */
+  --mm-bg-main: #1a1a1a;
+  --mm-bg-sidebar: #242424;
+  --mm-bg-hover: #2a2a2a;
+  --mm-bg-active: #ffffff;
+  --mm-text-primary: #e5e5e5;
+  --mm-text-secondary: #999999;
+  --mm-text-tertiary: #666666;
+  --mm-text-on-active: #1a1a1a;
+  --mm-border: #333333;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+}
+
+/* Dark theme 全局覆盖 */
+[data-theme="dark"] html,
+[data-theme="dark"] body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+}
+
+/* Dark theme 滚动条 */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #555555;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #777777;
+}
+
+/* Dark theme 选中色 */
+[data-theme="dark"] ::selection {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--color-text-primary);
+}
+
+/* Dark theme 焦点 */
+[data-theme="dark"] :focus-visible {
+  outline-color: #60a5fa;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.3);
+}
+[data-theme="dark"] button:focus-visible,
+[data-theme="dark"] input:focus-visible,
+[data-theme="dark"] textarea:focus-visible,
+[data-theme="dark"] select:focus-visible,
+[data-theme="dark"] [role="button"]:focus-visible,
+[data-theme="dark"] [role="tab"]:focus-visible,
+[data-theme="dark"] [role="option"]:focus-visible,
+[data-theme="dark"] [role="switch"]:focus-visible {
+  outline-color: #60a5fa;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.3);
+}
+
+/* Dark theme 代码块 */
+[data-theme="dark"] pre {
+  background: #2a2a2a;
+  border-color: var(--color-border);
+}
+[data-theme="dark"] :not(pre) > code {
+  background: #333333;
+}
+
+/* Dark theme Markdown */
+[data-theme="dark"] .markdown-body blockquote {
+  background: #2a2a2a;
+  border-left-color: var(--color-border);
+}
+[data-theme="dark"] .markdown-body th {
+  background: #2a2a2a;
+}
+[data-theme="dark"] .markdown-body tr:nth-child(even) {
+  background: #1e1e1e;
+}
+[data-theme="dark"] .markdown-body tr:hover {
+  background: #2a2a2a;
+}
+
 /* Screen reader only utility */
 .sr-only {
   position: absolute;

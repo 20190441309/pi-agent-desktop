@@ -13,7 +13,8 @@ import {
     checkSkillhubInstalled,
 } from "../services/skills/skillhub-adapter";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { dirname } from "path";
+import { dirname, basename, join } from "path";
+import { execFileSync } from "child_process";
 
 interface SkillsIpcDeps {
     /** workspace path (cwd for skillhub install) */
@@ -144,7 +145,106 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
     });
 
     ipcMain.handle("skills:github-import", async (_event, repoUrl: string) => {
-        // M3 简版: 返回 URL, 让用户在浏览器打开, 实际产品应该 git clone + 解析 SKILL.md
-        return { url: repoUrl, message: "请用 git clone 仓库到 skills/ 目录" };
+        // v1.0.17: 真正 git clone + 检查 SKILL.md
+        const cwd = deps.getWorkspacePath();
+        if (!cwd) {
+            return ipcError(
+                "ipcErrors.skills.noWorkspace",
+                "请先选择工作区再导入技能",
+            );
+        }
+
+        // 从 URL 解析仓库名 (e.g., "https://github.com/user/repo" → "repo")
+        const repoName = basename(repoUrl.replace(/\.git$/, "")).replace(/\/$/, "");
+        if (!repoName) {
+            return ipcError(
+                "ipcErrors.skills.githubImportFailed",
+                `无法从 URL 解析仓库名: ${repoUrl}`,
+                { url: repoUrl },
+            );
+        }
+
+        // 目标路径: <workspace>/.agents/skills/<repoName>/
+        // 也尝试 <workspace>/.pi/skills/<repoName>/ (Pi 原生路径)
+        const skillsDir = join(cwd, ".agents", "skills");
+        const targetPath = join(skillsDir, repoName);
+
+        // 如果目录已存在, 先删掉 (覆盖式安装)
+        // rmSync 已从 "fs" 顶部 import (writeFileSync 旁边的)
+        // 注意: rmSync 在 Node 14.14+ 可用, 本项目要求 Node >= 22
+        if (existsSync(targetPath)) {
+            const { rmSync } = await import("fs");
+            rmSync(targetPath, { recursive: true, force: true });
+        }
+
+        try {
+            // git clone
+            execFileSync("git", ["clone", repoUrl, targetPath], {
+                cwd,
+                timeout: 60_000,
+                stdio: ["pipe", "pipe", "pipe"],
+            });
+
+            // 检查 SKILL.md 是否存在
+            const skillMdPath = join(targetPath, "SKILL.md");
+            const skillMdFound = existsSync(skillMdPath);
+
+            // 也检查 .pi/skills/<repoName>/SKILL.md
+            const piSkillMdPath = join(cwd, ".pi", "skills", repoName, "SKILL.md");
+            const piSkillMdFound = existsSync(piSkillMdPath);
+
+            return {
+                success: true,
+                path: targetPath,
+                skillMdFound: skillMdFound || piSkillMdFound,
+                slug: repoName,
+            };
+        } catch (err) {
+            log.error("[skills.ipc] github import failed:", err);
+            const msg = err instanceof Error ? err.message : String(err);
+            return ipcError(
+                "ipcErrors.skills.githubImportFailed",
+                `GitHub 导入失败: ${msg}`,
+                { url: repoUrl },
+            );
+        }
+    });
+
+    // v1.0.17: 写 SKILL.md 到磁盘 (而非只复制到剪贴板)
+    ipcMain.handle("skills:write-skill", async (_event, name: string, content: string) => {
+        const cwd = deps.getWorkspacePath();
+        if (!cwd) {
+            return ipcError(
+                "ipcErrors.skills.noWorkspace",
+                "请先选择工作区再保存技能",
+            );
+        }
+
+        // 安全化 name: 只允许 kebab-case 字符
+        const safeName = name.replace(/[^a-zA-Z0-9-_]/g, "").toLowerCase();
+        if (!safeName) {
+            return ipcError(
+                "ipcErrors.skills.writeSkillFailed",
+                "技能名称无效, 只允许字母、数字、连字符和下划线",
+                { name },
+            );
+        }
+
+        // 目标路径: <workspace>/.agents/skills/<name>/SKILL.md
+        const skillDir = join(cwd, ".agents", "skills", safeName);
+        const skillMdPath = join(skillDir, "SKILL.md");
+
+        try {
+            mkdirSync(skillDir, { recursive: true });
+            writeFileSync(skillMdPath, content, "utf-8");
+            return { success: true, path: skillMdPath, slug: safeName };
+        } catch (err) {
+            log.error("[skills.ipc] write skill failed:", err);
+            return ipcError(
+                "ipcErrors.skills.writeSkillFailed",
+                `保存技能失败: ${err instanceof Error ? err.message : String(err)}`,
+                { name, path: skillMdPath },
+            );
+        }
     });
 }

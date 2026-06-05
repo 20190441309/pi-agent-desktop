@@ -51,6 +51,10 @@ const piAPI: PiAPI = {
     onApprovalRequest: (cb) => subscribe<ApprovalRequest>("approval:request", cb),
     onApprovalDeferred: (cb) => subscribe<DeferredEdit>("approval:deferred", cb),
     onApprovalReview: (cb) => subscribe<FileReview>("approval:review", cb),
+    // v1.1: 同步 autoApprove 到主进程
+    setAutoApprove: (value: boolean) => {
+        ipcRenderer.send("approval:set-auto-approve", value);
+    },
 
     // Git
     gitUndo: (workspacePath, filePath) =>
@@ -110,6 +114,7 @@ const piAPI: PiAPI = {
     skillsUninstall: (slug) => ipcRenderer.invoke("skills:uninstall", slug),
     skillsToggle: (slug, enabled) => ipcRenderer.invoke("skills:toggle", slug, enabled),
     skillsGithubImport: (url) => ipcRenderer.invoke("skills:github-import", url),
+    skillsWriteSkill: (name, content) => ipcRenderer.invoke("skills:write-skill", name, content),
 
     // M4: Terminal
     createTerminal: (opts) => ipcRenderer.invoke("terminal:create", opts),

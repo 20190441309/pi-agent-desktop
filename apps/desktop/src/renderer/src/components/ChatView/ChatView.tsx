@@ -251,6 +251,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         onSend={handleSend}
         onStop={stopStreaming}
         workspaceId={currentWorkspace?.id}
+        workspacePath={currentWorkspace?.path}
         prefill={prefill.text}
         prefillKey={prefill.nonce}
         onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}

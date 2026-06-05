@@ -14,6 +14,13 @@ interface ApprovalPanelProps {
 export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.JSX.Element {
   const { changes, autoApprove, approveChange, rejectChange, approveAll, rejectAll, toggleAutoApprove, clearChanges } = useApprovalStore();
 
+  // v1.1: 同步 autoApprove 到主进程
+  const handleToggleAutoApprove = (): void => {
+    toggleAutoApprove();
+    // toggleAutoApprove 是异步的 (zustand set 不是立刻更新), 所以取反当前值
+    window.piAPI?.setAutoApprove?.(!autoApprove);
+  };
+
   const pendingCount = changes.filter((c) => c.status === 'pending').length;
   const totalChanges = changes.length;
 
@@ -138,7 +145,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
             {/* 右侧: 自动审批开关 */}
             <button
               type="button"
-              onClick={toggleAutoApprove}
+              onClick={handleToggleAutoApprove}
               role="switch"
               aria-checked={autoApprove}
               aria-label="自动审批"

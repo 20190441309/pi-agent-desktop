@@ -220,6 +220,8 @@ export interface PiAPI {
     onApprovalRequest(cb: (req: ApprovalRequest) => void): Unsubscribe;
     onApprovalDeferred(cb: (deferred: DeferredEdit) => void): Unsubscribe;
     onApprovalReview(cb: (review: FileReview) => void): Unsubscribe;
+    // v1.1: 同步 autoApprove 到主进程 (fire-and-forget)
+    setAutoApprove(value: boolean): void;
 
     // Git + Pi stop
     gitUndo(workspacePath: string, filePath: string): Promise<unknown>;
@@ -273,6 +275,7 @@ export interface PiAPI {
     skillsUninstall(slug: string): Promise<unknown>;
     skillsToggle(slug: string, enabled: boolean): Promise<unknown>;
     skillsGithubImport(url: string): Promise<unknown>;
+    skillsWriteSkill(name: string, content: string): Promise<unknown>;
 
     // Terminal (M4: node-pty)
     createTerminal(opts: {

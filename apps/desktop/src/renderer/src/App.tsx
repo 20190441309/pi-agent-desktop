@@ -20,6 +20,7 @@ import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { PiStatusPanel } from "./components/PiStatusPanel/PiStatusPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
+import { GitPanel } from "./components/GitPanel/GitPanel";
 import {
     MiniMaxCodeLayout,
     MiniMaxCodeSidebar,
@@ -32,8 +33,9 @@ import { useApprovalStore } from "./stores/approval-store";
 import { useSessionStore } from "./stores/session-store";
 import { isFirstLaunch } from "./utils/first-launch";
 import { useShortcuts } from "./shortcuts";
-import { I18nProvider, useI18n } from "./i18n";
+import { I18nProvider } from "./i18n";
 import { logger } from "./utils/logger";
+import { useTaskProgress } from "./hooks/useTaskProgress";
 
 function App(): React.ReactElement {
     return (
@@ -53,13 +55,20 @@ function AppShell(): React.ReactElement {
     const [showOnboarding, setShowOnboarding] = useState(false);
 
     const { getCurrentWorkspace, workspaces } = useWorkspaceStore();
-    const { loadPiConfig, openSettings } = useSettingsStore();
+    const { loadPiConfig, openSettings, settings } = useSettingsStore();
     const { status, refreshStatus } = usePiStatusStore();
     const pendingApprovalCount = useApprovalStore(
         (s) => s.changes.filter((c) => c.status === "pending").length,
     );
     const currentWorkspace = getCurrentWorkspace();
-    const { t } = useI18n();
+
+    // v1.1: 暗色主题切换 — 同步 settings.theme 到 data-theme 属性
+    useEffect(() => {
+        document.documentElement.setAttribute("data-theme", settings.theme ?? "light");
+    }, [settings.theme]);
+
+    // v1.0.17: TaskProgressPanel 接通真数据
+    const taskProgress = useTaskProgress();
 
     // 启动时拉 Pi 状态
     useEffect(() => {
@@ -184,14 +193,14 @@ function AppShell(): React.ReactElement {
     useShortcuts(shortcutHandlers);
 
     // 解析当前 section → 决定中间内容
-    // v1.0.16: 删 "automation" — 整个 AutomationPanel 组件已删(Pi CLI 没定时任务 API,
-    // 之前的 AutomationPanel 是自己撸的内存 store,没接通任何 IPC,关 app 全没)
-    const activePanel: "chat" | "skills" | "settings" =
+    // v1.0.17: "settings" 只通过 openSettings() 打开模态框，不再在主内容区占位
+    // v1.1: "git" 渲染 GitPanel
+    const activePanel: "chat" | "skills" | "git" =
         activeSection === "skills"
             ? "skills"
-            : activeSection === "settings"
-              ? "settings"
-              : "chat";
+            : activeSection === "git"
+                ? "git"
+                : "chat";
 
     // modal/浮层 portal 目标(SSR-safe)
     const portalTarget = typeof document !== "undefined" ? document.body : null;
@@ -213,11 +222,7 @@ function AppShell(): React.ReactElement {
                                 openSettings();
                                 return;
                             }
-                            if (s === "mobile-control") {
-                                setPaletteOpen(true);
-                                return;
-                            }
-                            // new-task / skills / chat / history-* 默认 fallback
+                            // new-task / skills / chat 默认 fallback
                             setActiveSection(s);
                         }}
                     />
@@ -232,16 +237,18 @@ function AppShell(): React.ReactElement {
                                 <SkillsPanel />
                             </div>
                         )}
-                        {activePanel === "settings" && (
-                            <div className="flex-1 flex items-center justify-center text-[#999] text-sm">
-                                {t("app.placeholder.settings")}
+                        {activePanel === "git" && currentWorkspace && (
+                            <div className="flex-1 overflow-hidden">
+                                <GitPanel workspacePath={currentWorkspace.path} />
                             </div>
                         )}
                     </>
                 }
                 rightSlot={
-                    // v1.0.12: 不传 tasks → 走空态,不再硬塞 3 个 demo 任务
-                    <TaskProgressPanel />
+                    // v1.0.17: 接通真数据 (useTaskProgress)
+                    <TaskProgressPanel
+                        tasks={taskProgress.tasks}
+                    />
                 }
             />
 

@@ -118,7 +118,7 @@ function IconPuzzle(): React.JSX.Element {
     );
 }
 
-function IconPhone(): React.JSX.Element {
+function IconGit(): React.JSX.Element {
     return (
         <svg
             className="h-4 w-4"
@@ -131,11 +131,12 @@ function IconPhone(): React.JSX.Element {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={1.5}
-                d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
             />
         </svg>
     );
 }
+
 
 function IconSettings(): React.JSX.Element {
     return (
@@ -179,30 +180,14 @@ function IconSettings(): React.JSX.Element {
 const MAIN_SECTIONS: MiniMaxCodeSection[] = [
     { id: "new-task", label: "新建任务", icon: <IconPlus /> },
     { id: "skills", label: "技能", icon: <IconPuzzle /> },
-    { id: "mobile-control", label: "手机操控", icon: <IconPhone /> },
+    { id: "git", label: "Git", icon: <IconGit /> },
     { id: "settings", label: "设置", icon: <IconSettings /> },
 ];
 
 const GROUPED_SECTIONS: MiniMaxCodeSidebarGroup[] = [
-    {
-        title: "任务历史",
-        // v1.0.14: 删 2 条写死历史项("对项目的看法" / "了解项目") — 之前是 demo 任务
-        // 对应的"占位文案",v1.0.16 砍 task-store 之后这 2 项是孤儿路由,点了啥都不会发生。
-        // 历史项待 v1.1 接真历史 task(从 useSessionStore 派生已建 session 列表)再恢复。
-        items: [],
-    },
-    {
-        title: "Agents",
-        items: [
-            // 当前无占位项
-        ],
-    },
-    {
-        title: "已归档",
-        items: [
-            // 当前无占位项
-        ],
-    },
+    // v1.0.17: 空分组已删除 — 等接入真实数据后再恢复
+    // "任务历史" 将从 Pi SessionManager 获取真实会话列表
+    // "Agents" 和 "已归档" 等对应功能实现后再加回
 ];
 
 // ----------------------------------------------------------------------
@@ -280,13 +265,13 @@ export function MiniMaxCodeSidebar({
             >
                 <div
                     className="flex h-6 w-6 items-center justify-center rounded-[var(--mm-radius-sm)] bg-[var(--mm-bg-active)]"
-                    aria-label="MiniMax Code logo"
+                    aria-label="Pi Desktop logo"
                 >
                     <span
                         className="text-[12px] font-bold leading-none text-[var(--mm-text-on-active)]"
                         aria-hidden="true"
                     >
-                        M
+                        π
                     </span>
                 </div>
             </div>
@@ -312,8 +297,8 @@ export function MiniMaxCodeSidebar({
                     ))}
                 </div>
 
-                {/* 4 个分组(标题 + 占位项,空组显示"（暂无）"占位) */}
-                {GROUPED_SECTIONS.map((group) => (
+                {/* v1.0.17: 空分组已移除，等接入真实数据后再恢复 */}
+                {GROUPED_SECTIONS.length > 0 && GROUPED_SECTIONS.map((group) => (
                     <div key={group.title} className="flex flex-col gap-0.5">
                         <h3
                             className="px-3 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]"
