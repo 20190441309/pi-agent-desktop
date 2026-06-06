@@ -1,0 +1,48 @@
+// 2026-06-06 hotfix: 持久化失败提示 banner
+// 当 session-store.persistErrorCount > 0 时显示, 提示用户消息可能没完整落盘
+// 用户点 ✕ 调 clearPersistErrors 重置计数
+
+import { useSessionStore } from "../../stores/session-store";
+
+export function PersistenceBanner(): React.JSX.Element | null {
+    const persistErrorCount = useSessionStore((s) => s.persistErrorCount);
+    const lastPersistError = useSessionStore((s) => s.lastPersistError);
+    const clearPersistErrors = useSessionStore((s) => s.clearPersistErrors);
+
+    if (persistErrorCount === 0) return null;
+
+    return (
+        <div
+            role="alert"
+            data-persistence-banner="error"
+            className="flex items-center gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-2 text-sm text-[var(--mm-text-primary)]"
+        >
+            <svg
+                className="h-4 w-4 shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+            >
+                <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.74-2.99l-6.93-12a2 2 0 00-3.48 0l-6.93 12A2 2 0 005.07 19z"
+                />
+            </svg>
+            <span className="flex-1 truncate">
+                消息持久化失败 {persistErrorCount} 次
+                {lastPersistError ? ` — ${lastPersistError}` : ""}
+            </span>
+            <button
+                type="button"
+                onClick={() => clearPersistErrors()}
+                className="shrink-0 rounded-[var(--mm-radius-sm)] px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
+                aria-label="关闭持久化失败提示"
+            >
+                ✕
+            </button>
+        </div>
+    );
+}

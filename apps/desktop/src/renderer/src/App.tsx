@@ -11,6 +11,8 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
+// 2026-06-06 hotfix: 持久化失败顶部提示
+import { PersistenceBanner } from "./components/PersistenceBanner/PersistenceBanner";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import { CommandPalette } from "./components/CommandPalette/CommandPalette";
 import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet/ShortcutsCheatsheet";
@@ -234,6 +236,8 @@ function AppShell(): React.ReactElement {
 
     return (
         <>
+            {/* 2026-06-06 hotfix: 持久化失败时, 顶部 banner 提示 */}
+            <PersistenceBanner />
             <MiniMaxCodeLayout
                 leftCollapsed={leftCollapsed}
                 rightCollapsed={rightCollapsed}
