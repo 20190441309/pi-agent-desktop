@@ -12,8 +12,9 @@ interface MarkdownRendererProps {
 
 export function MarkdownRenderer({ content }: MarkdownRendererProps): React.ReactElement {
     return (
-        <div className="prose prose-sm max-w-none">
+        <div className="markdown-body max-w-none">
             <ReactMarkdown rehypePlugins={[rehypeHighlight]}>{content}</ReactMarkdown>
         </div>
     );
 }
+

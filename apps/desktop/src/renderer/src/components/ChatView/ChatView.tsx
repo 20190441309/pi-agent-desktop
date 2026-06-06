@@ -96,7 +96,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             </div>
 
             {/* 标题 */}
-            <h2 className="text-xl font-semibold text-[#1a1a1a] mb-2">
+            <h2 className="text-xl font-normal text-[#1a1a1a] mb-2">
               {t('chatView.welcome.title')}
             </h2>
 
@@ -248,6 +248,22 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
               </div>
             )}
 
+            {/* 回到顶部按钮 */}
+            {messages.length > 5 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const container = messagesEndRef.current?.parentElement;
+                  container?.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#e5e5e5] shadow-sm text-[#666] hover:text-[#1a1a1a] transition-all"
+                aria-label="回到顶部"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+              </button>
+            )}
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -269,3 +285,4 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     </div>
   );
 }
+

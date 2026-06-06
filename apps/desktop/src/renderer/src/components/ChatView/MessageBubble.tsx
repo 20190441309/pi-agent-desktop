@@ -1,8 +1,8 @@
-// 消息气泡 - 用户消息右侧 pill，AI 消息正文块（无头像）
-// v1.0.4: author 走 t()
-// v1.0.9: 时间戳走 utils/format.{formatTime, formatIso}, 无效输入不渲染 "Invalid Date"
+// 消息气泡 - v2.0 MiniMax Code 风格
+// AI 消息: 白底圆角卡片 + 底部复制/时间戳
+// 用户消息: 浅色 pill + normal 字重
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { Message } from '../../stores/session-store';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { CommandCard } from './CommandCard';
@@ -12,7 +12,6 @@ import { formatTime, formatIso } from '../../utils/format';
 
 interface MessageBubbleProps {
   message: Message;
-  /** 是否仍在流式接收中 */
   isStreaming?: boolean;
 }
 
@@ -23,6 +22,14 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
   const timeIso = formatIso(message.timestamp);
   const authorLabel = isUser ? t('messageBubble.userAuthor') : t('messageBubble.piAuthor');
   const articleLabel = `${authorLabel} · ${timeText}`;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (!message.content) return;
+    void navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [message.content]);
 
   return (
     <article
@@ -32,17 +39,15 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
       aria-busy={isStreaming}
     >
       <div className={isUser ? 'max-w-[74%]' : 'w-full max-w-full'}>
-          {/* 消息内容 */}
           <div className={`${
             isUser
-              ? 'rounded-[18px] bg-[#f1f1ef] px-4 py-3 text-[#1f1f1f]'
-              : 'text-[#1f1f1f] py-1'
+              ? 'rounded-2xl bg-[#f5f5f5] px-4 py-3 text-[#1f1f1f]'
+              : 'rounded-xl bg-white px-4 py-3 text-[#1f1f1f]'
           }`}>
             {isUser ? (
-              <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</div>
+              <div className="whitespace-pre-wrap text-sm leading-relaxed font-normal">{message.content}</div>
             ) : (
               <>
-                {/* 思考过程（可折叠） */}
                 {message.thinking && (
                   <ThinkingBlock
                     content={message.thinking}
@@ -50,14 +55,12 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
                   />
                 )}
 
-                {/* 正文内容 */}
                 {message.content && (
-                  <div className="text-sm leading-relaxed">
+                  <div className="text-sm leading-relaxed font-normal">
                     <MarkdownRenderer content={message.content} />
                   </div>
                 )}
 
-                {/* 流式状态下显示打字光标（尚无内容时） */}
                 {isStreaming && !message.content && !message.thinking && (
                   <div className="flex items-center gap-2 py-1" aria-hidden="true">
                     <span className="inline-block w-0.5 h-4 bg-[#1a1a1a] animate-pulse" />
@@ -66,7 +69,6 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
               </>
             )}
 
-            {/* 工具调用 */}
             {message.toolCalls && message.toolCalls.length > 0 && (
               <div className={`space-y-2 ${isUser ? 'mt-3' : 'mt-4'}`}>
                 {message.toolCalls.map((toolCall) => (
@@ -75,11 +77,28 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
               </div>
             )}
 
-            {/* 时间戳 */}
-            <div
-              className={`text-xs mt-2 ${isUser ? 'text-[#8a8a8a]' : 'text-[#aaa]'}`}
-            >
-              <time dateTime={timeIso}>{timeText}</time>
+            {/* 底部栏: 复制 + 时间戳 */}
+            <div className={`flex items-center gap-2 mt-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+              {!isUser && message.content && (
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="text-[#aaa] hover:text-[#666] transition-colors"
+                  aria-label={copied ? "已复制" : "复制内容"}
+                  title={copied ? "已复制" : "复制"}
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    {copied ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    )}
+                  </svg>
+                </button>
+              )}
+              <time dateTime={timeIso} className="text-xs text-[#aaa]">
+                {timeText}
+              </time>
             </div>
           </div>
       </div>

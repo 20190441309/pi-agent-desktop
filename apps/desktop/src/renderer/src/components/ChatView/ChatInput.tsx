@@ -263,7 +263,7 @@ export function ChatInput({
   return (
     <div className="bg-transparent px-8 pt-2 pb-2">
       <PermissionRequestStack />
-      <div className="mx-auto max-w-[770px] overflow-hidden rounded-[18px] border border-[#e6e6e3] bg-white shadow-[0_18px_50px_rgba(0,0,0,0.08)]">
+      <div className="mx-auto max-w-[770px] overflow-hidden rounded-[18px] border border-[#e6e6e3] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
         {/* 附件 chips */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-4 pt-3" role="list" aria-label="已选附件">
@@ -383,7 +383,7 @@ export function ChatInput({
         </div>
 
         {/* 控制栏 */}
-        <div className="flex items-center justify-between border-t border-[#f0f0ee] bg-[#fbfbfa] px-4 py-2">
+        <div className="flex items-center justify-between border-t border-[#f0f0ee] bg-[#fafafa] px-4 py-2">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -543,3 +543,4 @@ export function ChatInput({
     </div>
   );
 }
+

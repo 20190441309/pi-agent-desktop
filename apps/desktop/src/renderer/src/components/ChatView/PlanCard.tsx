@@ -91,7 +91,7 @@ export function PlanCardView({ workspaceId, onExecute }: PlanCardViewProps): Rea
 
   if (!activeCard && questionPanel) {
     return (
-      <section className="rounded-xl border border-[#d7d7d4] bg-[#f6f6f3] p-4 text-[#202020] shadow-sm">
+      <section className="rounded-xl border border-[#d7d7d4] bg-[#f6f6f3] p-4 text-[#202020] ">
         {questionPanel}
       </section>
     );
@@ -100,7 +100,7 @@ export function PlanCardView({ workspaceId, onExecute }: PlanCardViewProps): Rea
   if (!activeCard) return null;
 
   return (
-    <section className="rounded-xl border border-[#d7d7d4] bg-[#eeeeea] p-4 text-[#202020] shadow-sm">
+    <section className="rounded-xl border border-[#d7d7d4] bg-[#eeeeea] p-4 text-[#202020] ">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <div className="text-xs font-medium uppercase text-[#777]">Plan Mode</div>
@@ -108,7 +108,7 @@ export function PlanCardView({ workspaceId, onExecute }: PlanCardViewProps): Rea
         </div>
         <span className="rounded-md bg-white px-2 py-1 text-xs text-[#666]">计划</span>
       </div>
-      <div className="prose prose-sm max-w-none text-sm">
+      <div className="markdown-body max-w-none text-sm">
         <MarkdownRenderer content={activeCard.content} />
       </div>
 
@@ -151,3 +151,5 @@ export function PlanCardView({ workspaceId, onExecute }: PlanCardViewProps): Rea
     </section>
   );
 }
+
+

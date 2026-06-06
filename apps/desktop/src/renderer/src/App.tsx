@@ -55,6 +55,13 @@ function AppShell(): React.ReactElement {
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [showCheatsheet, setShowCheatsheet] = useState(false);
     const [showOnboarding, setShowOnboarding] = useState(false);
+    const [leftCollapsed, setLeftCollapsed] = useState(false);
+    const [rightCollapsed, setRightCollapsed] = useState(false);
+    const currentSession = useSessionStore((s) =>
+        s.currentSessionId
+            ? s.sessions.find((session) => session.id === s.currentSessionId) ?? null
+            : null,
+    );
 
     const { getCurrentWorkspace, workspaces } = useWorkspaceStore();
     const { loadPiConfig, openSettings, settings } = useSettingsStore();
@@ -68,6 +75,16 @@ function AppShell(): React.ReactElement {
         ensurePermissionSubscriptions();
         ensurePlanSubscriptions();
     }, []);
+
+    // v2.0: 自动右栏 — 空对话页隐藏右栏, 有消息后显示
+    useEffect(() => {
+        const hasMessages = (currentSession?.messages?.length ?? 0) > 0;
+        setRightCollapsed((prev) => {
+            if (hasMessages && prev) return false;
+            if (!hasMessages && !prev) return true;
+            return prev;
+        });
+    }, [currentSession?.messages?.length]);
 
     // v1.1: 暗色主题切换 — 同步 settings.theme 到 data-theme 属性
     useEffect(() => {
@@ -218,6 +235,10 @@ function AppShell(): React.ReactElement {
     return (
         <>
             <MiniMaxCodeLayout
+                leftCollapsed={leftCollapsed}
+                rightCollapsed={rightCollapsed}
+                onCollapseLeft={() => setLeftCollapsed((v) => !v)}
+                onCollapseRight={() => setRightCollapsed((v) => !v)}
                 leftSlot={
                     <MiniMaxCodeSidebar
                         currentSection={activeSection}

@@ -214,8 +214,8 @@ function NavItem({ section, active, onClick }: NavItemProps): React.JSX.Element 
     // hover: 轻灰背景
     // 行高 32px,左右 padding 12px
     const baseClasses =
-        "flex w-full items-center gap-2.5 rounded-[var(--mm-radius-sm)] px-3 text-[13px] leading-[20px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-bg-active)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--mm-bg-sidebar)]";
-    const heightClasses = "h-8";
+        "flex w-full items-center gap-3 rounded-[var(--mm-radius-sm)] px-3 text-[13px] leading-relaxed transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-bg-active)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--mm-bg-sidebar)]";
+    const heightClasses = "h-10";
     const stateClasses = active
         ? "bg-[var(--mm-bg-selected)] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-selected)]"
         : "bg-transparent text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]";
@@ -299,11 +299,11 @@ export function MiniMaxCodeSidebar({
                 原 IconBar 用 aria-label="主导航",新 Sidebar 一开始用 "MiniMax Code primary navigation"
                 导致 a11y.spec.ts 找主导航 15s timeout fail, 改回 "主导航" 修复回归) */}
             <nav
-                className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pb-2"
+                className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2 pb-4 pt-2"
                 aria-label="主导航"
             >
                 {/* 主操作分组(无标题) */}
-                <div className="flex flex-col gap-0.5">
+                <div className="flex flex-col gap-1">
                     {MAIN_SECTIONS.map((section) => (
                         <NavItem
                             key={section.id}
@@ -315,8 +315,8 @@ export function MiniMaxCodeSidebar({
                 </div>
 
                 {historyItems.length > 0 && (
-                    <div className="flex flex-col gap-0.5">
-                        <h3 className="px-3 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
+                    <div className="flex flex-col gap-1">
+                        <h3 className="px-3 pt-3 pb-2 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
                             任务历史
                         </h3>
                         {historyItems.map((item) => (
@@ -332,9 +332,9 @@ export function MiniMaxCodeSidebar({
 
                 {/* v1.0.17: 空分组已移除，等接入真实数据后再恢复 */}
                 {GROUPED_SECTIONS.length > 0 && GROUPED_SECTIONS.map((group) => (
-                    <div key={group.title} className="flex flex-col gap-0.5">
+                    <div key={group.title} className="flex flex-col gap-1">
                         <h3
-                            className="px-3 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]"
+                            className="px-3 pt-3 pb-2 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]"
                             data-mmcode-group-title={group.title}
                         >
                             {group.title}
@@ -347,7 +347,7 @@ export function MiniMaxCodeSidebar({
                                 （暂无）
                             </p>
                         ) : (
-                            <div className="flex flex-col gap-0.5">
+                            <div className="flex flex-col gap-1">
                                 {group.items.map((item) => (
                                     <NavItem
                                         key={item.id}
@@ -369,3 +369,5 @@ export function MiniMaxCodeSidebar({
         </div>
     );
 }
+
+

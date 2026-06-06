@@ -44,7 +44,7 @@ export function SettingsPanel(): React.JSX.Element {
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div
-                className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+                className="bg-white rounded-xl shadow-2xl w-[720px] h-[560px] flex flex-col"
                 role="dialog"
                 aria-modal="true"
                 aria-label={t('settings.title')}
@@ -102,7 +102,7 @@ export function SettingsPanel(): React.JSX.Element {
                                     onClick={() => setActiveTab(tab.id)}
                                     className={`w-full flex items-center px-3 py-2 rounded-lg text-sm transition-colors ${
                                         isActive
-                                            ? 'bg-[#1a1a1a] text-white'
+                                            ? 'bg-[#f0f0f0] text-[#1a1a1a] font-medium'
                                             : 'text-[#666] hover:bg-[#f0f0f0]'
                                     }`}
                                 >
@@ -436,7 +436,7 @@ export function SettingsPanel(): React.JSX.Element {
                     <button
                         type="button"
                         onClick={closeSettings}
-                        className="px-4 py-2 text-sm bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors"
+                        className="px-4 py-2 text-sm bg-[#f0f0f0] text-[#1a1a1a] font-medium rounded-lg hover:bg-[#333] transition-colors"
                         aria-label={t('settings.closeAria')}
                     >
                         {t('common.done')}
@@ -446,3 +446,5 @@ export function SettingsPanel(): React.JSX.Element {
         </div>
     );
 }
+
+
