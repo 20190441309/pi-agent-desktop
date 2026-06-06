@@ -22,6 +22,12 @@ beforeEach(() => {
     emitPiEvent = null;
     (globalThis as { window: unknown }).window = {
         dispatchEvent: vi.fn(),
+        // 2026-06-06 hotfix (T6): usePiStream 用 setTimeout/setInterval 防 debounce 卡住,
+        // 测试 mock window 历来不包含定时器,补上
+        setTimeout: (...args: Parameters<typeof setTimeout>) => setTimeout(...args),
+        clearTimeout: (id: number) => clearTimeout(id),
+        setInterval: (...args: Parameters<typeof setInterval>) => setInterval(...args),
+        clearInterval: (id: number) => clearInterval(id),
         piAPI: {
             getStatus: vi.fn(async () => ({
                 installed: true,
