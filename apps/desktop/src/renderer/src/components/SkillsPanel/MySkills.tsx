@@ -13,9 +13,11 @@ export function MySkills(): React.JSX.Element {
         toggleSkill,
         uninstallSkill,
         skillhubAvailable,
+        checkAvailability,
         error,
     } = useSkillsStore();
     const [query, setQuery] = useState("");
+    const [pendingUninstall, setPendingUninstall] = useState<string | null>(null);
 
     useEffect(() => {
         refreshInstalled();
@@ -34,7 +36,10 @@ export function MySkills(): React.JSX.Element {
                     curl -fsSL https://skillhub.cn/install/install.sh | bash
                 </code>
                 <button
-                    onClick={() => window.location.reload()}
+                    onClick={() => {
+                        void checkAvailability();
+                        void refreshInstalled();
+                    }}
                     className="px-3 py-1.5 bg-[#1a1a1a] text-white text-xs rounded hover:bg-[#333] transition-colors"
                 >
                     重新检测
@@ -132,11 +137,7 @@ export function MySkills(): React.JSX.Element {
                                     {s.enabled ? "禁用" : "启用"}
                                 </button>
                                 <button
-                                    onClick={() => {
-                                        if (confirm(`确认卸载技能 ${s.slug}?`)) {
-                                            void uninstallSkill(s.slug);
-                                        }
-                                    }}
+                                    onClick={() => setPendingUninstall(s.slug)}
                                     className="text-xs px-3 py-1 text-red-600 hover:bg-red-50 rounded transition-colors"
                                 >
                                     卸载
@@ -144,6 +145,42 @@ export function MySkills(): React.JSX.Element {
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {pendingUninstall && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35">
+                    <div
+                        className="w-[360px] rounded-2xl border border-[#e5e5e5] bg-white p-5 shadow-2xl"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="确认卸载技能"
+                    >
+                        <h3 className="text-base font-semibold text-[#1a1a1a]">卸载技能</h3>
+                        <p className="mt-2 text-sm leading-6 text-[#666]">
+                            确认卸载 <span className="font-mono text-[#1a1a1a]">{pendingUninstall}</span> 吗？
+                        </p>
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setPendingUninstall(null)}
+                                className="rounded-lg px-3 py-1.5 text-sm text-[#666] hover:bg-[#f5f5f5]"
+                            >
+                                取消
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const slug = pendingUninstall;
+                                    setPendingUninstall(null);
+                                    void uninstallSkill(slug);
+                                }}
+                                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
+                            >
+                                卸载
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

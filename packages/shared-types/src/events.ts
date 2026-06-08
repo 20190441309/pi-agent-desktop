@@ -17,6 +17,9 @@ export type PiEventType =
     | "compaction_end"
     | "auto_retry_start"
     | "auto_retry_end"
+    | "usage_update"
+    | "context_update"
+    | "custom_message"
     | "extension_error";
 
 /** message_update 时的子类型 (assistantMessageEvent.type) */
@@ -164,4 +167,7 @@ export type PiEvent =
     | { type: "compaction_end" }
     | { type: "auto_retry_start" }
     | { type: "auto_retry_end" }
+    | { type: "usage_update"; [key: string]: unknown }
+    | { type: "context_update"; [key: string]: unknown }
+    | { type: "custom_message"; [key: string]: unknown }
     | { type: "extension_error" };

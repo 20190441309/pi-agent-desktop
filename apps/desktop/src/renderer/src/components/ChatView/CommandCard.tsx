@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { ToolCall } from '../../stores/session-store';
 import { DiffViewer, extractDiffFromOutput } from '../DiffView';
 import { formatTime, formatDuration } from '../../utils/format';
+import { classifyTerminalCommand } from '../../utils/terminal-command';
 
 interface CommandCardProps {
   toolCall: ToolCall;
@@ -13,6 +14,11 @@ interface CommandCardProps {
 
 export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [copied, setCopied] = useState<"input" | "output" | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const toolName = typeof toolCall.name === "string" && toolCall.name.length > 0
+    ? toolCall.name
+    : "tool";
   
   const getStatusColor = () => {
     switch (toolCall.status) {
@@ -48,38 +54,6 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
     }
   };
   
-  const getToolIcon = () => {
-    switch (toolCall.name) {
-      case 'read': return (
-        <svg className="w-4 h-4 text-[#666666]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      );
-      case 'write': return (
-        <svg className="w-4 h-4 text-[#666666]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-        </svg>
-      );
-      case 'edit': return (
-        <svg className="w-4 h-4 text-[#666666]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-      );
-      case 'bash': return (
-        <svg className="w-4 h-4 text-[#666666]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      );
-      default: return (
-        <svg className="w-4 h-4 text-[#666666]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-      );
-    }
-  };
-  
   // 提前把 input 序列化: TS strict 下 unknown 在 JSX child 位置需要 narrow
   const inputStr: string | null =
     toolCall.input === null || toolCall.input === undefined
@@ -93,24 +67,48 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
       : typeof toolCall.output === "string"
         ? toolCall.output
         : JSON.stringify(toolCall.output, null, 2);
+  const commandText = getCommandText(toolCall.input ?? toolCall.args);
+  const commandMode = commandText ? classifyTerminalCommand(commandText) : "run";
+  const outputPaths = outputStr ? extractOutputPaths(outputStr) : [];
+
+  const copyText = async (kind: "input" | "output", text: string | null): Promise<void> => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      setCopied(null);
+      setCopyError(`复制失败: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    setCopyError(null);
+    setCopied(kind);
+    setTimeout(() => setCopied(null), 1400);
+  };
+
+  const openOutputPath = (path: string): void => {
+    window.dispatchEvent(new CustomEvent("workspace:open-file", { detail: { path } }));
+  };
+  const runInTerminal = (): void => {
+    if (!commandText) return;
+    window.dispatchEvent(new CustomEvent("terminal:run-command", {
+      detail: { command: commandText, mode: commandMode },
+    }));
+  };
 
   return (
     <div className="border-l border-[#e5e5e2] pl-3">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full items-center justify-between py-1 text-left transition-colors duration-150 hover:text-[#333]"
+        className="flex w-full items-center justify-between py-1 text-left text-[#a0a0a0] transition-colors duration-150 hover:text-[#777]"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
           {getStatusIcon()}
-          <div className="flex items-center gap-2">
-            {getToolIcon()}
-            <span className="text-sm text-[#777]">
-              {toolCall.name === 'bash' ? '运行命令' : 
-               toolCall.name === 'read' ? '读取文件' :
-               toolCall.name === 'write' ? '写入文件' :
-               toolCall.name === 'edit' ? '编辑文件' : toolCall.name}
-            </span>
-          </div>
+          <span className="min-w-0 truncate text-xs">
+              {toolName === 'bash' ? '运行命令' :
+               toolName === 'read' ? '读取文件' :
+               toolName === 'write' ? '写入文件' :
+               toolName === 'edit' ? '编辑文件' : toolName}
+          </span>
         </div>
         
         <div className="flex items-center gap-2">
@@ -135,6 +133,57 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
       {/* Content */}
       {isExpanded && (
         <div className="py-2">
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            {commandText && (
+              <>
+                <button
+                  type="button"
+                  onClick={runInTerminal}
+                  className="rounded-md border border-[#d8d8d2] bg-[#fbfbfa] px-2 py-1 text-[11px] text-[#333] hover:bg-white"
+                  title={commandMode === "draft" ? "高风险命令只填入终端，不自动执行" : "在终端中执行此命令"}
+                >
+                  {commandMode === "draft" ? "填入终端" : "在终端运行"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void copyText("input", commandText)}
+                  className="rounded-md border border-[#eeeeea] px-2 py-1 text-[11px] text-[#666] hover:bg-[#fbfbfa] hover:text-[#222]"
+                >
+                  {copied === "input" ? "已复制命令" : "复制命令"}
+                </button>
+              </>
+            )}
+            {commandMode === "draft" && (
+              <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                需手动确认执行
+              </span>
+            )}
+            {outputStr && (
+              <button
+                type="button"
+                onClick={() => void copyText("output", outputStr)}
+                className="rounded-md border border-[#eeeeea] px-2 py-1 text-[11px] text-[#666] hover:bg-[#fbfbfa] hover:text-[#222]"
+              >
+                {copied === "output" ? "已复制输出" : "复制输出"}
+              </button>
+            )}
+            {outputPaths.slice(0, 3).map((path) => (
+              <button
+                key={path}
+                type="button"
+                onClick={() => openOutputPath(path)}
+                className="max-w-[220px] truncate rounded-md border border-[#eeeeea] px-2 py-1 text-[11px] text-[#666] hover:bg-[#fbfbfa] hover:text-[#222]"
+                title={`在文件工作区打开 ${path}`}
+              >
+                打开 {basename(path)}
+              </button>
+            ))}
+            {copyError && (
+              <span className="self-center text-[11px] text-[#b91c1c]" role="alert">
+                {copyError}
+              </span>
+            )}
+          </div>
           {/* Input */}
           {inputStr !== null ? (
             <div className="mb-3">
@@ -149,7 +198,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
           {outputStr !== null ? (
             <div>
               <div className="mb-1 text-xs font-medium text-[#777]">输出：</div>
-              {(toolCall.name === 'edit' || toolCall.name === 'write') &&
+              {(toolName === 'edit' || toolName === 'write') &&
                typeof toolCall.output === 'string' &&
                extractDiffFromOutput(toolCall.output) ? (
                 <div className="mt-1">
@@ -183,4 +232,29 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
       )}
     </div>
   );
+}
+
+function getCommandText(value: unknown): string | null {
+  if (typeof value === "string") return value.trim() || null;
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const command = record.command ?? record.cmd ?? record.script;
+  return typeof command === "string" && command.trim() ? command.trim() : null;
+}
+
+function basename(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
+function extractOutputPaths(output: string): string[] {
+  const results = new Set<string>();
+  const pattern = /(?:[A-Za-z]:[\\/][^\s"'`<>]+|(?:[\w.-]+[\\/])+[\w.@()[\]-]+\.[A-Za-z0-9_+-]{1,12})/g;
+  for (const match of output.matchAll(pattern)) {
+    const path = match[0].replace(/[),.;:]+$/, "");
+    if (!/\.(ts|tsx|js|jsx|json|md|txt|html|css|scss|yml|yaml|toml|py|rs|go|java|cs|cpp|c|h|png|jpg|jpeg|webp|svg|pdf)$/i.test(path)) {
+      continue;
+    }
+    results.add(path);
+  }
+  return [...results];
 }

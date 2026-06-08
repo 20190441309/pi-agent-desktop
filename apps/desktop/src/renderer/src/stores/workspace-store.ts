@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { logger } from '../utils/logger';
 import { isNumberOrUndefined } from '../utils/format';
+import { isIpcError } from '@shared';
 
 export interface Workspace {
   id: string;
@@ -30,22 +31,35 @@ export interface GitStatus {
 interface WorkspaceState {
   workspaces: Workspace[];
   currentWorkspaceId: string | null;
+  lastError: string | null;
 
   // Actions
-  addWorkspace: (name: string, path: string) => Workspace;
+  addWorkspace: (name: string, path: string, id?: string) => Workspace;
+  createWorkspace: (name: string, path: string) => Promise<Workspace | null>;
   removeWorkspace: (workspaceId: string) => void;
   setCurrentWorkspace: (workspaceId: string) => void;
   updateWorkspace: (workspaceId: string, updates: Partial<Workspace>) => void;
   updateGitStatus: (workspaceId: string, gitStatus: GitStatus) => void;
   getCurrentWorkspace: () => Workspace | null;
+  clearError: () => void;
+}
+
+function getPiAPI(): Window["piAPI"] | undefined {
+  return typeof window !== "undefined" ? window.piAPI : undefined;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
   // Load workspaces from main process on init
   const loadWorkspaces = async () => {
     try {
-      if (window.piAPI) {
-        const wsList = await window.piAPI.listWorkspaces();
+      const piAPI = getPiAPI();
+      if (piAPI) {
+        const wsList = await piAPI.listWorkspaces();
+        if (isIpcError(wsList)) {
+          logger.error('[workspace-store] listWorkspaces failed:', wsList.fallback);
+          set({ lastError: wsList.fallback });
+          return;
+        }
         const workspaces = wsList.map((ws) => {
           const w = ws as { id: string; name: string; path: string; createdAt: number; lastActiveAt?: number };
           // v1.0.9: 守卫复用 isNumberOrUndefined — undefined 时降级 createdAt
@@ -58,10 +72,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
             lastActiveAt: new Date(isNumberOrUndefined(lastActive) ? lastActive : w.createdAt),
           };
         });
-        set({ workspaces, currentWorkspaceId: workspaces[0]?.id ?? null });
+        const currentWorkspace = workspaces
+          .slice()
+          .sort((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime())[0];
+        set({ workspaces, currentWorkspaceId: currentWorkspace?.id ?? null, lastError: null });
       }
     } catch (e) {
       logger.error('[workspace-store] Failed to load workspaces:', e);
+      set({ lastError: e instanceof Error ? e.message : String(e) });
     }
   };
   loadWorkspaces();
@@ -69,25 +87,54 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
   return {
   workspaces: [],
   currentWorkspaceId: null,
+  lastError: null,
 
-  addWorkspace: (name: string, path: string) => {
+  addWorkspace: (name: string, path: string, id?: string) => {
+    const now = new Date();
     const newWorkspace: Workspace = {
-      id: Date.now().toString(),
+      id: id ?? Date.now().toString(),
       name,
       path,
-      createdAt: new Date(),
-      lastActiveAt: new Date()
+      createdAt: now,
+      lastActiveAt: now
     };
 
     set(state => ({
-      workspaces: [...state.workspaces, newWorkspace],
+      workspaces: state.workspaces.some((w) => w.path === path)
+        ? state.workspaces.map((w) =>
+            w.path === path
+              ? { ...w, id: newWorkspace.id, name, lastActiveAt: now }
+              : w
+          )
+        : [...state.workspaces, newWorkspace],
       currentWorkspaceId: newWorkspace.id
     }));
 
     return newWorkspace;
   },
 
+  createWorkspace: async (name: string, path: string) => {
+    const piAPI = getPiAPI();
+    try {
+      if (!piAPI?.createWorkspace) {
+        return get().addWorkspace(name, path);
+      }
+      const result = await piAPI.createWorkspace(name, path);
+      if (isIpcError(result)) {
+        logger.error('[workspace-store] createWorkspace failed:', result.fallback);
+        set({ lastError: result.fallback });
+        return null;
+      }
+      return get().addWorkspace(result.name, result.path, result.id);
+    } catch (e) {
+      logger.error('[workspace-store] createWorkspace failed:', e);
+      set({ lastError: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  },
+
   removeWorkspace: (workspaceId: string) => {
+    const before = get();
     set(state => {
       const newWorkspaces = state.workspaces.filter(w => w.id !== workspaceId);
       const newCurrentId = state.currentWorkspaceId === workspaceId
@@ -96,15 +143,33 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
 
       return {
         workspaces: newWorkspaces,
-        currentWorkspaceId: newCurrentId
+        currentWorkspaceId: newCurrentId,
+        lastError: null,
       };
     });
 
     // Sync to main process
-    if (window.piAPI) {
-      window.piAPI.deleteWorkspace(workspaceId).catch((e) =>
-        logger.error('[workspace-store] deleteWorkspace failed:', e)
-      );
+    const piAPI = getPiAPI();
+    if (piAPI) {
+      piAPI.deleteWorkspace(workspaceId)
+        .then((result) => {
+          if (isIpcError(result)) {
+            logger.error('[workspace-store] deleteWorkspace failed:', result.fallback);
+            set({
+              workspaces: before.workspaces,
+              currentWorkspaceId: before.currentWorkspaceId,
+              lastError: result.fallback,
+            });
+          }
+        })
+        .catch((e) => {
+          logger.error('[workspace-store] deleteWorkspace failed:', e);
+          set({
+            workspaces: before.workspaces,
+            currentWorkspaceId: before.currentWorkspaceId,
+            lastError: e instanceof Error ? e.message : String(e),
+          });
+        });
     }
   },
   
@@ -136,6 +201,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
   getCurrentWorkspace: () => {
     const state = get();
     return state.workspaces.find(w => w.id === state.currentWorkspaceId) || null;
-  }
+  },
+
+  clearError: () => set({ lastError: null }),
   };
 });

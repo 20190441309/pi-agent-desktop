@@ -368,7 +368,7 @@ describe("session:update-tool-call", () => {
 // ── 防重复注册回归(no-duplicate-ipc.test.ts 已经扫过字面量) ─────────
 
 describe("IPC channel 名称字面量", () => {
-    it("注册了 7 个 session:* handler", () => {
+    it("注册了 9 个 session:* handler", () => {
         handlers.clear();
         setupWithStore();
         const sessionHandlers = Array.from(handlers.keys()).filter((k) =>
@@ -377,11 +377,13 @@ describe("IPC channel 名称字面量", () => {
         expect(sessionHandlers.sort()).toEqual(
             [
                 "session:append-message",
+                "session:archive",
                 "session:create",
                 "session:delete",
                 "session:list",
                 "session:rename",
                 "session:update-message",
+                "session:update-metadata",
                 "session:update-tool-call",
             ].sort(),
         );

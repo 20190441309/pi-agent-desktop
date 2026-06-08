@@ -9,7 +9,7 @@
 
 import { create } from 'zustand';
 import { logger } from '../utils/logger';
-import { isIpcError, type Message, type ToolCall } from '@shared';
+import { isIpcError, type Message, type SessionUsageSnapshot, type ToolCall, type ToolPermissions } from '@shared';
 
 // 2026-06-06 hotfix: 用 @shared 提供的 Message/ToolCall 类型,不再本地 duplicate
 // 主进程 store 里的 timestamp/startTime/endTime 是 string(JSON 反序列化后), 内存里
@@ -25,6 +25,18 @@ export interface Session {
   createdAt: Date;
   updatedAt: Date;
   messages: Message[];
+  archived?: boolean;
+  favorite?: boolean;
+  tags?: string[];
+  readOnly?: boolean;
+  lastOpenedAt?: Date;
+  summary?: string;
+  lastOutputPaths?: string[];
+  usage?: SessionUsageSnapshot;
+  toolPermissions?: ToolPermissions;
+  parentSessionId?: string;
+  forkedFromMessageId?: string;
+  forkedAt?: Date;
 }
 
 interface SessionState {
@@ -36,9 +48,34 @@ interface SessionState {
   lastPersistError: string | null;
 
   // Actions
-  createSession: (workspaceId: string) => Session;
+  createSession: (workspaceId: string) => Promise<Session>;
   renameSession: (sessionId: string, newTitle: string) => void;
   deleteSession: (sessionId: string) => void;
+  archiveSession: (sessionId: string, archived: boolean) => void;
+  updateSessionMetadata: (
+    sessionId: string,
+    updates: Pick<
+      Partial<Session>,
+      | "summary"
+      | "lastOutputPaths"
+      | "favorite"
+      | "tags"
+      | "archived"
+      | "readOnly"
+      | "lastOpenedAt"
+      | "usage"
+      | "toolPermissions"
+      | "parentSessionId"
+      | "forkedFromMessageId"
+      | "forkedAt"
+    >,
+  ) => void;
+  toggleFavorite: (sessionId: string) => void;
+  setSessionTags: (sessionId: string, tags: string[]) => void;
+  openReadOnlySession: (sessionId: string) => void;
+  continueSession: (sessionId: string, fromMessageId?: string) => Promise<Session>;
+  updateSessionUsage: (sessionId: string, usage: SessionUsageSnapshot) => void;
+  updateSessionToolPermissions: (sessionId: string, permissions: ToolPermissions) => void;
   setCurrentSession: (sessionId: string) => void;
   /**
    * 2026-06-06 hotfix: actions 接受 opts.persist 跳过 fire-and-forget IPC。
@@ -146,56 +183,120 @@ function notePersistFailure(err: unknown, counter: { count: number; last: string
   logger.error("[session-store] persist failed:", msg);
 }
 
+function recordPersistFailure(err: unknown): void {
+  const state = useSessionStore.getState();
+  const counter = { count: state.persistErrorCount, last: state.lastPersistError };
+  notePersistFailure(err, counter);
+  useSessionStore.setState({ persistErrorCount: counter.count, lastPersistError: counter.last });
+}
+
+function observePersistResult(promise: Promise<unknown>): void {
+  promise
+    .then((result) => {
+      if (result && isIpcError(result)) {
+        recordPersistFailure(result.fallback);
+      }
+    })
+    .catch(recordPersistFailure);
+}
+
+function getPiAPI(): Window["piAPI"] | undefined {
+  return typeof window !== "undefined" ? window.piAPI : undefined;
+}
+
+function getSessionActivityTime(session: Session): number {
+  return (session.lastOpenedAt ?? session.updatedAt ?? session.createdAt).getTime();
+}
+
+function pickMostRecentSessionId(sessions: Session[]): string | null {
+  return sessions
+    .slice()
+    .sort((a, b) => getSessionActivityTime(b) - getSessionActivityTime(a))[0]?.id ?? null;
+}
+
+function cloneMessageForFork(message: Message): Message {
+  return {
+    ...message,
+    timestamp:
+      message.timestamp instanceof Date
+        ? new Date(message.timestamp)
+        : new Date(typeof message.timestamp === "number" ? message.timestamp : String(message.timestamp)),
+    toolCalls: message.toolCalls?.map((tc) => ({
+      ...tc,
+      startTime:
+        tc.startTime instanceof Date
+          ? new Date(tc.startTime)
+          : tc.startTime == null
+            ? undefined
+            : new Date(typeof tc.startTime === "number" ? tc.startTime : String(tc.startTime)),
+      endTime:
+        tc.endTime instanceof Date
+          ? new Date(tc.endTime)
+          : tc.endTime == null
+            ? undefined
+            : new Date(typeof tc.endTime === "number" ? tc.endTime : String(tc.endTime)),
+    })),
+    customCard: message.customCard ? { ...message.customCard } : undefined,
+  };
+}
+
+function reviveSession(raw: Session | import("@shared").Session): Session {
+  return {
+    ...raw,
+    createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt),
+    updatedAt: raw.updatedAt instanceof Date ? raw.updatedAt : new Date(raw.updatedAt),
+    lastOpenedAt: raw.lastOpenedAt == null
+      ? undefined
+      : raw.lastOpenedAt instanceof Date
+        ? raw.lastOpenedAt
+        : new Date(raw.lastOpenedAt),
+    forkedAt: raw.forkedAt == null
+      ? undefined
+      : raw.forkedAt instanceof Date
+        ? raw.forkedAt
+        : new Date(raw.forkedAt),
+    tags: Array.isArray(raw.tags) ? raw.tags : [],
+    favorite: raw.favorite ?? false,
+    readOnly: raw.readOnly ?? false,
+    messages: (raw.messages ?? []).map((message) => ({
+      ...message,
+      timestamp:
+        message.timestamp instanceof Date
+          ? message.timestamp
+          : new Date(typeof message.timestamp === "number" ? message.timestamp : String(message.timestamp)),
+      toolCalls: message.toolCalls?.map((tc) => ({
+        ...tc,
+        startTime:
+          tc.startTime instanceof Date
+            ? tc.startTime
+            : tc.startTime == null
+              ? undefined
+              : new Date(typeof tc.startTime === "number" ? tc.startTime : String(tc.startTime)),
+        endTime:
+          tc.endTime instanceof Date
+            ? tc.endTime
+            : tc.endTime == null
+              ? undefined
+              : new Date(typeof tc.endTime === "number" ? tc.endTime : String(tc.endTime)),
+      })),
+    })),
+  };
+}
+
 export const useSessionStore = create<SessionState>((set, get) => {
   // Load sessions from main process on init
   const loadSessions = async () => {
     try {
-      if (window.piAPI) {
-        const sessionList = await window.piAPI.listSessions();
-        // 2026-06-06 hotfix: 用服务端真实 messages,做 Date 还原 + 老数据 migration
-        const sessions = sessionList.map((s) => {
-          // 老数据(没有 messages 字段)→ 补 []
-          const rawMessages = (s as unknown as { messages?: unknown }).messages;
-          const messages: Message[] = Array.isArray(rawMessages)
-            ? (rawMessages as Array<Record<string, unknown>>).map((m) => {
-                const ts = m.timestamp;
-                const tcs = m.toolCalls as Array<Record<string, unknown>> | undefined;
-                return {
-                  ...(m as unknown as Message),
-                  timestamp:
-                    ts instanceof Date
-                      ? ts
-                      : new Date(typeof ts === "number" ? ts : String(ts)),
-                  toolCalls: tcs?.map((tc) => {
-                    const st = tc.startTime;
-                    const et = tc.endTime;
-                    return {
-                      ...(tc as unknown as ToolCall),
-                      startTime:
-                        st instanceof Date
-                          ? st
-                          : new Date(typeof st === "number" ? st : String(st)),
-                      endTime:
-                        et instanceof Date
-                          ? et
-                          : et === null || et === undefined
-                            ? undefined
-                            : new Date(typeof et === "number" ? et : String(et)),
-                    };
-                  }),
-                };
-              })
-            : [];
-          return {
-            ...s,
-            createdAt: new Date(s.createdAt),
-            updatedAt: new Date(s.updatedAt),
-            messages,
-          };
-        });
+      const piAPI = getPiAPI();
+      if (piAPI) {
+        const sessionList = await piAPI.listSessions();
+        const sessions = sessionList.map(reviveSession);
+        const currentSession = sessions
+          .slice()
+          .sort((a, b) => getSessionActivityTime(b) - getSessionActivityTime(a))[0];
         set({
           sessions,
-          currentSessionId: sessions[sessions.length - 1]?.id || null,
+          currentSessionId: currentSession?.id || null,
         });
       }
     } catch (e) {
@@ -211,28 +312,37 @@ export const useSessionStore = create<SessionState>((set, get) => {
   lastPersistError: null,
   loadSessions,
 
-  createSession: (workspaceId: string) => {
+  createSession: async (workspaceId: string) => {
     const id = `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const newSession: Session = {
+    let newSession: Session = {
       id,
       title: "未命名会话",
       workspaceId,
       createdAt: new Date(),
       updatedAt: new Date(),
-      messages: []
+      messages: [],
+      favorite: false,
+      tags: [],
+      readOnly: false,
+      lastOpenedAt: new Date(),
     };
 
+    const piAPI = getPiAPI();
+    if (piAPI) {
+      const persisted = await piAPI.createSession(workspaceId, newSession.title, id);
+      if (isIpcError(persisted)) {
+        logger.error('[session-store] createSession failed:', persisted.fallback);
+        throw new Error(persisted.fallback);
+      }
+      newSession = reviveSession(persisted);
+    }
+
     set(state => ({
-      sessions: [...state.sessions, newSession],
+      sessions: state.sessions.some((session) => session.id === newSession.id)
+        ? state.sessions.map((session) => session.id === newSession.id ? newSession : session)
+        : [...state.sessions, newSession],
       currentSessionId: newSession.id
     }));
-
-    // Sync to main process
-    if (window.piAPI) {
-      window.piAPI.createSession(workspaceId, newSession.title, id).catch((e) =>
-        logger.error('[session-store] createSession failed:', e)
-      );
-    }
 
     return newSession;
   },
@@ -241,7 +351,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
     set(state => {
       const newSessions = state.sessions.filter(s => s.id !== sessionId);
       const newCurrentId = state.currentSessionId === sessionId
-        ? (newSessions.length > 0 ? newSessions[newSessions.length - 1].id : null)
+        ? pickMostRecentSessionId(newSessions.filter((session) => !session.archived))
         : state.currentSessionId;
 
       return {
@@ -251,11 +361,114 @@ export const useSessionStore = create<SessionState>((set, get) => {
     });
 
     // Sync to main process
-    if (window.piAPI) {
-      window.piAPI.deleteSession(sessionId).catch((e) =>
-        logger.error('[session-store] deleteSession failed:', e)
-      );
+    const piAPI = getPiAPI();
+    if (piAPI?.deleteSession) {
+      observePersistResult(piAPI.deleteSession(sessionId));
     }
+  },
+
+  archiveSession: (sessionId: string, archived: boolean) => {
+    set(state => {
+      const sessions = state.sessions.map(s =>
+        s.id === sessionId ? { ...s, archived, updatedAt: new Date() } : s
+      );
+      const visibleSessions = sessions.filter((s) => !s.archived);
+      const currentSessionId =
+        archived && state.currentSessionId === sessionId
+          ? pickMostRecentSessionId(visibleSessions)
+          : state.currentSessionId;
+      return { sessions, currentSessionId };
+    });
+
+    const piAPI = getPiAPI();
+    if (piAPI?.archiveSession) {
+      observePersistResult(piAPI.archiveSession(sessionId, archived));
+    }
+  },
+
+  updateSessionMetadata: (sessionId, updates) => {
+    const serializedUpdates = {
+      ...updates,
+      lastOpenedAt: updates.lastOpenedAt instanceof Date
+        ? updates.lastOpenedAt.getTime()
+        : updates.lastOpenedAt,
+      forkedAt: updates.forkedAt instanceof Date
+        ? updates.forkedAt.getTime()
+        : updates.forkedAt,
+    };
+    set(state => ({
+      sessions: state.sessions.map(s =>
+        s.id === sessionId ? { ...s, ...updates, updatedAt: new Date() } : s
+      ),
+    }));
+    const piAPI = getPiAPI();
+    if (piAPI?.updateSessionMetadata) {
+      observePersistResult(piAPI.updateSessionMetadata(sessionId, serializedUpdates));
+    }
+  },
+
+  toggleFavorite: (sessionId) => {
+    const target = get().sessions.find((session) => session.id === sessionId);
+    get().updateSessionMetadata(sessionId, { favorite: !(target?.favorite ?? false) });
+  },
+
+  setSessionTags: (sessionId, tags) => {
+    const clean = tags.map((tag) => tag.trim()).filter(Boolean);
+    get().updateSessionMetadata(sessionId, { tags: [...new Set(clean)] });
+  },
+
+  openReadOnlySession: (sessionId) => {
+    const openedAt = new Date();
+    const exists = get().sessions.some((session) => session.id === sessionId);
+    if (!exists) {
+      logger.warn("[session-store] openReadOnlySession ignored missing session", sessionId);
+      return;
+    }
+    set(state => ({
+      currentSessionId: sessionId,
+      sessions: state.sessions.map(s =>
+        s.id === sessionId ? { ...s, readOnly: true, lastOpenedAt: openedAt } : s
+      ),
+    }));
+    const piAPI = getPiAPI();
+    if (piAPI?.updateSessionMetadata) {
+      observePersistResult(piAPI.updateSessionMetadata(sessionId, { readOnly: true, lastOpenedAt: openedAt.getTime() }));
+    }
+  },
+
+  continueSession: async (sessionId, fromMessageId) => {
+    const source = get().sessions.find((session) => session.id === sessionId);
+    if (!source) throw new Error(`Session not found: ${sessionId}`);
+    const forkIndex = fromMessageId
+      ? source.messages.findIndex((message) => message.id === fromMessageId)
+      : source.messages.length - 1;
+    if (fromMessageId && forkIndex < 0) {
+      throw new Error(`Message not found: ${fromMessageId} in session ${sessionId}`);
+    }
+    const copiedMessages = forkIndex >= 0
+      ? source.messages.slice(0, forkIndex + 1).map(cloneMessageForFork)
+      : [];
+    const next = await get().createSession(source.workspaceId);
+    get().renameSession(next.id, `${source.title} 继续`);
+    get().updateSessionMetadata(next.id, {
+      summary: source.summary || `Continued from ${source.title}`,
+      toolPermissions: source.toolPermissions,
+      parentSessionId: source.id,
+      forkedFromMessageId: fromMessageId,
+      forkedAt: new Date(),
+    });
+    for (const message of copiedMessages) {
+      get().addMessage(next.id, message);
+    }
+    return get().sessions.find((session) => session.id === next.id) ?? next;
+  },
+
+  updateSessionUsage: (sessionId, usage) => {
+    get().updateSessionMetadata(sessionId, { usage });
+  },
+
+  updateSessionToolPermissions: (sessionId, permissions) => {
+    get().updateSessionMetadata(sessionId, { toolPermissions: permissions });
   },
 
   renameSession: (sessionId: string, newTitle: string) => {
@@ -274,15 +487,29 @@ export const useSessionStore = create<SessionState>((set, get) => {
     }));
 
     // Sync to main process (fire-and-forget; local state already updated)
-    if (window.piAPI?.renameSession) {
-      window.piAPI.renameSession(sessionId, trimmed).catch((e) =>
-        logger.error('[session-store] renameSession failed:', e)
-      );
+    const piAPI = getPiAPI();
+    if (piAPI?.renameSession) {
+      observePersistResult(piAPI.renameSession(sessionId, trimmed));
     }
   },
 
   setCurrentSession: (sessionId: string) => {
-    set({ currentSessionId: sessionId });
+    const openedAt = new Date();
+    const exists = get().sessions.some((session) => session.id === sessionId);
+    if (!exists) {
+      logger.warn("[session-store] setCurrentSession ignored missing session", sessionId);
+      return;
+    }
+    set(state => ({
+      currentSessionId: sessionId,
+      sessions: state.sessions.map(s =>
+        s.id === sessionId ? { ...s, readOnly: false, lastOpenedAt: openedAt } : s
+      ),
+    }));
+    const piAPI = getPiAPI();
+    if (piAPI?.updateSessionMetadata) {
+      observePersistResult(piAPI.updateSessionMetadata(sessionId, { readOnly: false, lastOpenedAt: openedAt.getTime() }));
+    }
   },
 
   addMessage: (sessionId: string, message: Message, opts?: { persist?: boolean }) => {
@@ -304,26 +531,14 @@ export const useSessionStore = create<SessionState>((set, get) => {
     }));
     const updated = get().sessions.find((session) => session.id === sessionId);
     if (message.role === "user" && updated?.messages.length === 1 && updated.title !== "未命名会话") {
-      window.piAPI?.renameSession(sessionId, updated.title).catch((e) =>
-        logger.error('[session-store] auto renameSession failed:', e)
-      );
+      const renamePromise = getPiAPI()?.renameSession(sessionId, updated.title);
+      if (renamePromise) observePersistResult(renamePromise);
     }
 
     // 2026-06-06 hotfix: fire-and-forget 持久化新 message
-    if (persist && window.piAPI?.appendMessage) {
-      window.piAPI.appendMessage(sessionId, serializeMessageForIpc(message) as Message)
-        .then((r) => {
-          if (r && isIpcError(r)) {
-            const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-            notePersistFailure(r.fallback, counter);
-            set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-          }
-        })
-        .catch((e) => {
-          const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-          notePersistFailure(e, counter);
-          set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-        });
+    const piAPI = getPiAPI();
+    if (persist && piAPI?.appendMessage) {
+      observePersistResult(piAPI.appendMessage(sessionId, serializeMessageForIpc(message) as Message));
     }
   },
 
@@ -345,20 +560,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
 
     // 2026-06-06 hotfix: fire-and-forget 持久化 update
     // 注:usePiStream (T6) 会接管高频流式 update 的 debounce,这里先直接调
-    if (persist && window.piAPI?.updateMessage) {
-      window.piAPI.updateMessage(sessionId, messageId, serializeUpdatesForIpc(updates) as Partial<Message>)
-        .then((r) => {
-          if (r && isIpcError(r)) {
-            const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-            notePersistFailure(r.fallback, counter);
-            set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-          }
-        })
-        .catch((e) => {
-          const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-          notePersistFailure(e, counter);
-          set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-        });
+    const piAPI = getPiAPI();
+    if (persist && piAPI?.updateMessage) {
+      observePersistResult(piAPI.updateMessage(sessionId, messageId, serializeUpdatesForIpc(updates) as Partial<Message>));
     }
   },
 
@@ -391,24 +595,13 @@ export const useSessionStore = create<SessionState>((set, get) => {
     if (persist) {
       const session = get().sessions.find(s => s.id === sessionId);
       const message = session?.messages.find(m => m.id === messageId);
-      if (message && window.piAPI?.updateMessage) {
-        window.piAPI.updateMessage(
+      const piAPI = getPiAPI();
+      if (message && piAPI?.updateMessage) {
+        observePersistResult(piAPI.updateMessage(
           sessionId,
           messageId,
           serializeUpdatesForIpc({ toolCalls: message.toolCalls } as Partial<Message>),
-        )
-          .then((r) => {
-            if (r && isIpcError(r)) {
-              const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-              notePersistFailure(r.fallback, counter);
-              set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-            }
-          })
-          .catch((e) => {
-            const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-            notePersistFailure(e, counter);
-            set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-          });
+        ));
       }
     }
   },
@@ -437,25 +630,14 @@ export const useSessionStore = create<SessionState>((set, get) => {
     }));
 
     // 2026-06-06 hotfix: 持久化单个 tool call update
-    if (persist && window.piAPI?.updateToolCall) {
-      window.piAPI.updateToolCall(
+    const piAPI = getPiAPI();
+    if (persist && piAPI?.updateToolCall) {
+      observePersistResult(piAPI.updateToolCall(
         sessionId,
         messageId,
         toolCallId,
         serializeUpdatesForIpc(updates),
-      )
-        .then((r) => {
-          if (r && isIpcError(r)) {
-            const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-            notePersistFailure(r.fallback, counter);
-            set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-          }
-        })
-        .catch((e) => {
-          const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-          notePersistFailure(e, counter);
-          set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-        });
+      ));
     }
   },
 
@@ -485,20 +667,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
     }));
 
     // 2026-06-06 hotfix: 跟 addMessage 一致, fire-and-forget
-    if (persist && window.piAPI?.appendMessage) {
-      window.piAPI.appendMessage(sessionId, serializeMessageForIpc(message) as Message)
-        .then((r) => {
-          if (r && isIpcError(r)) {
-            const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-            notePersistFailure(r.fallback, counter);
-            set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-          }
-        })
-        .catch((e) => {
-          const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-          notePersistFailure(e, counter);
-          set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-        });
+    const piAPI = getPiAPI();
+    if (persist && piAPI?.appendMessage) {
+      observePersistResult(piAPI.appendMessage(sessionId, serializeMessageForIpc(message) as Message));
     }
   },
 
@@ -521,24 +692,13 @@ export const useSessionStore = create<SessionState>((set, get) => {
 
     // 2026-06-06 hotfix: 高频流式 update — T6 会用 debounce 接管
     // 这里仍直接调,但 usePiStream 走 T6 改的 flush 路径,只 flush 一次
-    if (persist && window.piAPI?.updateMessage) {
-      window.piAPI.updateMessage(
+    const piAPI = getPiAPI();
+    if (persist && piAPI?.updateMessage) {
+      observePersistResult(piAPI.updateMessage(
         sessionId,
         messageId,
         serializeUpdatesForIpc(content),
-      )
-        .then((r) => {
-          if (r && isIpcError(r)) {
-            const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-            notePersistFailure(r.fallback, counter);
-            set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-          }
-        })
-        .catch((e) => {
-          const counter = { count: get().persistErrorCount, last: get().lastPersistError };
-          notePersistFailure(e, counter);
-          set({ persistErrorCount: counter.count, lastPersistError: counter.last });
-        });
+      ));
     }
   },
 

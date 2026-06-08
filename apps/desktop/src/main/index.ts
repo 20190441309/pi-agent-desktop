@@ -3,14 +3,12 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
-import { execFileSync, execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { homedir } from 'os';
 import yaml from 'js-yaml';
 import log from 'electron-log/main';
 import Store from 'electron-store';
-import { detectProject } from './project-detector';
-import { buildFileTree } from './file-tree';
 import { PiDriver, type PiInstallProgress } from './pi-driver';
 import { WorkspaceRegistry } from './services/pi-session/registry';
 import { PendingEdits } from './services/approval/pending-edits';
@@ -18,16 +16,19 @@ import { setupChatIpc } from './ipc/chat.ipc';
 import { setupFilesIpc } from './ipc/files.ipc';
 import { setupSessionsIpc } from './ipc/sessions.ipc';
 import { setupSkillsIpc } from './ipc/skills.ipc';
+import { setupPackagesIpc } from './ipc/packages.ipc';
 import { setupTerminalIpc } from './ipc/terminal.ipc';
 import { setupAgentsIpc } from './ipc/agents.ipc';
 import { setupConfigIpc } from './ipc/config.ipc';
 import { setupCodexSessionsIpc } from './ipc/codex-sessions.ipc';
-import { workspaceCreateSchema, settingsSetSchema, gitCommitSchema, gitAddSchema } from './ipc/schemas';
+import { setupProjectShellIpc } from './ipc/project-shell.ipc';
+import { workspaceCreateSchema, settingsSetSchema, gitCommitSchema, gitAddSchema, gitDiffSchema, gitDiffStagedSchema } from './ipc/schemas';
+import { gitAdd, gitCommit, gitDiff, gitDiffStaged, getGitStatus, gitUnstage } from './services/git-service';
 import { ptyManager } from './services/shell/pty-manager';
 import { setupAutoUpdater } from './services/updater';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 import { ipcError } from '@shared';
-import type { Session } from '@shared';
+import type { AppSettings, Session } from '@shared';
 import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
 import { ConfigManager } from './services/config/config-manager';
 import { CodexSessionImporter } from './services/codex-session/importer';
@@ -186,23 +187,11 @@ interface Workspace {
   name: string;
   path: string;
   createdAt: number;
+  lastActiveAt?: number;
 }
 
 // Session 类型用 @shared 的版本(包含 messages 字段),不再 inline
 // 2026-06-06 hotfix: 持久化需要 messages 字段,inline 版本已删
-
-interface AppSettings {
-  theme: 'dark' | 'light';
-  fontSize: number;
-  model: string;
-  provider: string;
-  apiKey?: string;
-  temperature: number;
-  maxTokens: number;
-  autoSave: boolean;
-  showLineNumbers: boolean;
-  wordWrap: boolean;
-}
 
 interface StoreSchema {
   workspaces: Workspace[];
@@ -217,14 +206,18 @@ const store = new Store<StoreSchema>({
     settings: {
       theme: 'light',
       fontSize: 14,
-      model: 'gpt-4',
-      provider: 'openai',
+      model: '',
+      provider: '',
       apiKey: '',
       temperature: 0.7,
       maxTokens: 4096,
       autoSave: true,
       showLineNumbers: true,
-      wordWrap: true
+      wordWrap: true,
+      permissionLevel: 'smart',
+      runtimeChannel: 'stable',
+      autoCompactionEnabled: false,
+      workspaceToolDefaults: {}
     }
   }
 });
@@ -259,7 +252,7 @@ function createWindow(): void {
       : { frame: false }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -294,70 +287,6 @@ function initializePiDriver(): void {
   }).catch(err => {
     log.warn('[PiDriver] Detection failed:', err);
   });
-}
-
-// Git status helper
-function getGitStatus(workspacePath: string): { branch: string; modified: string[]; added: string[]; deleted: string[]; untracked: string[]; ahead: number; behind: number } | null {
-  try {
-    let gitRoot: string;
-    try {
-      gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-        cwd: workspacePath,
-        encoding: 'utf-8',
-      }).trim();
-    } catch {
-      return null;
-    }
-
-    // Get branch
-    let branch = 'main';
-    try {
-      branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: gitRoot, encoding: 'utf-8' }).trim();
-    } catch {
-      // fallback to main
-    }
-
-    // Get status
-    const statusOutput = execSync('git status --porcelain', { cwd: gitRoot, encoding: 'utf-8' });
-    const lines = statusOutput.split('\n').filter(l => l.trim());
-
-    const modified: string[] = [];
-    const added: string[] = [];
-    const deleted: string[] = [];
-    const untracked: string[] = [];
-
-    for (const line of lines) {
-      const status = line.substring(0, 2);
-      const file = line.substring(3).trim();
-      if (status.includes('M')) modified.push(file);
-      if (status.includes('A')) added.push(file);
-      if (status.includes('D')) deleted.push(file);
-      if (status.includes('?')) untracked.push(file);
-    }
-
-    // Get ahead/behind
-    let ahead = 0;
-    let behind = 0;
-    try {
-      const revParse = execSync('git rev-parse --abbrev-ref @{u}', { cwd: gitRoot, encoding: 'utf-8' }).trim();
-      const countOutput = execFileSync('git', ['rev-list', '--left-right', '--count', `HEAD...${revParse}`], {
-        cwd: gitRoot,
-        encoding: 'utf-8',
-      }).trim();
-      const parts = countOutput.split('\t');
-      if (parts.length === 2) {
-        ahead = parseInt(parts[0], 10) || 0;
-        behind = parseInt(parts[1], 10) || 0;
-      }
-    } catch {
-      // No upstream or error
-    }
-
-    return { branch, modified, added, deleted, untracked, ahead, behind };
-  } catch (error) {
-    log.error('Git status error:', error);
-    return null;
-  }
 }
 
 // IPC Handlers
@@ -492,7 +421,8 @@ function setupIPC(): void {
         id: 'default',
         name: 'Default',
         path: process.cwd(),
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        lastActiveAt: Date.now()
       }];
       store.set('workspaces', workspaces);
     }
@@ -514,7 +444,8 @@ function setupIPC(): void {
       id: Date.now().toString(),
       name,
       path,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      lastActiveAt: Date.now()
     };
     const workspaces = store.get('workspaces');
     workspaces.push(workspace);
@@ -582,6 +513,9 @@ function setupIPC(): void {
     },
   });
 
+  setupPackagesIpc();
+  setupProjectShellIpc();
+
   // Git status
   ipcMain.handle('git:status', async (_, workspacePath: string) => {
     try {
@@ -599,8 +533,17 @@ function setupIPC(): void {
   // Git diff (指定文件或全部) — 参数化执行
   ipcMain.handle('git:diff', async (_, workspacePath: string, filePath?: string) => {
     try {
-      const args = filePath ? ['diff', '--', filePath] : ['diff'];
-      return execFileSync('git', args, { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+      gitDiffSchema.parse(filePath === undefined ? [workspacePath] : [workspacePath, filePath]);
+    } catch (err) {
+      log.warn("[index.ts] git:diff invalid args:", err);
+      return ipcError(
+        "ipcErrors.git.invalidArgs",
+        `git diff 参数无效: ${err instanceof Error ? err.message : String(err)}`,
+        { path: String(filePath ?? "") },
+      );
+    }
+    try {
+      return gitDiff(workspacePath, filePath);
     } catch (err) {
       log.error("[index.ts] git:diff failed:", err);
       return ipcError(
@@ -614,7 +557,17 @@ function setupIPC(): void {
   // Git staged diff
   ipcMain.handle('git:diff-staged', async (_, workspacePath: string) => {
     try {
-      return execFileSync('git', ['diff', '--staged'], { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+      gitDiffStagedSchema.parse([workspacePath]);
+    } catch (err) {
+      log.warn("[index.ts] git:diff-staged invalid args:", err);
+      return ipcError(
+        "ipcErrors.git.invalidArgs",
+        `git staged diff 参数无效: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    try {
+      // gitDiffStaged delegates to git with the standard ['diff', '--staged'] argv.
+      return gitDiffStaged(workspacePath);
     } catch (err) {
       log.error("[index.ts] git:diff-staged failed:", err);
       return ipcError(
@@ -637,7 +590,7 @@ function setupIPC(): void {
     }
     if (files.length === 0) return;
     try {
-      execFileSync('git', ['add', '--', ...files], { cwd: workspacePath });
+      return gitAdd(workspacePath, files);
     } catch (err) {
       log.error("[index.ts] git:add exec failed:", err);
       return ipcError(
@@ -645,7 +598,28 @@ function setupIPC(): void {
         `git add 失败: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    return undefined; // 显式 void
+  });
+
+  ipcMain.handle('git:unstage', async (_, workspacePath: string, files: string[]) => {
+    try {
+      gitAddSchema.parse([workspacePath, files]);
+    } catch (err) {
+      log.warn("[index.ts] git:unstage invalid args:", err);
+      return ipcError(
+        "ipcErrors.git.invalidArgs",
+        `git unstage 参数无效: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (files.length === 0) return undefined;
+    try {
+      return gitUnstage(workspacePath, files);
+    } catch (err) {
+      log.error("[index.ts] git:unstage exec failed:", err);
+      return ipcError(
+        "ipcErrors.git.unstageFailed",
+        `git unstage 失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   });
 
   // Git commit — 参数化, message 走 argv 不会被 shell 解析
@@ -660,7 +634,7 @@ function setupIPC(): void {
       );
     }
     try {
-      return execFileSync('git', ['commit', '-m', message], { cwd: workspacePath, encoding: 'utf-8' });
+      return gitCommit(workspacePath, message);
     } catch (err) {
       log.error("[index.ts] git:commit exec failed:", err);
       return ipcError(
@@ -720,7 +694,15 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('settings:set', async (_, settings: Partial<AppSettings>) => {
-    settingsSetSchema.parse([settings]);
+    try {
+      settingsSetSchema.parse([settings]);
+    } catch (err) {
+      log.warn("[index.ts] settings:set invalid args:", err);
+      return ipcError(
+        "ipcErrors.settings.invalidArgs",
+        `设置参数无效: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     const current = store.get('settings');
     const updated = { ...current, ...settings };
     store.set('settings', updated);
@@ -748,6 +730,17 @@ function setupIPC(): void {
       model: piAgentConfig.defaultModel,
       provider: piAgentConfig.defaultProvider
     } : null;
+
+    if (currentModel) {
+      const currentSettings = store.get('settings');
+      if (!currentSettings.model && !currentSettings.provider) {
+        store.set('settings', {
+          ...currentSettings,
+          model: currentModel.model,
+          provider: currentModel.provider,
+        });
+      }
+    }
 
     return { models, currentModel };
   });
@@ -825,17 +818,6 @@ function setupIPC(): void {
     }
   });
 
-  // ── Terminal IPC Handlers ──────────────────────────────────────────
-
-  // ── Project Detection & File Tree ────────────────────────────────
-  ipcMain.handle('project:detect', async (_, workspacePath: string) => {
-    return detectProject(workspacePath);
-  });
-
-  ipcMain.handle('project:file-tree', async (_, workspacePath: string, maxDepth?: number) => {
-    return buildFileTree(workspacePath, maxDepth || 3);
-  });
-
   // M4: Terminal IPC 走 node-pty (替换老 child_process.spawn 模式)
   setupTerminalIpc();
 
@@ -881,7 +863,7 @@ app.whenReady().then(() => {
     log.info(`Pi config loaded: provider=${piAgentConfig.defaultProvider}, model=${piAgentConfig.defaultModel}, ${piAgentConfig.providers.length} providers`);
     // 更新 electron-store 默认设置与 Pi 配置同步
     const currentSettings = store.get('settings');
-    if (currentSettings.provider === 'openai' && currentSettings.model === 'gpt-4') {
+    if (!currentSettings.provider && !currentSettings.model) {
       // 仅在用户从未自定义设置的情况下同步 Pi 配置
       store.set('settings', {
         ...currentSettings,

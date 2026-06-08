@@ -1,29 +1,9 @@
-// MiniMaxCodeSidebar — MiniMax Code 风格左侧导航栏
+// MiniMaxCodeSidebar — MiniMax Code 参考风格左侧导航栏
 //
-// 1:1 还原目标 UI 截图的左侧 220px 侧栏:
-//   ┌────────────────────────────────────────────┐
-//   │ [M]                                         │  <- 顶部 logo (12x12 圆角黑底 + "M" 文字)
-//   │ ● 新建任务    (active)                       │  <- 主操作分组(无标题,直接列出)
-//   │ ● 技能                                         │
-//   │ ● 定时任务                                     │
-//   │ ● 手机操控                                     │
-//   │ ───────────────                              │  <- 分隔(可选用)
-//   │ 定时任务                                      │  <- 分组标题(11px, #999, letter-spacing)
-//   │   (无占位项)                                  │
-//   │ 任务历史                                      │
-//   │   对项目的看法                                 │
-//   │   了解项目                                     │
-//   │ Agents                                       │
-//   │   (无占位项)                                  │
-//   │ 已归档                                        │
-//   │   (无占位项)                                  │
-//   │                                             │
-//   │ ──── flex-1 (中间可滚动) ────                │
-//   │ (●) Ayase                                   │  <- 底部固定用户卡片
-//   │     Plus Plan                                │
-//   └────────────────────────────────────────────┘
+// 当前只展示真实可用入口: 新建任务、搜索、会话中心、插件、Git、设置，以及当前
+// workspace 的真实任务历史。没有对应 Pi CLI/API 的入口不渲染。
 //
-// 视觉规格(任务说明 + 截图):
+// 视觉规格:
 //  - 字号: 主 13px / 次 12px / 分组标题 11px letter-spacing 0.5px 浅灰
 //  - 行高 32px,左右 padding 12px
 //  - hover 浅灰 --mm-bg-hover (#f0f0f0)
@@ -41,15 +21,10 @@
 //  - 分组列表用 <nav role="navigation"> 包裹,加 aria-label
 //  - 装饰性图标 aria-hidden="true",不污染辅助阅读
 //
-// 不持有任何业务状态: 父级通过 props 决定 currentSection;
-// 数据(分组/项目)用本地 const 静态声明,不做异步加载。
-// v1.0.15: MiniMaxCodeUserCard 已删(死代码) — 之前 sidebar 底部固定一个
-// "Ayase / Plus Plan" 用户卡片,现在直接 inline 渲染,避免再维护一个空组件。
+// 不持有路由状态: 父级通过 currentSection/onSectionChange 控制激活。
 
 import React from "react";
-
-import { useAgentStore } from '../../stores/agent-store';
-import { useSessionStore } from '../../stores/session-store';
+import { useSessionStore } from "../../stores/session-store";
 
 // ----------------------------------------------------------------------
 // 类型
@@ -74,6 +49,8 @@ export interface MiniMaxCodeSidebarGroup {
 export interface MiniMaxCodeSidebarProps {
     /** 当前激活的 section id */
     currentSection: string;
+    /** 当前 workspace;历史列表只显示这个 workspace 的会话 */
+    currentWorkspaceId?: string | null;
     /** 点击某项时回调,父级决定路由切换 */
     onSectionChange: (section: string) => void;
 }
@@ -121,21 +98,10 @@ function IconPuzzle(): React.JSX.Element {
     );
 }
 
-function IconGit(): React.JSX.Element {
+function IconSearch(): React.JSX.Element {
     return (
-        <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
-        >
-            <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-            />
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m21 21-4.35-4.35M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14z" />
         </svg>
     );
 }
@@ -144,6 +110,22 @@ function IconMessage(): React.JSX.Element {
     return (
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h8M8 14h5m8-2a8 8 0 11-3.3-6.48L21 5l-1.05 3.15A7.96 7.96 0 0121 12z" />
+        </svg>
+    );
+}
+
+function IconGit(): React.JSX.Element {
+    return (
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 0v6m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm10-6a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 0c0 3.5-10 2.5-10 6" />
+        </svg>
+    );
+}
+
+function IconFiles(): React.JSX.Element {
+    return (
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
         </svg>
     );
 }
@@ -181,24 +163,18 @@ function IconSettings(): React.JSX.Element {
 // 静态配置 (本期纯占位,后续可改由 props/数据驱动)
 // ----------------------------------------------------------------------
 
-// v1.0.16: 不再写死 userName/planLabel 默认 ("Ayase" / "Plus Plan") — 之前 v1.0.15
-// inline 渲染用户卡片时这么写,被用户截图指出是假数据。改成 sidebar 内部
-// 不再渲染 "用户卡片", 底部固定一个设置按钮 (与老 IconBar ⚙️ 图标对应位置),
-// 点击调 onSectionChange("settings") → App.tsx 调 openSettings() 打开 SettingsPanel。
-// 这次新增一个 settings 主操作图标,放在底部 5 个图标的最后(原 IconBar 设计如此)。
-// v1.0.16: 删 "scheduled-tasks" 主操作 + "定时任务" 分组 — Pi CLI 没定时任务 API,
-//          整个 AutomationPanel 之前是内存 store 假功能(关 app 全没),已删。
 const MAIN_SECTIONS: MiniMaxCodeSection[] = [
     { id: "new-task", label: "新建任务", icon: <IconPlus /> },
-    { id: "skills", label: "技能", icon: <IconPuzzle /> },
+    { id: "search", label: "搜索", icon: <IconSearch /> },
+    { id: "sessions", label: "会话中心", icon: <IconMessage /> },
+    { id: "files", label: "文件", icon: <IconFiles /> },
+    { id: "skills", label: "插件", icon: <IconPuzzle /> },
     { id: "git", label: "Git", icon: <IconGit /> },
     { id: "settings", label: "设置", icon: <IconSettings /> },
 ];
 
 const GROUPED_SECTIONS: MiniMaxCodeSidebarGroup[] = [
-    // v1.0.17: 空分组已删除 — 等接入真实数据后再恢复
-    // "任务历史" 将从 Pi SessionManager 获取真实会话列表
-    // "Agents" 和 "已归档" 等对应功能实现后再加回
+    // 等接入真实数据后再恢复额外分组。
 ];
 
 // ----------------------------------------------------------------------
@@ -209,9 +185,10 @@ interface NavItemProps {
     section: MiniMaxCodeSection;
     active: boolean;
     onClick: () => void;
+    trailing?: React.ReactNode;
 }
 
-function NavItem({ section, active, onClick }: NavItemProps): React.JSX.Element {
+function NavItem({ section, active, onClick, trailing }: NavItemProps): React.JSX.Element {
     // 激活态: 浅灰底 + 2px 左侧色条(--mm-bg-active = #1a1a1a 黑) + font-medium
     //   3 重视觉信号,确保在 sidebar 浅灰底上肉眼能立刻看出
     //   (历史 bug: 早期只靠 bg-[--mm-bg-selected] (#efefef) vs sidebar (#f7f7f7)
@@ -227,21 +204,49 @@ function NavItem({ section, active, onClick }: NavItemProps): React.JSX.Element 
         : "border-l-2 border-l-transparent bg-transparent font-normal text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]";
 
     return (
+        <div className="group flex items-center gap-1">
+            <button
+                type="button"
+                onClick={onClick}
+                aria-label={section.label}
+                aria-current={active ? "page" : undefined}
+                className={`${baseClasses} ${heightClasses} ${stateClasses} min-w-0 flex-1`}
+                data-mmcode-section={section.id}
+            >
+                <span
+                    className="flex h-4 w-4 shrink-0 items-center justify-center"
+                    aria-hidden="true"
+                >
+                    {section.icon}
+                </span>
+                <span className="truncate text-left">{section.label}</span>
+            </button>
+            {trailing}
+        </div>
+    );
+}
+
+function SmallActionButton({
+    label,
+    onClick,
+    children,
+}: {
+    label: string;
+    onClick: () => void;
+    children: React.ReactNode;
+}): React.JSX.Element {
+    return (
         <button
             type="button"
-            onClick={onClick}
-            aria-label={section.label}
-            aria-current={active ? "page" : undefined}
-            className={`${baseClasses} ${heightClasses} ${stateClasses}`}
-            data-mmcode-section={section.id}
+            aria-label={label}
+            title={label}
+            onClick={(event) => {
+                event.stopPropagation();
+                onClick();
+            }}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--mm-text-tertiary)] opacity-0 transition hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:opacity-100 group-hover:opacity-100"
         >
-            <span
-                className="flex h-4 w-4 shrink-0 items-center justify-center"
-                aria-hidden="true"
-            >
-                {section.icon}
-            </span>
-            <span className="truncate text-left">{section.label}</span>
+            {children}
         </button>
     );
 }
@@ -256,8 +261,7 @@ function NavItem({ section, active, onClick }: NavItemProps): React.JSX.Element 
  * 排版结构:
  *   - 顶部 logo (12x12 圆角黑底,内嵌 "M")
  *   - 主操作列表(无分组标题,4 个一级入口)
- *   - 中间 scroll 区: 4 个分组(标题 + 占位项)
- *   - 底部固定: 用户卡片 (inline 渲染, v1.0.15 删了 MiniMaxCodeUserCard 死组件)
+ *   - 中间 scroll 区: 当前 workspace 的真实会话历史
  *
  * 设计约束:
  *   - 所有颜色/字号/圆角走 --mm-* token
@@ -266,26 +270,23 @@ function NavItem({ section, active, onClick }: NavItemProps): React.JSX.Element 
  */
 export function MiniMaxCodeSidebar({
     currentSection,
+    currentWorkspaceId,
     onSectionChange,
 }: MiniMaxCodeSidebarProps): React.JSX.Element {
     const sessions = useSessionStore((state) => state.sessions);
     const currentSessionId = useSessionStore((state) => state.currentSessionId);
-    const agents = useAgentStore((state) => state.agents);
-    const currentAgentId = useAgentStore((state) => state.currentAgentId);
-    const setCurrentAgent = useAgentStore((state) => state.setCurrentAgent);
+    const archiveSession = useSessionStore((state) => state.archiveSession);
+    const deleteSession = useSessionStore((state) => state.deleteSession);
     const historyItems = sessions
+        .filter((session) => !session.archived)
+        .filter((session) => !currentWorkspaceId || session.workspaceId === currentWorkspaceId)
         .slice()
-        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-        .map((session) => ({
-            id: `session:${session.id}`,
-            label: session.title || "未命名会话",
-            icon: <IconMessage />,
-        }));
-    const agentItems = agents.map((agent) => ({
-        id: `agent:${agent.id}`,
-        label: agent.title,
-        icon: <IconMessage />,
-    }));
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    const archivedItems = sessions
+        .filter((session) => session.archived)
+        .filter((session) => !currentWorkspaceId || session.workspaceId === currentWorkspaceId)
+        .slice()
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 
     return (
         <div
@@ -294,16 +295,18 @@ export function MiniMaxCodeSidebar({
         >
             {/* ============== 顶部折叠占位 (固定,不滚动) ============== */}
             <div
-                className="flex h-11 shrink-0 items-center px-3"
+                className="flex h-14 shrink-0 items-center gap-2 px-3"
                 data-mmcode-region="logo"
             >
                 <div
-                    className="flex h-5 w-5 items-center justify-center rounded-[var(--mm-radius-sm)] text-[var(--mm-text-tertiary)]"
+                    className="flex h-8 w-8 items-center justify-center rounded-[var(--mm-radius-md)] bg-[var(--mm-bg-active)] text-[13px] font-semibold text-[var(--mm-text-on-active)]"
                     aria-hidden="true"
                 >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h6v12H4zM14 6h6v12h-6z" />
-                    </svg>
+                    π
+                </div>
+                <div className="min-w-0">
+                    <div className="truncate text-[13px] font-medium">Pi Agent</div>
+                    <div className="truncate text-[11px] text-[var(--mm-text-tertiary)]">桌面工作台</div>
                 </div>
             </div>
 
@@ -318,55 +321,97 @@ export function MiniMaxCodeSidebar({
             >
                 {/* 主操作分组(无标题) */}
                 <div className="flex flex-col gap-1">
+                    <h2 className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
+                        工作区
+                    </h2>
                     {MAIN_SECTIONS.map((section) => (
                         <NavItem
                             key={section.id}
                             section={section}
-                            active={currentSection === section.id || (section.id === "new-task" && currentSection === "chat")}
+                            active={currentSection === section.id}
                             onClick={() => onSectionChange(section.id)}
                         />
                     ))}
                 </div>
 
-                {historyItems.length > 0 && (
+                {historyItems.length > 0 ? (
                     <div className="flex flex-col gap-1">
                         <h3 className="px-3 pt-3 pb-2 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
-                            任务历史
+                            任务历史 <span className="font-normal normal-case tracking-normal">({historyItems.length})</span>
                         </h3>
-                        {historyItems.map((item) => (
+                        {historyItems.map((session) => (
                             <NavItem
-                                key={item.id}
-                                section={item}
-                                active={item.id === `session:${currentSessionId}`}
-                                onClick={() => onSectionChange(item.id)}
+                                key={session.id}
+                                section={{
+                                    id: `session:${session.id}`,
+                                    label: session.title || "未命名会话",
+                                    icon: <IconMessage />,
+                                }}
+                                active={currentSection === "chat" && session.id === currentSessionId}
+                                onClick={() => onSectionChange(`session:${session.id}`)}
+                                trailing={
+                                    <div className="flex items-center">
+                                        <SmallActionButton
+                                            label={`归档 ${session.title || "未命名会话"}`}
+                                            onClick={() => archiveSession(session.id, true)}
+                                        >
+                                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M4 7h16M6 7v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7M9 11h6" />
+                                            </svg>
+                                        </SmallActionButton>
+                                        <SmallActionButton
+                                            label={`删除 ${session.title || "未命名会话"}`}
+                                            onClick={() => deleteSession(session.id)}
+                                        >
+                                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M6 7h12m-9 0V5h6v2m-7 3v8m4-8v8m4-8v8M8 7l1 13h6l1-13" />
+                                            </svg>
+                                        </SmallActionButton>
+                                    </div>
+                                }
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="rounded-lg border border-dashed border-[var(--mm-border)] px-3 py-3 text-[11px] leading-5 text-[var(--mm-text-tertiary)]">
+                        还没有当前工作区的历史任务。
+                    </div>
+                )}
+
+                {archivedItems.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                        <h3 className="px-3 pt-3 pb-2 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
+                            已归档 <span className="font-normal normal-case tracking-normal">({archivedItems.length})</span>
+                        </h3>
+                        {archivedItems.map((session) => (
+                            <NavItem
+                                key={session.id}
+                                section={{
+                                    id: `session:${session.id}`,
+                                    label: session.title || "未命名会话",
+                                    icon: <IconMessage />,
+                                }}
+                                active={false}
+                                onClick={() => {
+                                    archiveSession(session.id, false);
+                                    onSectionChange(`session:${session.id}`);
+                                }}
+                                trailing={
+                                    <SmallActionButton
+                                        label={`恢复 ${session.title || "未命名会话"}`}
+                                        onClick={() => archiveSession(session.id, false)}
+                                    >
+                                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M3 12a9 9 0 1 0 3-6.7M3 5v5h5" />
+                                        </svg>
+                                    </SmallActionButton>
+                                }
                             />
                         ))}
                     </div>
                 )}
 
-                {agentItems.length > 0 && (
-                    <div className="flex flex-col gap-0.5">
-                        <h3 className="px-3 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
-                            Agents
-                        </h3>
-                        {agentItems.map((item) => {
-                            const agentId = item.id.slice("agent:".length);
-                            return (
-                                <NavItem
-                                    key={item.id}
-                                    section={item}
-                                    active={agentId === currentAgentId}
-                                    onClick={() => {
-                                        setCurrentAgent(agentId);
-                                        onSectionChange("chat");
-                                    }}
-                                />
-                            );
-                        })}
-                    </div>
-                )}
-
-                {/* v1.0.17: 空分组已移除，等接入真实数据后再恢复 */}
+                {/* 空分组已移除，等接入真实数据后再恢复 */}
                 {GROUPED_SECTIONS.length > 0 && GROUPED_SECTIONS.map((group) => (
                     <div key={group.title} className="flex flex-col gap-1">
                         <h3
@@ -398,10 +443,7 @@ export function MiniMaxCodeSidebar({
                 ))}
             </nav>
 
-            {/* v1.0.16: 删底部 "Ayase / Plus Plan" 假用户卡片 — 这个位置原来
-                v1.0.x 老 UI 是 IconBar ⚙️ 设置图标。设置入口现在合并到上面 5
-                个主操作的第 5 项(settings) — 跟其他主操作一起渲染,无需
-                额外底部固定块。 */}
+            {/* 设置入口已经合并到主操作列表。 */}
         </div>
     );
 }

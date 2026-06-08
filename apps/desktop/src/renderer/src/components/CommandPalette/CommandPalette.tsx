@@ -7,7 +7,9 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { fuzzyScore } from "../../utils/fuzzy-match";
 import { useSessionStore } from "../../stores/session-store";
 import { useI18n } from "../../i18n";
-import type { FileEntry } from "@shared";
+import { isIpcError, type FileEntry, type GitStatus, type ProjectInfo } from "@shared";
+import { classifyTerminalCommand } from "../../utils/terminal-command";
+import { projectScriptCommand } from "../../utils/project-scripts";
 
 export type CommandMode = "file" | "history" | "cmd";
 
@@ -15,6 +17,7 @@ interface CommandPaletteProps {
     isOpen: boolean;
     onClose: () => void;
     workspacePath: string;
+    workspaceId?: string;
     onSelectFile?: (path: string) => void;
     onSelectHistory?: (sessionId: string) => void;
     onRunCommand?: (cmdId: string) => void;
@@ -26,18 +29,69 @@ interface CommandDef {
     hint: string;
 }
 
+interface ProjectScriptCommand {
+    id: string;
+    name: string;
+    command: string;
+    rawScript: string;
+}
+
+interface GitContextCommand {
+    id: string;
+    labelKey: string;
+    file: string;
+    status: "M" | "A" | "D" | "?";
+    kind: "open-file" | "open-diff" | "stage-file";
+}
+
+type PaletteCommandStatus = {
+    message: string;
+    tone: "success" | "error";
+};
+
+type CommandResult = {
+    id: string;
+    primary: string;
+    secondary?: string;
+    keepOpen?: boolean;
+    onSelect: () => void | Promise<void>;
+};
+
 const COMMANDS: readonly CommandDef[] = Object.freeze([
     { id: "new_chat", labelKey: "commandPalette.commands.new_chat", hint: "Ctrl+N" },
+    { id: "open_files", labelKey: "commandPalette.commands.open_files", hint: "Files" },
+    { id: "open_git", labelKey: "commandPalette.commands.open_git", hint: "Git" },
+    { id: "open_sessions", labelKey: "commandPalette.commands.open_sessions", hint: "History" },
     { id: "open_skills", labelKey: "commandPalette.commands.open_skills", hint: "Ctrl+Shift+S" },
     { id: "open_settings", labelKey: "commandPalette.commands.open_settings", hint: "Ctrl+," },
     { id: "switch_workspace", labelKey: "commandPalette.commands.switch_workspace", hint: "Ctrl+P" },
     { id: "toggle_terminal", labelKey: "commandPalette.commands.toggle_terminal", hint: "Ctrl+`" },
 ]);
 
+function FileIcon(): React.JSX.Element {
+    return (
+        <svg className="h-4 w-4 shrink-0 text-[#999]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14 3v5h5" />
+        </svg>
+    );
+}
+
+function gitChangedFiles(status: GitStatus | null): Array<{ file: string; status: GitContextCommand["status"] }> {
+    if (!status) return [];
+    return [
+        ...status.modified.map((file) => ({ file, status: "M" as const })),
+        ...status.added.map((file) => ({ file, status: "A" as const })),
+        ...status.deleted.map((file) => ({ file, status: "D" as const })),
+        ...status.untracked.map((file) => ({ file, status: "?" as const })),
+    ].slice(0, 8);
+}
+
 export function CommandPalette({
     isOpen,
     onClose,
     workspacePath,
+    workspaceId,
     onSelectFile,
     onSelectHistory,
     onRunCommand,
@@ -49,17 +103,43 @@ export function CommandPalette({
     const [filesLoading, setFilesLoading] = useState(false);
     const [filesError, setFilesError] = useState<string | null>(null);
     const [filesReloadKey, setFilesReloadKey] = useState(0);
+    const [project, setProject] = useState<ProjectInfo | null>(null);
+    const [projectError, setProjectError] = useState<string | null>(null);
+    const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
+    const [actionStatus, setActionStatus] = useState<PaletteCommandStatus | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
     const { t } = useI18n();
+
+    const loadGitStatus = useCallback(async (): Promise<void> => {
+        if (!window.piAPI?.getGitStatus || !workspacePath) return;
+        try {
+            const result = await Promise.resolve(window.piAPI.getGitStatus(workspacePath));
+            setGitStatus(isIpcError(result) ? null : result);
+        } catch {
+            setGitStatus(null);
+        }
+    }, [workspacePath]);
 
     useEffect(() => {
         if (isOpen) {
             setQuery("");
             setMode("file");
             setActiveIdx(0);
+            setActionStatus(null);
             setTimeout(() => inputRef.current?.focus(), 50);
         }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const onCommandStatus = (event: Event): void => {
+            const detail = (event as CustomEvent<PaletteCommandStatus>).detail;
+            if (!detail?.message) return;
+            setActionStatus(detail);
+        };
+        window.addEventListener("command-palette:status", onCommandStatus);
+        return () => window.removeEventListener("command-palette:status", onCommandStatus);
     }, [isOpen]);
 
     // 文件搜索：loading / 错误 / 重试 (可用度-D)
@@ -70,9 +150,15 @@ export function CommandPalette({
         setFilesError(null);
         window.piAPI
             .filesList(workspacePath)
-            .then((list) => {
+            .then((result) => {
                 if (cancelled) return;
-                setFiles(list);
+                if (isIpcError(result)) {
+                    setFiles([]);
+                    setFilesError(result.fallback);
+                    setFilesLoading(false);
+                    return;
+                }
+                setFiles(result);
                 setFilesLoading(false);
             })
             .catch((err: unknown) => {
@@ -86,6 +172,43 @@ export function CommandPalette({
     }, [mode, workspacePath, isOpen, filesReloadKey]);
 
     useEffect(() => {
+        if (mode !== "cmd" || !window.piAPI?.detectProject || !isOpen || !workspacePath) return;
+        let cancelled = false;
+        setProjectError(null);
+        window.piAPI
+            .detectProject(workspacePath)
+            .then((result) => {
+                if (cancelled) return;
+                if (isIpcError(result)) {
+                    setProject(null);
+                    setProjectError(result.fallback);
+                    return;
+                }
+                setProject(result);
+                setProjectError(null);
+            })
+            .catch((err: unknown) => {
+                if (cancelled) return;
+                setProject(null);
+                setProjectError(err instanceof Error ? err.message : String(err));
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [mode, workspacePath, isOpen]);
+
+    useEffect(() => {
+        if (mode !== "cmd" || !window.piAPI?.getGitStatus || !isOpen || !workspacePath) return;
+        let cancelled = false;
+        void loadGitStatus().finally(() => {
+            if (cancelled) return;
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [loadGitStatus, mode, workspacePath, isOpen]);
+
+    useEffect(() => {
         setActiveIdx(0);
     }, [mode, query]);
 
@@ -96,7 +219,40 @@ export function CommandPalette({
     if (!isOpen) return null;
 
     // 根据 mode 决定 results
-    let results: Array<{ id: string; primary: string; secondary?: string; onSelect: () => void }> = [];
+    let results: CommandResult[] = [];
+
+    const projectCommands: ProjectScriptCommand[] = project?.scripts
+        ? Object.keys(project.scripts).slice(0, 12).map((name) => ({
+            id: `project-script:${name}`,
+            name,
+            command: projectScriptCommand(project.packageManager, name),
+            rawScript: String(project.scripts?.[name] ?? ""),
+        }))
+        : [];
+    const gitContextCommands: GitContextCommand[] = gitChangedFiles(gitStatus)
+        .flatMap(({ file, status }) => [
+            {
+                id: `git-open-change:${file}`,
+                labelKey: "commandPalette.commands.git_open_change",
+                file,
+                status,
+                kind: "open-file" as const,
+            },
+            {
+                id: `git-open-diff:${file}`,
+                labelKey: "commandPalette.commands.git_open_diff",
+                file,
+                status,
+                kind: "open-diff" as const,
+            },
+            {
+                id: `git-stage-file:${file}`,
+                labelKey: "commandPalette.commands.git_stage_file",
+                file,
+                status,
+                kind: "stage-file" as const,
+            },
+        ]);
 
     if (mode === "file") {
         results = files
@@ -110,7 +266,7 @@ export function CommandPalette({
                 onSelect: () => onSelectFile?.(x.f.path),
             }));
     } else if (mode === "cmd") {
-        results = COMMANDS
+        const builtInResults = COMMANDS
             .map((c) => ({ c, s: fuzzyScore(t(c.labelKey), query) }))
             .filter((x) => x.s > 0)
             .sort((a, b) => b.s - a.s)
@@ -118,11 +274,106 @@ export function CommandPalette({
                 id: x.c.id,
                 primary: t(x.c.labelKey),
                 secondary: x.c.hint,
+                keepOpen: x.c.id === "switch_workspace",
                 onSelect: () => onRunCommand?.(x.c.id),
             }));
+        const projectResults = projectCommands
+            .map((c) => ({
+                c,
+                s: Math.max(
+                    fuzzyScore(c.name, query),
+                    fuzzyScore(c.command, query),
+                    fuzzyScore(`run ${c.name}`, query),
+                ),
+            }))
+            .filter((x) => x.s > 0)
+            .sort((a, b) => b.s - a.s)
+            .map((x) => ({
+                id: x.c.id,
+                primary: `${t("commandPalette.projectScriptPrefix")} ${x.c.name}`,
+                secondary: x.c.command,
+                keepOpen: true,
+                onSelect: () => {
+                    const mode = classifyTerminalCommand(`${x.c.command}\n${x.c.rawScript}`);
+                    setActionStatus({
+                        message: t(
+                            mode === "draft"
+                                ? "commandPalette.states.projectScriptDrafted"
+                                : "commandPalette.states.projectScriptSent",
+                            { name: x.c.name },
+                        ),
+                        tone: "success",
+                    });
+                    window.dispatchEvent(new CustomEvent("terminal:run-command", {
+                        detail: { command: x.c.command, mode },
+                    }));
+                },
+            }));
+        const gitContextResults = gitContextCommands
+            .map((c) => ({
+                c,
+                label: t(c.labelKey, { file: c.file }),
+                s: Math.max(
+                    fuzzyScore(t(c.labelKey, { file: c.file }), query),
+                    fuzzyScore(c.file, query),
+                    fuzzyScore(
+                        c.kind === "open-diff"
+                            ? "diff git changes"
+                            : c.kind === "stage-file"
+                                ? `stage git add ${c.file}`
+                                : "open changed file",
+                        query,
+                    ),
+                ),
+            }))
+            .filter((x) => x.s > 0)
+            .sort((a, b) => b.s - a.s)
+            .map((x) => ({
+                id: x.c.id,
+                primary: x.label,
+                secondary: `${x.c.status} ${x.c.file}`,
+                keepOpen: x.c.kind === "stage-file",
+                onSelect: async () => {
+                    if (x.c.kind === "open-diff") {
+                        setActionStatus({ message: t("commandPalette.states.gitDiffOpened", { file: x.c.file }), tone: "success" });
+                        window.dispatchEvent(new CustomEvent("workspace:open-git-diff", { detail: { file: x.c.file } }));
+                        return;
+                    }
+                    if (x.c.kind === "stage-file") {
+                        if (!window.piAPI?.gitAdd) return;
+                        try {
+                            const result = await window.piAPI.gitAdd(workspacePath, [x.c.file]);
+                            if (isIpcError(result)) {
+                                setActionStatus({ message: result.fallback, tone: "error" });
+                                return;
+                            }
+                            setActionStatus({ message: t("commandPalette.states.gitStageSuccess", { file: x.c.file }), tone: "success" });
+                            window.dispatchEvent(
+                                new CustomEvent("workspace:git-changed", {
+                                    detail: { workspacePath, files: [x.c.file], reason: "stage" },
+                                }),
+                            );
+                            await loadGitStatus();
+                        } catch (err) {
+                            setActionStatus({ message: err instanceof Error ? err.message : String(err), tone: "error" });
+                        }
+                        return;
+                    }
+                    setActionStatus({ message: t("commandPalette.states.gitChangeOpened", { file: x.c.file }), tone: "success" });
+                    window.dispatchEvent(
+                        new CustomEvent("workspace:open-file", {
+                            detail: { path: `${workspacePath.replace(/[\\/]+$/, "")}\\${x.c.file.replace(/^[\\/]+/, "")}` },
+                        }),
+                    );
+                },
+            }));
+        results = [...gitContextResults, ...projectResults, ...builtInResults].slice(0, 24);
     } else if (mode === "history") {
         // 历史搜索 (M2-6): 跨 session 搜消息内容
-        const sessions = useSessionStore.getState().sessions;
+        const sessions = useSessionStore
+            .getState()
+            .sessions
+            .filter((session) => !workspaceId || session.workspaceId === workspaceId);
         const q = query.toLowerCase();
         const all: Array<{ id: string; primary: string; secondary?: string; onSelect: () => void }> = [];
         for (const s of sessions) {
@@ -160,8 +411,9 @@ export function CommandPalette({
             setActiveIdx((i) => Math.max(i - 1, 0));
         } else if (e.key === "Enter" && results[activeIdx]) {
             e.preventDefault();
-            results[activeIdx].onSelect();
-            handleClose();
+            const result = results[activeIdx];
+            void result.onSelect();
+            if (!result.keepOpen) handleClose();
         } else if (e.key === "Escape") {
             e.preventDefault();
             handleClose();
@@ -253,6 +505,28 @@ export function CommandPalette({
 
                 {/* Results — 错误 / 加载 / 空 / 列表 4 种状态 (可用度-D) */}
                 <div className="flex-1 overflow-auto px-1 pb-2 min-h-[200px]">
+                    {mode === "cmd" && actionStatus && (
+                        <div
+                            className={`mx-3 mb-2 rounded-lg border p-2.5 text-xs ${
+                                actionStatus.tone === "error"
+                                    ? "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]"
+                                    : "border-[#bbf7d0] bg-[#f0fdf4] text-[#166534]"
+                            }`}
+                            role={actionStatus.tone === "error" ? "alert" : "status"}
+                        >
+                            {actionStatus.message}
+                        </div>
+                    )}
+                    {mode === "cmd" && projectError && (
+                        <div className="mx-3 mb-2 rounded-lg border border-[#f1e4c8] bg-[#fffaf0] p-2.5" role="status">
+                            <p className="m-0 text-xs font-medium text-[#92400e]">
+                                {t("commandPalette.states.projectCommandsUnavailable")}
+                            </p>
+                            <p className="m-0 mt-1 break-all font-mono text-[11px] text-[#8a6a3f]">
+                                {projectError}
+                            </p>
+                        </div>
+                    )}
                     {/* 文件搜索错误 — 友好重试 */}
                     {mode === "file" && filesError && !filesLoading ? (
                         <div
@@ -304,10 +578,10 @@ export function CommandPalette({
                                         className="list-none"
                                     >
                                         <button
-                                            type="button"
+                                            type="button" aria-label={r.primary} title={r.primary}
                                             onClick={() => {
-                                                r.onSelect();
-                                                handleClose();
+                                                void r.onSelect();
+                                                if (!r.keepOpen) handleClose();
                                             }}
                                             className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
                                                 isSelected
@@ -315,8 +589,8 @@ export function CommandPalette({
                                                     : "hover:bg-[#f5f5f5]"
                                             }`}
                                         >
+                                            {mode === "file" && <FileIcon />}
                                             <span className="flex-1 truncate text-[#1a1a1a]">
-                                                {mode === "file" && <span className="text-[#999] mr-2" aria-hidden="true">📄</span>}
                                                 {r.primary}
                                             </span>
                                             {r.secondary && (

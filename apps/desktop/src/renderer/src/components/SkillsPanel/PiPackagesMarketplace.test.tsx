@@ -1,0 +1,156 @@
+// @vitest-environment jsdom
+
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { usePiPackagesStore } from "../../stores/pi-packages-store";
+import { PiPackagesMarketplace } from "./PiPackagesMarketplace";
+
+describe("PiPackagesMarketplace", () => {
+  beforeEach(() => {
+    usePiPackagesStore.setState({
+      query: "",
+      results: [],
+      installed: [],
+      loading: false,
+      installedLoading: false,
+      actionSource: null,
+      error: null,
+      retryAction: null,
+      lastFailedAction: null,
+      lastAction: null,
+    });
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        packagesSearch: vi.fn(async () => [
+          {
+            name: "pi-git",
+            source: "npm:pi-git",
+            description: "Git tools",
+            url: "https://pi.dev/packages/pi-git",
+            installed: false,
+          },
+          {
+            name: "local-pack",
+            source: "file:C:/repo/local-pack",
+            description: "Local package",
+            url: "https://pi.dev/packages/local-pack",
+            installed: false,
+          },
+        ]),
+        packagesListInstalled: vi.fn(async () => []),
+        packagesInstall: vi.fn(async () => ({ success: true, message: "已安装 npm:pi-git", requiresRestart: true })),
+        packagesRemove: vi.fn(async () => ({ success: true, message: "已卸载 npm:pi-git", requiresRestart: true })),
+        packagesRefreshCatalog: vi.fn(async () => [
+          {
+            name: "pi-git",
+            source: "npm:pi-git",
+            description: "Git tools",
+            url: "https://pi.dev/packages/pi-git",
+            installed: false,
+          },
+        ]),
+      },
+      configurable: true,
+    });
+    vi.spyOn(window, "open").mockImplementation(() => null);
+  });
+
+  afterEach(() => {
+    usePiPackagesStore.setState({
+      query: "",
+      results: [],
+      installed: [],
+      loading: false,
+      installedLoading: false,
+      actionSource: null,
+      error: null,
+      retryAction: null,
+      lastFailedAction: null,
+      lastAction: null,
+    });
+    vi.restoreAllMocks();
+  });
+
+  it("shows source protocol, target and trust guidance before installing", async () => {
+    render(<PiPackagesMarketplace />);
+
+    const installButton = await screen.findByRole("button", { name: "安装 pi-git" });
+    fireEvent.click(installButton);
+
+    const dialog = await screen.findByRole("dialog", { name: "确认安装 Pi 插件" });
+    expect(dialog).toBeTruthy();
+    expect(within(dialog).getByText("协议")).toBeTruthy();
+    expect(within(dialog).getByText("npm")).toBeTruthy();
+    expect(within(dialog).getByText("pi-git")).toBeTruthy();
+    expect(within(dialog).getByText("从 npm 包源安装，请确认包名和维护者可信。")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "确认安装" }));
+    });
+
+    await waitFor(() => expect(window.piAPI?.packagesInstall).toHaveBeenCalledWith("npm:pi-git"));
+    await waitFor(() => expect(usePiPackagesStore.getState().actionSource).toBeNull());
+  });
+
+  it("uses file source trust copy for local packages", async () => {
+    render(<PiPackagesMarketplace />);
+
+    const installButton = await screen.findByRole("button", { name: "安装 local-pack" });
+    fireEvent.click(installButton);
+
+    const dialog = await screen.findByRole("dialog", { name: "确认安装 Pi 插件" });
+    expect(within(dialog).getByText("file")).toBeTruthy();
+    expect(within(dialog).getByText("C:/repo/local-pack")).toBeTruthy();
+    expect(within(dialog).getByText("从本地路径安装，请确认该目录内容可信。")).toBeTruthy();
+  });
+
+  it("keeps package install failures retryable", async () => {
+    window.piAPI!.packagesInstall = vi.fn()
+      .mockResolvedValueOnce({
+        code: "ipcErrors.packages.installFailed",
+        fallback: "安装失败: network unavailable",
+      })
+      .mockResolvedValueOnce({ success: true, message: "已安装 npm:pi-git", requiresRestart: true });
+
+    render(<PiPackagesMarketplace />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "安装 pi-git" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认安装" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("安装 npm:pi-git 失败：安装失败: network unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "重试安装" }));
+
+    await waitFor(() => {
+      expect(window.piAPI?.packagesInstall).toHaveBeenCalledTimes(2);
+    });
+    expect((await screen.findByRole("status")).textContent).toContain("已安装 npm:pi-git");
+  });
+
+  it("can manually refresh the package catalog and retry refresh failures", async () => {
+    window.piAPI!.packagesRefreshCatalog = vi.fn()
+      .mockResolvedValueOnce({
+        code: "ipcErrors.packages.refreshFailed",
+        fallback: "刷新 Pi 插件市场失败: network unavailable",
+      })
+      .mockResolvedValueOnce([
+        {
+          name: "pi-subagents",
+          source: "npm:pi-subagents",
+          description: "Subagent workflow",
+          url: "https://pi.dev/packages/pi-subagents",
+          installed: false,
+        },
+      ]);
+
+    render(<PiPackagesMarketplace />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "刷新目录" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("刷新目录失败：刷新 Pi 插件市场失败: network unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "重试刷新目录" }));
+
+    expect(await screen.findByRole("button", { name: "安装 pi-subagents" })).toBeTruthy();
+    expect(window.piAPI?.packagesRefreshCatalog).toHaveBeenCalledTimes(2);
+  });
+});

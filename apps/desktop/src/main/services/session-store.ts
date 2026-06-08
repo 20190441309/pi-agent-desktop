@@ -71,6 +71,10 @@ export async function createSession(
             messages: [],
             createdAt: Date.now(),
             updatedAt: Date.now(),
+            favorite: false,
+            tags: [],
+            readOnly: false,
+            lastOpenedAt: Date.now(),
         };
         const all = store.get("sessions");
         all.push(session);
@@ -105,6 +109,93 @@ export async function deleteSession(
     return withLock(() => {
         const all = store.get("sessions").filter((s) => s.id !== id);
         store.set("sessions", all);
+    });
+}
+
+export async function archiveSession(
+    store: SessionPersistence,
+    id: string,
+    archived: boolean,
+): Promise<Session> {
+    return withLock(() => {
+        const all = store.get("sessions");
+        const target = all.find((s) => s.id === id);
+        if (!target) {
+            throw new Error(`Session not found: ${id}`);
+        }
+        target.archived = archived;
+        target.updatedAt = Date.now();
+        store.set("sessions", all);
+        return target;
+    });
+}
+
+export async function updateSessionMetadata(
+    store: SessionPersistence,
+    id: string,
+    updates: Pick<
+        Partial<Session>,
+        | "summary"
+        | "lastOutputPaths"
+        | "favorite"
+        | "tags"
+        | "archived"
+        | "readOnly"
+        | "lastOpenedAt"
+        | "usage"
+        | "toolPermissions"
+        | "parentSessionId"
+        | "forkedFromMessageId"
+        | "forkedAt"
+    >,
+): Promise<Session> {
+    return withLock(() => {
+        const all = store.get("sessions");
+        const target = all.find((s) => s.id === id);
+        if (!target) {
+            throw new Error(`Session not found: ${id}`);
+        }
+        if (typeof updates.summary === "string") {
+            target.summary = updates.summary;
+        }
+        if (Array.isArray(updates.lastOutputPaths)) {
+            target.lastOutputPaths = updates.lastOutputPaths.filter((p) => typeof p === "string");
+        }
+        if (typeof updates.favorite === "boolean") {
+            target.favorite = updates.favorite;
+        }
+        if (Array.isArray(updates.tags)) {
+            target.tags = updates.tags
+                .map((tag) => tag.trim())
+                .filter((tag, index, all) => tag.length > 0 && all.indexOf(tag) === index);
+        }
+        if (typeof updates.archived === "boolean") {
+            target.archived = updates.archived;
+        }
+        if (typeof updates.readOnly === "boolean") {
+            target.readOnly = updates.readOnly;
+        }
+        if (typeof updates.lastOpenedAt === "number") {
+            target.lastOpenedAt = updates.lastOpenedAt;
+        }
+        if (updates.usage && typeof updates.usage.updatedAt === "number") {
+            target.usage = updates.usage;
+        }
+        if (updates.toolPermissions) {
+            target.toolPermissions = updates.toolPermissions;
+        }
+        if (typeof updates.parentSessionId === "string") {
+            target.parentSessionId = updates.parentSessionId;
+        }
+        if (typeof updates.forkedFromMessageId === "string") {
+            target.forkedFromMessageId = updates.forkedFromMessageId;
+        }
+        if (typeof updates.forkedAt === "number") {
+            target.forkedAt = updates.forkedAt;
+        }
+        target.updatedAt = Date.now();
+        store.set("sessions", all);
+        return target;
     });
 }
 

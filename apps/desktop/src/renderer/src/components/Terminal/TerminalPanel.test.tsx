@@ -13,7 +13,8 @@ const onDataMock = vi.fn();
 const fitMock = vi.fn();
 
 vi.mock("@xterm/xterm", () => ({
-    Terminal: vi.fn().mockImplementation(() => ({
+    Terminal: vi.fn(function TerminalMock() {
+        return {
         cols: 80,
         rows: 24,
         open: openMock,
@@ -21,13 +22,14 @@ vi.mock("@xterm/xterm", () => ({
         write: writeMock,
         loadAddon: loadAddonMock,
         onData: onDataMock,
-    })),
+        };
+    }),
 }));
 
 vi.mock("@xterm/addon-fit", () => ({
-    FitAddon: vi.fn().mockImplementation(() => ({
-        fit: fitMock,
-    })),
+    FitAddon: vi.fn(function FitAddonMock() {
+        return { fit: fitMock };
+    }),
 }));
 
 vi.mock("@xterm/xterm/css/xterm.css", () => ({}));

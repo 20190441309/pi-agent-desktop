@@ -190,6 +190,34 @@ describe("usePiStream (T6) — debounce + flush", () => {
         expect(updateMessageMock).toHaveBeenCalledTimes(1);
     });
 
+    it("agent_end 直接 flush 时带上最新 toolCalls 快照", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.(fakeEvent({ type: "agent_start" }));
+            emitPiEvent?.(fakeEvent({
+                type: "tool_execution_start",
+                toolCallId: "tc_agent_end",
+                toolName: "bash",
+                args: { command: "pwd" },
+            }));
+            emitPiEvent?.(fakeEvent({
+                type: "tool_execution_end",
+                toolCallId: "tc_agent_end",
+                toolName: "bash",
+                isError: false,
+            }));
+            emitPiEvent?.(fakeEvent({ type: "agent_end" }));
+        });
+
+        expect(updateMessageMock).toHaveBeenCalledTimes(1);
+        const arg = updateMessageMock.mock.calls[0]?.[2] as { toolCalls?: Array<{ id: string; status: string }> };
+        expect(arg.toolCalls).toHaveLength(1);
+        expect(arg.toolCalls?.[0]).toMatchObject({ id: "tc_agent_end", status: "completed" });
+    });
+
     it("flush 失败 → 累加 persistErrorCount(不抛)", async () => {
         updateMessageMock.mockRejectedValueOnce(new Error("disk full"));
 

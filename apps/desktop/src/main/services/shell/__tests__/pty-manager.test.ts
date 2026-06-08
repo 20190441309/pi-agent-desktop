@@ -59,11 +59,28 @@ describe("PtyManager", () => {
         expect(fakePty.write).toHaveBeenCalledWith("ls\n");
     });
 
+    it("write throws when the terminal is missing or closed", () => {
+        expect(() => mgr.write("missing", "ls\n")).toThrow('Pty "missing" does not exist');
+    });
+
+    it("write rethrows pty write errors", async () => {
+        await mgr.create({ id: "p1" });
+        fakePtys[0].write.mockImplementationOnce(() => {
+            throw new Error("pty write failed");
+        });
+
+        expect(() => mgr.write("p1", "ls\n")).toThrow("pty write failed");
+    });
+
     it("resize calls pty.resize", async () => {
         await mgr.create({ id: "p1" });
         mgr.resize("p1", 100, 30);
         const fakePty = fakePtys[0];
         expect(fakePty.resize).toHaveBeenCalledWith(100, 30);
+    });
+
+    it("resize throws when the terminal is missing", () => {
+        expect(() => mgr.resize("missing", 100, 30)).toThrow('Pty "missing" does not exist');
     });
 
     it("close removes entry and calls kill", async () => {

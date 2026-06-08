@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 const listeners = new Map<string, (...args: unknown[]) => unknown>();
 const webContentsSend = vi.fn();
+const { execFileSyncMock, rmSyncMock } = vi.hoisted(() => ({
+    execFileSyncMock: vi.fn(),
+    rmSyncMock: vi.fn(),
+}));
 
 vi.mock("electron", () => ({
     ipcMain: {
@@ -27,54 +31,40 @@ vi.mock("electron-log/main", () => ({
     default: {
         error: vi.fn(),
         info: vi.fn(),
+        warn: vi.fn(),
     },
 }));
 
+vi.mock("child_process", () => ({
+    execFileSync: execFileSyncMock,
+}));
+
+vi.mock("fs", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("fs")>();
+    return {
+        ...actual,
+        rmSync: rmSyncMock,
+    };
+});
+
 import { setupChatIpc } from "../chat.ipc";
-import type { AgentRuntimeRegistry } from "../../services/agent-runtime/registry";
-import { PendingEdits } from "../../services/approval/pending-edits";
-import type { WorkspaceRegistry } from "../../services/pi-session/registry";
-import type { AgentTab, CreateAgentInput, Workspace } from "@shared";
-import type { IpcSender } from "../../services/pi-session/event-bridge";
-
-type WorkspaceRegistryStub = Pick<WorkspaceRegistry, "get" | "has">;
-type AgentRegistryStub = Pick<AgentRuntimeRegistry, "findDefaultAgent" | "create" | "prompt" | "stop">;
-
-function workspace(): Workspace {
-    return {
-        id: "ws_1",
-        name: "demo",
-        path: "C:/demo",
-        createdAt: 1,
-    };
-}
-
-function agentTab(overrides: Partial<AgentTab> = {}): AgentTab {
-    return {
-        id: "agent_1",
-        workspaceId: "ws_1",
-        title: "demo Agent",
-        status: "idle",
-        createdAt: 1,
-        updatedAt: 1,
-        ...overrides,
-    };
-}
 
 describe("setupChatIpc", () => {
     beforeEach(() => {
         handlers.clear();
         listeners.clear();
         webContentsSend.mockClear();
+        execFileSyncMock.mockReset();
+        rmSyncMock.mockReset();
     });
 
     it("sends renderer event payload directly without a workspace envelope", async () => {
         const event = { type: "agent_start" };
-        const registry: WorkspaceRegistryStub = {
-            get: vi.fn(async (_id, _path, _pendingEdits, send?: IpcSender) => ({
+        const registry = {
+            get: vi.fn(async (_id, _path, _pendingEdits, send) => ({
                 session: {
                     prompt: vi.fn(async () => {
-                        send?.("pi:event", "ws_1", event);
+                        send("pi:event", "ws_1", event);
                     }),
                     abort: vi.fn(),
                 },
@@ -83,10 +73,10 @@ describe("setupChatIpc", () => {
         };
 
         setupChatIpc({
-            registry: registry as WorkspaceRegistry,
-            getWorkspace: () => workspace(),
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
             getDefaultWorkspace: () => undefined,
-            pendingEdits: new PendingEdits(),
+            pendingEdits: { autoApprove: false } as any,
         });
 
         const handler = handlers.get("pi:send");
@@ -97,46 +87,124 @@ describe("setupChatIpc", () => {
         expect(webContentsSend).toHaveBeenCalledWith("pi:event", event);
     });
 
-    it("routes legacy pi:send through agent registry when available", async () => {
-        const agentRegistry: AgentRegistryStub = {
-            findDefaultAgent: vi.fn(() => undefined),
-            create: vi.fn(async (_input: CreateAgentInput) => agentTab()),
-            prompt: vi.fn(async () => undefined),
-            stop: vi.fn(),
+    it("does not fall back to the default workspace when a provided workspace id is unknown", async () => {
+        const registry = {
+            get: vi.fn(),
+            has: vi.fn(() => false),
         };
 
         setupChatIpc({
-            registry: {} as WorkspaceRegistry,
-            agentRegistry: agentRegistry as AgentRuntimeRegistry,
-            getWorkspace: () => workspace(),
-            getDefaultWorkspace: () => undefined,
-            pendingEdits: new PendingEdits(),
+            registry: registry as any,
+            getWorkspace: () => undefined,
+            getDefaultWorkspace: () => ({ id: "default", name: "default", path: "C:/default" }),
+            pendingEdits: { autoApprove: false } as any,
         });
 
-        await handlers.get("pi:send")?.({}, "ws_1", "hello");
+        const handler = handlers.get("pi:send");
+        const result = await handler?.({}, "missing_ws", "hello");
 
-        expect(agentRegistry.create).toHaveBeenCalledWith({ workspaceId: "ws_1", title: "demo Agent" });
-        expect(agentRegistry.prompt).toHaveBeenCalledWith({ agentId: "agent_1", message: "hello" });
+        expect(result).toMatchObject({
+            code: "ipcErrors.chat.workspaceNotFound",
+            params: { id: "missing_ws" },
+        });
+        expect(registry.get).not.toHaveBeenCalled();
     });
 
-    it("routes legacy pi:stop through agent registry when available", async () => {
-        const agentRegistry: AgentRegistryStub = {
-            findDefaultAgent: vi.fn(() => agentTab()),
-            create: vi.fn(async (_input: CreateAgentInput) => agentTab()),
-            prompt: vi.fn(async () => undefined),
-            stop: vi.fn(),
+    it("does not stop the default workspace when the requested workspace id is unknown", async () => {
+        const registry = {
+            get: vi.fn(),
+            has: vi.fn(() => true),
         };
 
         setupChatIpc({
-            registry: {} as WorkspaceRegistry,
-            agentRegistry: agentRegistry as AgentRuntimeRegistry,
-            getWorkspace: () => workspace(),
-            getDefaultWorkspace: () => undefined,
-            pendingEdits: new PendingEdits(),
+            registry: registry as any,
+            getWorkspace: () => undefined,
+            getDefaultWorkspace: () => ({ id: "default", name: "default", path: "C:/default" }),
+            pendingEdits: { autoApprove: false } as any,
         });
 
-        await handlers.get("pi:stop")?.({}, "ws_1");
+        const handler = handlers.get("pi:stop");
+        const result = await handler?.({}, "missing_ws");
 
-        expect(agentRegistry.stop).toHaveBeenCalledWith("agent_1");
+        expect(result).toMatchObject({
+            code: "ipcErrors.chat.workspaceNotFound",
+            params: { id: "missing_ws" },
+        });
+        expect(registry.has).not.toHaveBeenCalled();
+        expect(registry.get).not.toHaveBeenCalled();
+    });
+
+    it("normalizes git undo paths before invoking git", async () => {
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => undefined,
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("git:undo");
+        const result = await handler?.({}, "C:/repo", "src\\app.ts");
+
+        expect(result).toBeUndefined();
+        expect(execFileSyncMock).toHaveBeenCalledWith("git", ["checkout", "--", "src/app.ts"], {
+            cwd: expect.stringMatching(/[\\/]repo$/),
+            stdio: "ignore",
+        });
+        expect(rmSyncMock).not.toHaveBeenCalled();
+    });
+
+    it("blocks git undo outside the workspace before running git or deleting files", async () => {
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => undefined,
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("git:undo");
+        const result = await handler?.({}, "C:/repo", "C:/outside/secret.txt");
+
+        expect(result).toMatchObject({
+            code: "ipcErrors.files.protectedPath",
+        });
+        expect(execFileSyncMock).not.toHaveBeenCalled();
+        expect(rmSyncMock).not.toHaveBeenCalled();
+    });
+
+    it("blocks git undo for protected credential files inside the workspace", async () => {
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => undefined,
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("git:undo");
+        const result = await handler?.({}, "C:/repo", ".env.local");
+
+        expect(result).toMatchObject({
+            code: "ipcErrors.files.protectedPath",
+        });
+        expect(execFileSyncMock).not.toHaveBeenCalled();
+        expect(rmSyncMock).not.toHaveBeenCalled();
+    });
+
+    it("uses Node deletion for untracked files after git checkout fallback fails", async () => {
+        execFileSyncMock.mockImplementationOnce(() => {
+            throw new Error("not tracked");
+        });
+
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => undefined,
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("git:undo");
+        const result = await handler?.({}, "C:/repo", "src/new.ts");
+
+        expect(result).toBeUndefined();
+        expect(rmSyncMock).toHaveBeenCalledWith(expect.stringMatching(/[\\/]repo[\\/]src[\\/]new\.ts$/), { force: true });
     });
 });

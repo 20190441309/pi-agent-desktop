@@ -10,8 +10,10 @@ import { Popover } from "../common/Popover";
 import { useMentions } from "../../hooks/useMentions";
 import { usePermissionStore } from "../../stores/permission-store";
 import { usePlanStore } from "../../stores/plan-store";
+import { useWorkspaceStore } from "../../stores/workspace-store";
+import { logger } from "../../utils/logger";
 import { PermissionRequestStack } from "./PermissionRequestStack";
-import type { PermissionMode } from "@shared";
+import { isIpcError, type PermissionMode } from "@shared";
 
 interface ChatInputProps {
   isConnected: boolean;
@@ -40,6 +42,22 @@ function normalizePermissionMode(value: unknown): PermissionMode {
 function basename(p: string): string {
   const m = p.match(/[^\\/]+$/);
   return m ? m[0] : p;
+}
+
+function errorMessage(value: unknown, fallback: string): string {
+  if (isIpcError(value)) return value.fallback;
+  if (value instanceof Error) return value.message;
+  if (typeof value === "string" && value.trim()) return value;
+  return fallback;
+}
+
+function mergePrefillDraft(current: string, incoming: string): string {
+  const text = incoming.trim();
+  if (!text) return current;
+  const existing = current.trimEnd();
+  if (!existing) return incoming;
+  if (existing.includes(text)) return current;
+  return `${existing} ${text}${incoming.endsWith(" ") ? " " : ""}`;
 }
 
 function PermissionModeIcon({ mode }: { mode: PermissionMode }): React.JSX.Element {
@@ -77,11 +95,14 @@ export function ChatInput({
 }: ChatInputProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState("");
   const [cursorPos, setCursorPos] = useState(0);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { settings, updateSettings, piModels } = useSettingsStore();
   const permissionStore = usePermissionStore();
   const planStore = usePlanStore();
-  const { add: addAttachment, remove: removeAttachment, list: listAttachments } = useAttachmentsStore();
+  const { workspaces, getCurrentWorkspace, setCurrentWorkspace, addWorkspace, createWorkspace } = useWorkspaceStore();
+  const { add: addAttachment, remove: removeAttachment, clear: clearAttachments, list: listAttachments } = useAttachmentsStore();
   const { t } = useI18n();
 
   const {
@@ -143,7 +164,7 @@ export function ChatInput({
   onConsumedRef.current = onPrefillConsumed;
   useEffect(() => {
     if (typeof prefill === "string" && prefill.length > 0) {
-      setInputValue(prefill);
+      setInputValue((current) => mergePrefillDraft(current, prefill));
       requestAnimationFrame(() => {
         textareaRef.current?.focus();
         const ta = textareaRef.current;
@@ -157,9 +178,34 @@ export function ChatInput({
   }, [prefill, prefillKey]);
 
   const handleSend = async (): Promise<void> => {
-    if (!inputValue.trim() || isProcessing) return;
-    await onSend(inputValue.trim());
+    if (!inputValue.trim() || !isConnected) return;
+    setSendError(null);
+    const imageAttachments = attachments.filter((attachment) => attachment.kind === "image");
+    if (imageAttachments.length > 0) {
+      setAttachmentError("图片附件暂未接入 Pi CLI 文本通道，请移除图片或用文字描述后发送");
+      return;
+    }
+    const fileAttachments = attachments.filter((attachment) => attachment.kind === "file");
+    const attachmentPrefix = fileAttachments.length > 0
+      ? [
+          "附加文件:",
+          ...fileAttachments.map((attachment) => `@${attachment.value}`),
+          "",
+          "用户消息:",
+        ].join("\n")
+      : "";
+    const outbound = attachmentPrefix
+      ? `${attachmentPrefix}\n${inputValue.trim()}`
+      : inputValue.trim();
+    try {
+      await onSend(outbound);
+    } catch (err) {
+      setSendError(`发送失败: ${errorMessage(err, "未知错误")}`);
+      return;
+    }
     setInputValue("");
+    setAttachmentError(null);
+    if (workspaceId) clearAttachments(workspaceId);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -216,27 +262,42 @@ export function ChatInput({
 
   const handlePickFiles = useCallback(async (): Promise<void> => {
     if (!window.piAPI?.selectFiles) {
-      window.alert("selectFiles 不可用 (preload 未注入)");
+      setAttachmentError("文件选择不可用 (preload 未注入)");
       return;
     }
     if (!workspaceId) {
-      window.alert("请先选择 workspace");
+      setAttachmentError("请先选择 workspace");
       return;
     }
-    const paths = await window.piAPI.selectFiles({ multiSelections: true });
-    if (!Array.isArray(paths) || paths.length === 0) return;
-    for (const p of paths) {
-      addAttachment(workspaceId, {
-        id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        kind: "file",
-        name: basename(p),
-        value: p,
-      });
+    setAttachmentError(null);
+    try {
+      const paths = await window.piAPI.selectFiles({ multiSelections: true });
+      if (isIpcError(paths)) {
+        setAttachmentError(paths.fallback);
+        return;
+      }
+      if (!Array.isArray(paths) || paths.length === 0) return;
+      for (const p of paths) {
+        addAttachment(workspaceId, {
+          id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          kind: "file",
+          name: basename(p),
+          value: p,
+        });
+      }
+    } catch (err) {
+      setAttachmentError(`打开文件选择器失败: ${errorMessage(err, "未知错误")}`);
     }
   }, [workspaceId, addAttachment]);
 
   const currentPermission = normalizePermissionMode(settings.permissionLevel ?? permissionStore.mode);
   const currentModel = settings.model;
+  const currentWorkspace =
+    (workspaceId ? workspaces.find((w) => w.id === workspaceId) : null) ?? getCurrentWorkspace();
+  const recentWorkspaces = [...workspaces]
+    .sort((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime())
+    .slice(0, 6);
+
   useEffect(() => {
     if (permissionStore.mode !== currentPermission) {
       permissionStore.setMode(currentPermission);
@@ -256,14 +317,111 @@ export function ChatInput({
     },
     [updateSettings],
   );
+  const handleSwitchWorkspace = useCallback(
+    async (id: string): Promise<void> => {
+      const ws = workspaces.find((w) => w.id === id);
+      if (!ws) return;
+      try {
+        const result = await window.piAPI?.selectWorkspace?.(ws.path);
+        if (isIpcError(result)) {
+          setAttachmentError(result.fallback);
+          return;
+        }
+        setCurrentWorkspace(id);
+        setAttachmentError(null);
+      } catch (e) {
+        logger.error("[ChatInput] selectWorkspace failed:", e);
+        setAttachmentError(`切换 workspace 失败: ${errorMessage(e, "未知错误")}`);
+      }
+    },
+    [setCurrentWorkspace, workspaces],
+  );
+  const handleSelectNewWorkspace = useCallback(async (): Promise<void> => {
+    if (!window.piAPI?.selectDirectory) {
+      setAttachmentError("目录选择不可用 (preload 未注入)");
+      return;
+    }
+    try {
+      const selectedPath = await window.piAPI.selectDirectory();
+      if (isIpcError(selectedPath)) {
+        setAttachmentError(selectedPath.fallback);
+        return;
+      }
+      const path = selectedPath;
+      if (!path) return;
+
+      const name = basename(path);
+      const persisted = await window.piAPI?.listWorkspaces?.();
+      if (isIpcError(persisted)) {
+        setAttachmentError(persisted.fallback);
+        return;
+      }
+      const persistedMatch = Array.isArray(persisted)
+        ? persisted.find((w) => w.path === path)
+        : undefined;
+      if (persistedMatch) {
+        const ws = addWorkspace(persistedMatch.name, persistedMatch.path, persistedMatch.id);
+        setCurrentWorkspace(ws.id);
+        const result = await window.piAPI?.selectWorkspace?.(ws.path);
+        if (isIpcError(result)) {
+          setAttachmentError(result.fallback);
+          return;
+        }
+        setAttachmentError(null);
+        return;
+      }
+
+      const existing = workspaces.find((w) => w.path === path);
+      if (existing) {
+        await handleSwitchWorkspace(existing.id);
+        return;
+      }
+
+      const ws = await createWorkspace(name, path);
+      if (!ws) {
+        setAttachmentError(useWorkspaceStore.getState().lastError ?? "创建 workspace 失败");
+        return;
+      }
+      const result = await window.piAPI.selectWorkspace?.(path);
+      if (isIpcError(result)) {
+        setAttachmentError(result.fallback);
+        return;
+      }
+      setAttachmentError(null);
+    } catch (e) {
+      logger.error("[ChatInput] create workspace failed:", e);
+      setAttachmentError(`创建 workspace 失败: ${errorMessage(e, "未知错误")}`);
+    }
+  }, [addWorkspace, createWorkspace, handleSwitchWorkspace, setCurrentWorkspace, workspaces]);
 
   const canSend = inputValue.trim().length > 0 && isConnected;
   const currentPermissionLabel = PERMISSION_OPTIONS.find((p) => p.value === currentPermission)?.label ?? "智能授权";
+  const inputPlaceholder = !isConnected
+    ? t("chatInput.placeholder.noConnection")
+    : isProcessing
+      ? "任务运行中，输入内容会作为追加指令发送"
+      : t("chatInput.placeholder.ready");
 
   return (
-    <div className="bg-transparent px-8 pt-2 pb-2">
+    <div className="bg-transparent px-8 pt-2 pb-3">
       <PermissionRequestStack />
-      <div className="mx-auto max-w-[770px] overflow-hidden rounded-[18px] border border-[#e6e6e3] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
+      <div className="mx-auto max-w-[770px] overflow-hidden rounded-xl border border-[#e4e4df] bg-white shadow-[0_8px_24px_rgba(30,30,20,0.06)]">
+        {isProcessing && (
+          <div className="flex items-center justify-between gap-3 border-b border-[#eeeeea] bg-[#fbfbf9] px-4 py-2 text-xs">
+            <div className="flex min-w-0 items-center gap-2 text-[#5f5f5a]">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-[#1f1f1f]" aria-hidden />
+              <span className="truncate">任务运行中 · 新输入会作为追加指令进入当前会话</span>
+            </div>
+            <button
+              type="button"
+              onClick={onStop}
+              className="shrink-0 rounded-md border border-[#deded8] bg-white px-2 py-1 text-xs text-[#333] hover:border-[#c9c9c2] hover:bg-[#f4f4f1]"
+              aria-label={t("chatView.stopGeneration")}
+            >
+              停止
+            </button>
+          </div>
+        )}
         {/* 附件 chips */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-4 pt-3" role="list" aria-label="已选附件">
@@ -298,7 +456,7 @@ export function ChatInput({
         )}
 
         {/* 输入框 + 发送按钮 + @mention 弹窗 */}
-        <div className="relative flex gap-3 px-4 pt-4 pb-2">
+        <div className="relative flex gap-3 px-4 pt-4 pb-3">
           <div className="flex-1 relative">
             <textarea
               ref={textareaRef}
@@ -306,14 +464,16 @@ export function ChatInput({
               onChange={(e) => {
                 setInputValue(e.target.value);
                 setCursorPos(e.target.selectionStart);
+                if (attachmentError) setAttachmentError(null);
+                if (sendError) setSendError(null);
               }}
               onPaste={handlePaste}
               onSelect={handleSelect}
               onKeyDown={handleKeyDown}
-              placeholder={isConnected ? t("chatInput.placeholder.ready") : t("chatInput.placeholder.noConnection")}
+              placeholder={inputPlaceholder}
               className="min-h-[52px] w-full resize-none border-0 bg-transparent px-0 py-0 text-sm leading-relaxed text-[#1f1f1f] placeholder:text-[#a1a1a1] focus:outline-none disabled:opacity-50"
               rows={1}
-              disabled={isProcessing || !isConnected}
+              disabled={!isConnected}
               aria-label={t("chatInput.send")}
             />
             {/* @mention 候选弹窗 */}
@@ -359,20 +519,19 @@ export function ChatInput({
           </div>
           <button
             type="button"
-            onClick={isProcessing ? onStop : () => void handleSend()}
-            disabled={!isProcessing && !canSend}
-            className={`flex h-9 w-9 flex-shrink-0 items-center justify-center self-end rounded-xl transition-all ${
+            onClick={() => void handleSend()}
+            disabled={!canSend}
+            className={`flex h-9 w-9 flex-shrink-0 items-center justify-center self-end rounded-lg transition-all ${
               isProcessing
-                ? "bg-[#1f1f1f] text-white hover:bg-[#111]"
-                : "bg-[#a8a8a8] text-white hover:bg-[#8f8f8f] disabled:cursor-not-allowed disabled:opacity-50"
+                ? "border border-[#262626] bg-white text-[#262626] hover:bg-[#f4f4f1] disabled:cursor-not-allowed disabled:border-[#d4d4d0] disabled:text-[#b0b0aa]"
+                : "bg-[#1f1f1f] text-white hover:bg-[#111] disabled:cursor-not-allowed disabled:bg-[#d4d4d0] disabled:text-white"
             }`}
-            aria-label={isProcessing ? t("chatView.stopGeneration") : t("chatInput.send")}
-            title={isProcessing ? t("chatView.stopGeneration") : t("chatInput.send")}
+            aria-label={isProcessing ? "发送追加指令" : t("chatInput.send")}
+            title={isProcessing ? "发送追加指令" : t("chatInput.send")}
           >
             {isProcessing ? (
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12h14m0 0-5-5m5 5-5 5" />
               </svg>
             ) : (
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -382,14 +541,100 @@ export function ChatInput({
           </button>
         </div>
 
+        {attachmentError && (
+          <div className="px-4 pb-2">
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+              {attachmentError}
+            </div>
+          </div>
+        )}
+        {sendError && (
+          <div className="px-4 pb-2">
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+              {sendError}
+            </div>
+          </div>
+        )}
+
         {/* 控制栏 */}
-        <div className="flex items-center justify-between border-t border-[#f0f0ee] bg-[#fafafa] px-4 py-2">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#efefeb] bg-[#fafaf8] px-3 py-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <Popover
+              align="start"
+              contentClassName="min-w-[220px]"
+              trigger={
+                <div
+                  className="flex h-7 max-w-[210px] cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-2 text-xs text-[#5f5f5a] transition-all hover:border-[#e3e3df] hover:bg-white"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={currentWorkspace ? `当前工作目录: ${currentWorkspace.name}` : "选择工作目录"}
+                  data-testid="chat-input-workspace-trigger"
+                >
+                  <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+                  </svg>
+                  <span className="truncate">{currentWorkspace?.name ?? "选择工作目录"}</span>
+                  <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              }
+            >
+              {(close) => (
+                <div className="py-1">
+                  {recentWorkspaces.length > 0 && (
+                    <>
+                      <div className="px-3 py-1.5 text-[10px] text-[var(--mm-text-tertiary)]">最近</div>
+                      {recentWorkspaces.map((ws) => (
+                        <button
+                          key={ws.id}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={ws.id === currentWorkspace?.id}
+                          onClick={() => {
+                            void handleSwitchWorkspace(ws.id);
+                            close();
+                          }}
+                          className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[#333] hover:bg-[#f4f4f3]"
+                          title={ws.path}
+                        >
+                          <svg className="h-3.5 w-3.5 shrink-0 text-[#777]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+                          </svg>
+                          <span className="min-w-0 flex-1 truncate">{ws.name}</span>
+                          {ws.id === currentWorkspace?.id && (
+                            <svg className="h-3.5 w-3.5 shrink-0 text-[#333]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                      <div className="my-1 border-t border-[#e8e8e6]" />
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      void handleSelectNewWorkspace();
+                      close();
+                    }}
+                    className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[#333] hover:bg-[#f4f4f3]"
+                  >
+                    <svg className="h-3.5 w-3.5 shrink-0 text-[#777]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M12 5v14m-7-7h14" />
+                    </svg>
+                    <span className="truncate">选择新项目</span>
+                  </button>
+                </div>
+              )}
+            </Popover>
+
             <button
               type="button"
               onClick={() => void handlePickFiles()}
               disabled={!workspaceId}
-              className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs text-[#777] transition-all hover:bg-[#f0f0ef] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-7 items-center gap-1.5 rounded-md border border-transparent px-2 text-xs text-[#6f6f6a] transition-all hover:border-[#e3e3df] hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
               aria-label={t("chatInput.addAttachment")}
               title={workspaceId ? t("chatInput.addAttachment") : "请先选择 workspace"}
             >
@@ -405,7 +650,7 @@ export function ChatInput({
               contentClassName="min-w-[158px]"
               trigger={
                 <div
-                  className="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-[#666] transition-all hover:bg-[#f0f0ef]"
+                  className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-2 text-xs text-[#5f5f5a] transition-all hover:border-[#e3e3df] hover:bg-white"
                   role="button"
                   tabIndex={0}
                   aria-label={`权限: ${currentPermissionLabel}`}
@@ -453,10 +698,10 @@ export function ChatInput({
             <button
               type="button"
               onClick={() => planStore.setEnabled(workspaceId, !planStore.enabled)}
-              className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs transition-all ${
+              className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs transition-all ${
                 planStore.enabled
-                  ? "bg-[#262626] text-white"
-                  : "text-[#777] hover:bg-[#f0f0ef]"
+                  ? "border-[#262626] bg-[#262626] text-white"
+                  : "border-transparent text-[#6f6f6a] hover:border-[#e3e3df] hover:bg-white"
               }`}
               aria-pressed={planStore.enabled}
             >
@@ -467,7 +712,7 @@ export function ChatInput({
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-2">
             {/* 快捷键提示 */}
             <div className="hidden items-center gap-1.5 text-xs text-[var(--mm-text-tertiary)]" aria-hidden="true">
               <kbd className="px-1.5 py-0.5 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-[10px] font-mono text-[var(--mm-text-secondary)]">Enter</kbd>
@@ -485,7 +730,7 @@ export function ChatInput({
               contentClassName="min-w-[220px]"
               trigger={
                 <div
-                  className="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-[#666] transition-all hover:bg-[#f0f0ef]"
+                  className="flex h-7 max-w-[180px] cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-2 text-xs text-[#5f5f5a] transition-all hover:border-[#e3e3df] hover:bg-white"
                   role="button"
                   tabIndex={0}
                   aria-label={currentModel ? `当前模型: ${currentModel}` : "未选择模型"}
@@ -494,7 +739,7 @@ export function ChatInput({
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
-                  <span>{currentModel || "未选择"}</span>
+                  <span className="truncate">{currentModel || "未选择"}</span>
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>

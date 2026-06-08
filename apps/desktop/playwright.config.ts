@@ -37,7 +37,7 @@ export default defineConfig({
     },
     // Output directory for traces / screenshots / videos on failure.
     outputDir: join(DESKTOP_DIR, 'e2e-output'),
-    // v1.0.10: patch out/ 让 launch.spec.ts / a11y.spec.ts 能跑 (node:sqlite stub)
+    // Ensure the built Electron main entry exists before launching specs.
     globalSetup: './e2e/global-setup.ts',
 });
 

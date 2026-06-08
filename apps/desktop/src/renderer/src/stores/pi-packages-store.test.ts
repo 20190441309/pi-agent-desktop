@@ -1,0 +1,103 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { usePiPackagesStore } from "./pi-packages-store";
+
+function resetStore(): void {
+  usePiPackagesStore.setState({
+    query: "",
+    results: [],
+    installed: [],
+    loading: false,
+    installedLoading: false,
+    actionSource: null,
+    error: null,
+    retryAction: null,
+    lastFailedAction: null,
+    lastAction: null,
+  });
+}
+
+describe("pi-packages-store", () => {
+  beforeEach(() => {
+    resetStore();
+  });
+
+  it("keeps the latest package search results when older network responses finish later", async () => {
+    let resolveFirst: (value: unknown) => void = () => undefined;
+    let resolveSecond: (value: unknown) => void = () => undefined;
+    const packagesSearch = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFirst = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveSecond = resolve;
+      }));
+    (globalThis as { window: unknown }).window = {
+      piAPI: { packagesSearch },
+    };
+
+    usePiPackagesStore.getState().setQuery("old");
+    const first = usePiPackagesStore.getState().search();
+    usePiPackagesStore.getState().setQuery("new");
+    const second = usePiPackagesStore.getState().search();
+
+    resolveSecond([
+      { name: "new-result", source: "npm:new-result", description: "new", url: "https://pi.dev/packages/new-result" },
+    ]);
+    await second;
+    expect(usePiPackagesStore.getState().results.map((item) => item.name)).toEqual(["new-result"]);
+    expect(usePiPackagesStore.getState().loading).toBe(false);
+
+    resolveFirst([
+      { name: "old-result", source: "npm:old-result", description: "old", url: "https://pi.dev/packages/old-result" },
+    ]);
+    await first;
+
+    expect(packagesSearch).toHaveBeenNthCalledWith(1, "old");
+    expect(packagesSearch).toHaveBeenNthCalledWith(2, "new");
+    expect(usePiPackagesStore.getState().results.map((item) => item.name)).toEqual(["new-result"]);
+    expect(usePiPackagesStore.getState().loading).toBe(false);
+  });
+
+  it("records failed install context so retry UI can name the source", async () => {
+    (globalThis as { window: unknown }).window = {
+      piAPI: {
+        packagesInstall: vi.fn(async () => ({
+          code: "ipcErrors.packages.installFailed",
+          fallback: "安装失败: network unavailable",
+        })),
+      },
+    };
+
+    await usePiPackagesStore.getState().install("npm:pi-git");
+
+    expect(usePiPackagesStore.getState().error).toBe("安装失败: network unavailable");
+    expect(usePiPackagesStore.getState().lastFailedAction).toEqual({
+      kind: "install",
+      source: "npm:pi-git",
+      label: "安装",
+    });
+    expect(usePiPackagesStore.getState().retryAction).toBeTruthy();
+  });
+
+  it("clears stale failed action context when a later search succeeds", async () => {
+    usePiPackagesStore.setState({
+      error: "old",
+      lastFailedAction: { kind: "install", source: "npm:pi-git", label: "安装" },
+      retryAction: async () => undefined,
+    });
+    (globalThis as { window: unknown }).window = {
+      piAPI: {
+        packagesSearch: vi.fn(async () => [
+          { name: "pi-git", source: "npm:pi-git", description: "Git", url: "https://pi.dev/packages/pi-git" },
+        ]),
+      },
+    };
+
+    await usePiPackagesStore.getState().search();
+
+    expect(usePiPackagesStore.getState().error).toBeNull();
+    expect(usePiPackagesStore.getState().lastFailedAction).toBeNull();
+    expect(usePiPackagesStore.getState().results).toHaveLength(1);
+  });
+});

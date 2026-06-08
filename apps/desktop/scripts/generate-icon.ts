@@ -3,17 +3,20 @@ import fs from 'fs';
 import path from 'path';
 
 const svgPath = path.resolve(__dirname, '../build/icon.svg');
+const pngPath = path.resolve(__dirname, '../build/icon.png');
 const buildDir = path.resolve(__dirname, '../build');
 
 async function generateIcon() {
-  const svgBuffer = fs.readFileSync(svgPath);
+  const sourceBuffer = fs.existsSync(svgPath)
+    ? fs.readFileSync(svgPath)
+    : fs.readFileSync(pngPath);
 
   // 生成不同尺寸的 PNG
   const sizes = [16, 32, 48, 64, 128, 256];
   const pngBuffers: Buffer[] = [];
 
   for (const size of sizes) {
-    const pngBuffer = await sharp(svgBuffer)
+    const pngBuffer = await sharp(sourceBuffer)
       .resize(size, size)
       .png()
       .toBuffer();

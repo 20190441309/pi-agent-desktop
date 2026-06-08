@@ -31,69 +31,126 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     clearError,
     error: streamError,
   } = usePiStream(agentId);
+  const { getCurrentSession, createSession, renameSession, setCurrentSession, continueSession } = useSessionStore();
+  const sessions = useSessionStore((state) => state.sessions);
   const { getCurrentWorkspace } = useWorkspaceStore();
-  const {
-    init: initAgents,
-    getCurrentAgent,
-    getCurrentMessages,
-    sendPrompt: sendAgentPrompt,
-    stopAgent,
-  } = useAgentStore();
-  const { getCurrentSession, createSession } = useSessionStore();
+  const { init: initAgents, getCurrentAgent, getCurrentMessages } = useAgentStore();
   const { install, isOperating, progress } = usePiStatusStore();
   const { t } = useI18n();
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sessionActionError, setSessionActionError] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
 
   const currentSession = getCurrentSession();
   const currentWorkspace = getCurrentWorkspace();
   const currentAgent = getCurrentAgent();
   const agentMessages = getCurrentMessages();
   const hasAgent = Boolean(currentAgent);
-  const messages = useMemo(() => hasAgent
-    ? agentMessages.map((message) => ({
-        id: message.id,
-        role: message.role === "assistant" || message.role === "system" || message.role === "user" ? message.role : "system",
-        content: message.content,
-        timestamp: new Date(message.createdAt),
-        thinking: message.thinking,
-      }))
-    : currentSession?.messages || [], [agentMessages, currentSession?.messages, hasAgent]);
-  const isAgentStreaming = currentAgent?.status === "running" || currentAgent?.status === "starting";
-  const processing = hasAgent ? isAgentStreaming : isStreaming;
+  const workspaceLabel = currentWorkspace?.path ?? currentWorkspace?.name ?? "尚未选择工作区";
+  const starterCards = [
+    {
+      title: t('chatView.welcome.cards.newFeature.title'),
+      desc: t('chatView.welcome.cards.newFeature.desc'),
+      icon: "M12 5v14m-7-7h14",
+    },
+    {
+      title: t('chatView.welcome.cards.fixBug.title'),
+      desc: t('chatView.welcome.cards.fixBug.desc'),
+      icon: "M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-2.5L13.73 4c-.77-.83-1.96-.83-2.73 0L3.34 16.5c-.77.83.19 2.5 1.73 2.5z",
+    },
+    {
+      title: t('chatView.welcome.cards.review.title'),
+      desc: t('chatView.welcome.cards.review.desc'),
+      icon: "M9 12l2 2 4-4m5 2a8 8 0 11-16 0 8 8 0 0116 0z",
+    },
+    {
+      title: t('chatView.welcome.cards.explain.title'),
+      desc: t('chatView.welcome.cards.explain.desc'),
+      icon: "M8 10h8M8 14h5m9-2a9 9 0 11-18 0 9 9 0 0118 0z",
+    },
+  ];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [agentMessages, currentSession?.messages]);
 
   useEffect(() => {
     void initAgents();
   }, [initAgents]);
 
   useEffect(() => {
-    if (!currentSession && currentWorkspace) {
-      createSession(currentWorkspace.id);
-    }
-  }, [currentSession, currentWorkspace, createSession]);
-
-
-  useEffect(() => {
     clearError();
+    setSendError(null);
+    setSessionActionError(null);
   }, [currentSession?.id, clearError]);
 
   const handleSend = async (message: string) => {
     if (!currentWorkspace) return;
-    if (currentAgent) {
-      await sendAgentPrompt(message);
-      return;
+    try {
+      if (!hasAgent && getCurrentSession()?.readOnly) {
+        setSendError("当前会话是只读历史，请先从此会话继续。");
+        return;
+      }
+      if (!hasAgent && !getCurrentSession()) {
+        await createSession(currentWorkspace.id);
+      }
+      setSendError(null);
+      setSessionActionError(null);
+      await startStreaming(currentWorkspace.id, message);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : String(err));
     }
-    await startStreaming(currentWorkspace.id, message);
+  };
+  const handleStop = () => {
+    if (currentWorkspace) {
+      stopStreaming(currentWorkspace.id);
+    }
+  };
+  const handleContinueReadOnly = async (): Promise<void> => {
+    if (!currentSession) return;
+    try {
+      setSessionActionError(null);
+      const next = await continueSession(currentSession.id);
+      setCurrentSession(next.id);
+    } catch (error) {
+      setSessionActionError(`继续会话失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+  const handleContinueFromMessage = async (messageId: string): Promise<void> => {
+    if (!currentSession || isStreaming) return;
+    try {
+      setSessionActionError(null);
+      const next = await continueSession(currentSession.id, messageId);
+      setCurrentSession(next.id);
+    } catch (error) {
+      setSessionActionError(`创建会话分支失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
-  const handleStop = async () => {
-    if (currentAgent) {
-      await stopAgent(currentAgent.id);
-      return;
+  const messages = useMemo(() => hasAgent
+    ? agentMessages.map((message) => ({
+        id: message.id,
+        role: message.role === "assistant" || message.role === "system" || message.role === "user"
+          ? message.role
+          : "system",
+        content: message.content,
+        timestamp: new Date(message.createdAt),
+        thinking: message.thinking,
+      }))
+    : currentSession?.messages || [], [agentMessages, currentSession?.messages, hasAgent]);
+  const workspaceSessions = sessions
+    .filter((session) => !session.archived && session.workspaceId === currentWorkspace?.id)
+    .slice()
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+  const commitTitle = (): void => {
+    if (!currentSession) return;
+    const trimmed = titleDraft.trim();
+    if (trimmed && trimmed !== currentSession.title) {
+      renameSession(currentSession.id, trimmed);
     }
-    await stopStreaming();
+    setEditingTitle(false);
   };
 
   // 外部预填文本，光标停在末尾方便用户继续。
@@ -116,37 +173,89 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             <svg className="h-4 w-4 text-[#9a9a9a]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
             </svg>
-            <span className="truncate font-medium">{currentAgent?.title || currentSession?.title || "未命名会话"}</span>
-            <svg className="h-3 w-3 text-[#aaa]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+            {editingTitle ? (
+              <input
+                value={titleDraft}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onBlur={commitTitle}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") commitTitle();
+                  if (event.key === "Escape") setEditingTitle(false);
+                }}
+                autoFocus
+                className="min-w-0 flex-1 rounded-md border border-[#ddd] bg-white px-2 py-1 text-sm font-medium outline-none focus:border-[#222]"
+                aria-label="重命名当前任务"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setTitleDraft(currentSession?.title || "未命名会话");
+                  setEditingTitle(true);
+                }}
+                className="min-w-0 truncate rounded-md px-1 py-1 text-left font-medium hover:bg-[#f3f3f3]"
+                title="重命名任务"
+              >
+                {currentSession?.title || "未命名会话"}
+              </button>
+            )}
+            <select
+              value={currentSession?.id ?? ""}
+              onChange={(event) => {
+                if (event.target.value) setCurrentSession(event.target.value);
+              }}
+              className="max-w-[220px] rounded-md border border-transparent bg-transparent px-1 py-1 text-xs text-[#777] hover:border-[#ddd] hover:bg-white"
+              aria-label="切换任务"
+            >
+              {workspaceSessions.map((session) => (
+                <option key={session.id} value={session.id}>
+                  {session.title || "未命名会话"}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       )}
       {/* 消息区域 */}
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          /* 欢迎屏幕 */
-          <div className="flex min-h-full flex-col items-center justify-center px-8 py-16 text-center">
-            {/* Logo */}
-            <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1f1f1f]">
-              <span className="text-white font-bold text-2xl">π</span>
+          <div className="flex min-h-full flex-col items-center justify-center px-8 py-12 text-center">
+            <div className="mb-5 flex items-center gap-3 rounded-full border border-[#ecece8] bg-white px-3 py-1.5 text-xs text-[#6f6f6a] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+              <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-[#16a34a]" : "bg-[#ef4444]"}`} aria-hidden />
+              <span className="max-w-[560px] truncate" title={workspaceLabel}>
+                {isConnected ? "Pi 已连接" : "Pi 未连接"} · {workspaceLabel}
+              </span>
             </div>
 
-            {/* 标题 */}
-            <h2 className="text-xl font-normal text-[#1a1a1a] mb-2">
+            <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-[#1f1f1f]">
+              <span className="text-xl font-semibold text-white">π</span>
+            </div>
+
+            <h2 className="mb-2 text-[22px] font-semibold text-[#1a1a1a]">
               {t('chatView.welcome.title')}
             </h2>
-
-            {/* 副标题 */}
-            <p className="text-sm text-[#666] max-w-md mb-8">
+            <p className="mb-6 max-w-xl text-sm leading-6 text-[#666]">
               {t('chatView.welcome.subtitle')}
             </p>
+
+            <div className="mb-6 grid w-full max-w-[770px] grid-cols-2 gap-2 text-left">
+              {starterCards.map((card) => (
+                <div key={card.title} className="rounded-lg border border-[#ededeb] bg-[#fbfbfa] px-3 py-3">
+                  <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-md border border-[#e5e5e1] bg-white text-[#4f4f4a]">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={card.icon} />
+                    </svg>
+                  </div>
+                  <div className="text-sm font-medium text-[#242424]">{card.title}</div>
+                  <div className="mt-1 text-xs leading-5 text-[#777]">{card.desc}</div>
+                </div>
+              ))}
+            </div>
 
             <div className="w-full max-w-[900px]">
               <ChatInput
                 isConnected={isConnected}
-                isProcessing={processing}
+                isProcessing={isStreaming}
                 onSend={handleSend}
                 onStop={handleStop}
                 workspaceId={currentWorkspace?.id}
@@ -197,7 +306,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             )}
 
             {/* Chat send 失败的错误 — 重试按钮 */}
-            {isConnected && streamError && (
+            {isConnected && (streamError || sendError || sessionActionError) && (
               <div
                 className="mt-6 max-w-md w-full inline-flex flex-col gap-3 px-4 py-4 bg-[#fef2f2] border border-[#fecaca] rounded-lg text-left"
                 role="alert"
@@ -210,9 +319,13 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                     {t('chatView.sendFailed.title')}
                   </span>
                 </div>
-                <p className="text-xs text-[#666] break-all font-mono">{streamError}</p>
+                <p className="text-xs text-[#666] break-all font-mono">{streamError || sendError || sessionActionError}</p>
                 <button
-                  onClick={clearError}
+                  onClick={() => {
+                    clearError();
+                    setSendError(null);
+                    setSessionActionError(null);
+                  }}
                   className="px-4 py-2 bg-[#1a1a1a] text-white rounded-md hover:bg-[#333] transition-colors text-sm font-medium self-start"
                 >
                   {t('chatView.sendFailed.retry')}
@@ -227,7 +340,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             role="log"
             aria-live="polite"
             aria-label={t('chatView.messagesAria')}
-            aria-busy={processing}
+            aria-busy={isStreaming}
           >
             <PlanCardView workspaceId={currentWorkspace?.id} onExecute={handleSend} />
 
@@ -235,12 +348,13 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
               <MessageBubble
                 key={message.id}
                 message={message}
-                isStreaming={!hasAgent && isStreaming && message.id === streamingMessageId}
+                isStreaming={isStreaming && message.id === streamingMessageId}
+                onContinueFrom={(messageId) => void handleContinueFromMessage(messageId)}
               />
             ))}
 
             {/* 流式处理中指示器（仅在没有 assistant 消息占位符时显示） */}
-            {processing && (!streamingMessageId || hasAgent) && (
+            {isStreaming && !streamingMessageId && (
               <div
                 className="flex justify-start"
                 role="status"
@@ -267,7 +381,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
               </div>
             )}
 
-            {streamError && (
+            {(streamError || sendError || sessionActionError) && (
               <div
                 className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-3 text-left"
                 role="alert"
@@ -275,10 +389,14 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                 <div className="mb-1 text-sm font-medium text-[#ef4444]">
                   {t('chatView.sendFailed.title')}
                 </div>
-                <p className="break-all font-mono text-xs text-[#666]">{streamError}</p>
+                <p className="break-all font-mono text-xs text-[#666]">{streamError || sendError || sessionActionError}</p>
                 <button
                   type="button"
-                  onClick={clearError}
+                  onClick={() => {
+                    clearError();
+                    setSendError(null);
+                    setSessionActionError(null);
+                  }}
                   className="mt-2 rounded-md bg-[#1a1a1a] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#333]"
                 >
                   {t('chatView.sendFailed.retry')}
@@ -308,9 +426,23 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
       </div>
 
       {messages.length > 0 && (
+        currentSession?.readOnly ? (
+          <div className="border-t border-[#eeeeea] bg-white px-4 py-3">
+            <div className="mx-auto flex max-w-[770px] items-center justify-between gap-3 rounded-lg border border-[#e8e8e3] bg-[#fbfbfa] px-3 py-2 text-xs">
+              <span className="text-[var(--mm-text-secondary)]">当前为只读历史会话</span>
+              <button
+                type="button"
+                onClick={() => void handleContinueReadOnly()}
+                className="rounded-md bg-[#1f1f1f] px-2.5 py-1.5 text-white"
+              >
+                从此会话继续
+              </button>
+            </div>
+          </div>
+        ) : (
         <ChatInput
           isConnected={isConnected}
-          isProcessing={processing}
+          isProcessing={isStreaming}
           onSend={handleSend}
           onStop={handleStop}
           workspaceId={currentWorkspace?.id}
@@ -319,6 +451,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
           prefillKey={prefill.nonce}
           onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
         />
+        )
       )}
     </div>
   );

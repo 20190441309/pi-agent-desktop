@@ -30,8 +30,9 @@ test.describe('Pi Desktop launch', () => {
     });
 
     test('starts main process, shows window with title "Pi Desktop"', async () => {
+        const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         app = await _electron.launch({
-            args: [electronMainEntry],
+            args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             // Forward our existing env (e.g. PATH) so the spawned Electron
             // binary can find node-pty / native deps. CI flag also helps
             // when running under a CI shell.

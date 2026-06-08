@@ -16,9 +16,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PiEvent } from "@shared/events";
-import { isIpcError, type PlanCard, type ToolCall } from "@shared";
+import {
+    isIpcError,
+    type CustomMessageCard,
+    type CustomMessageCardAction,
+    type CustomMessageCardKind,
+    type PlanCard,
+    type SessionUsageSnapshot,
+    type ToolCall,
+} from "@shared";
 import { useSessionStore } from "../stores/session-store";
 import { usePlanStore } from "../stores/plan-store";
+import { useSettingsStore } from "../stores/settings-store";
 import { logger } from "../utils/logger";
 import { useAgentStore } from "../stores/agent-store";
 
@@ -45,7 +54,7 @@ export interface PiStreamState {
 
 export interface UsePiStreamReturn extends PiStreamState {
     startStreaming: (workspaceId: string, content: string) => Promise<void>;
-    stopStreaming: () => void;
+    stopStreaming: (workspaceId: string) => void;
     clearError: () => void;
 }
 
@@ -96,6 +105,128 @@ function createFallbackPlanCard(content: string): PlanCard | null {
     };
 }
 
+const CUSTOM_CARD_KINDS = new Set<CustomMessageCardKind>([
+    "status-list",
+    "approval-actions",
+    "task-progress",
+    "result-summary",
+    "file-actions",
+]);
+
+const CUSTOM_CARD_ACTIONS = new Set<CustomMessageCardAction["kind"]>([
+    "slash-command",
+    "open-file",
+    "copy-text",
+    "switch-view",
+    "refresh",
+]);
+
+function asNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function sanitizeCustomCard(raw: unknown): CustomMessageCard {
+    const data = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const requestedKind = typeof data.kind === "string" ? data.kind : typeof data.customType === "string" ? data.customType : "";
+    const kind: CustomMessageCard["kind"] = CUSTOM_CARD_KINDS.has(requestedKind as CustomMessageCardKind)
+        ? requestedKind as CustomMessageCardKind
+        : "markdown-fallback";
+    const actions = Array.isArray(data.actions)
+        ? data.actions.flatMap((action, index): CustomMessageCardAction[] => {
+            if (!action || typeof action !== "object") return [];
+            const a = action as Record<string, unknown>;
+            const actionKind = typeof a.kind === "string" ? a.kind : "";
+            if (!CUSTOM_CARD_ACTIONS.has(actionKind as CustomMessageCardAction["kind"])) return [];
+            const value = typeof a.value === "string" ? a.value : "";
+            if (!value) return [];
+            return [{
+                id: typeof a.id === "string" ? a.id : `action_${index}`,
+                label: typeof a.label === "string" ? a.label : actionKind,
+                kind: actionKind as CustomMessageCardAction["kind"],
+                value,
+            }];
+        })
+        : undefined;
+    const items = Array.isArray(data.items)
+        ? data.items.flatMap((item, index) => {
+            if (!item || typeof item !== "object") return [];
+            const i = item as Record<string, unknown>;
+            return [{
+                id: typeof i.id === "string" ? i.id : `item_${index}`,
+                label: typeof i.label === "string" ? i.label : String(i.name ?? `Item ${index + 1}`),
+                status: typeof i.status === "string" ? i.status : undefined,
+                description: typeof i.description === "string" ? i.description : undefined,
+                path: typeof i.path === "string" ? i.path : undefined,
+            }];
+        })
+        : undefined;
+    return {
+        id: typeof data.id === "string" ? data.id : `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        kind,
+        title: typeof data.title === "string" ? data.title : undefined,
+        content: typeof data.content === "string" ? data.content : undefined,
+        items,
+        actions,
+    };
+}
+
+function usageFromEvent(event: PiEvent, current?: SessionUsageSnapshot): SessionUsageSnapshot {
+    const data = event as unknown as Record<string, unknown>;
+    const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, unknown> : data;
+    const inputTokens = asNumber(usage.inputTokens ?? usage.promptTokens ?? usage.input_tokens);
+    const outputTokens = asNumber(usage.outputTokens ?? usage.completionTokens ?? usage.output_tokens);
+    const totalTokens = asNumber(usage.totalTokens ?? usage.total_tokens) ?? (
+        inputTokens !== undefined || outputTokens !== undefined
+            ? (inputTokens ?? 0) + (outputTokens ?? 0)
+            : undefined
+    );
+    return {
+        ...current,
+        provider: typeof usage.provider === "string" ? usage.provider : current?.provider,
+        model: typeof usage.model === "string" ? usage.model : current?.model,
+        contextWindow: asNumber(usage.contextWindow ?? usage.context_window) ?? current?.contextWindow,
+        inputTokens: inputTokens ?? current?.inputTokens,
+        outputTokens: outputTokens ?? current?.outputTokens,
+        totalTokens: totalTokens ?? current?.totalTokens,
+        estimatedCostUsd: asNumber(usage.estimatedCostUsd ?? usage.costUsd ?? usage.cost_usd) ?? current?.estimatedCostUsd,
+        compactionStatus: current?.compactionStatus ?? "idle",
+        updatedAt: Date.now(),
+    };
+}
+
+function eventMessage(event: unknown, fallback: string): string {
+    if (isIpcError(event)) return event.fallback;
+    if (event instanceof Error && event.message.trim()) return event.message;
+    if (typeof event === "string" && event.trim()) return event;
+    const data = event && typeof event === "object" ? event as Record<string, unknown> : {};
+    const value = data.message ?? data.error ?? data.reason;
+    if (value instanceof Error && value.message.trim()) return value.message;
+    if (typeof value === "string" && value.trim()) return value;
+    return fallback;
+}
+
+function describePermissionsForPrompt(sessionId: string | null, workspaceId: string): string {
+    const session = sessionId
+        ? useSessionStore.getState().sessions.find((item) => item.id === sessionId)
+        : null;
+    const permissions = session?.toolPermissions ?? useSettingsStore.getState().getWorkspaceToolDefaults(workspaceId);
+    const disabled: string[] = [];
+    if (!permissions.fileRead) disabled.push("file reads");
+    if (!permissions.fileWrite) disabled.push("file writes or edits");
+    if (!permissions.shell) disabled.push("bash, PowerShell, and shell commands");
+    if (!permissions.git) disabled.push("git commands");
+    if (!permissions.network) disabled.push("network access");
+    if (!permissions.extensions) disabled.push("extension tools");
+    if (disabled.length === 0) return "";
+    return [
+        "<tool-permissions>",
+        `The user disabled: ${disabled.join(", ")}.`,
+        "Do not use disabled capabilities in this turn. Ask the user to enable them if the task requires them.",
+        "</tool-permissions>",
+        "",
+    ].join("\n");
+}
+
 export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const [isStreaming, setIsStreaming] = useState(false);
     const [currentThinking, setCurrentThinking] = useState("");
@@ -142,6 +273,11 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         streamPersistRef.current = null;
         lastStreamEventAtRef.current = null;
         if (!window.piAPI?.updateMessage) return;
+        const session = useSessionStore.getState().sessions.find((s) => s.id === p.sessionId);
+        const message = session?.messages.find((m) => m.id === p.messageId);
+        if (message?.toolCalls) {
+            p.toolCalls = message.toolCalls;
+        }
 
         const updates: { content?: string; thinking?: string; toolCalls?: ToolCall[] } = {};
         if (p.content !== undefined) updates.content = p.content;
@@ -196,6 +332,16 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const { getCurrentSession, addMessage, updateMessage, addToolCall, updateToolCall } = useSessionStore();
 
     useEffect(() => { agentIdRef.current = agentId ?? null; }, [agentId]);
+
+    const updateCurrentUsage = useCallback((updates: Partial<SessionUsageSnapshot>) => {
+        const session = useSessionStore.getState().getCurrentSession();
+        if (!session) return;
+        useSessionStore.getState().updateSessionUsage(session.id, {
+            ...(session.usage ?? { updatedAt: Date.now() }),
+            ...updates,
+            updatedAt: Date.now(),
+        });
+    }, []);
     const ensureAssistantMessage = useCallback(() => {
         if (messageIdRef.current) return;
         const aid = agentIdRef.current;
@@ -439,6 +585,14 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                             status: "running",
                             startTime: new Date(tc.startTime),
                         }, { persist: false });
+                        if (!streamPersistRef.current ||
+                            streamPersistRef.current.sessionId !== sessionIdRef.current ||
+                            streamPersistRef.current.messageId !== messageIdRef.current) {
+                            streamPersistRef.current = {
+                                sessionId: sessionIdRef.current,
+                                messageId: messageIdRef.current,
+                            };
+                        }
                         scheduleStreamPersist();
                     }
                 }
@@ -476,22 +630,43 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 }
                 // 2026-06-06 hotfix (T6): 强制 flush 累积的 content/thinking/toolCalls
                 // 在 turn_end 这一刻把整个 assistant message 落盘一次
-                if (streamPersistRef.current) {
-                    // 把 toolCalls 数组快照(从 store 取最新)
-                    const sid = streamPersistRef.current.sessionId;
-                    const mid = streamPersistRef.current.messageId;
-                    const session = useSessionStore.getState().sessions.find(s => s.id === sid);
-                    const msg = session?.messages.find(m => m.id === mid);
-                    if (msg) {
-                        streamPersistRef.current.toolCalls = msg.toolCalls;
-                    }
-                }
                 flushStreamPersist();
                 setIsStreaming(false);
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
                 sessionIdRef.current = null;
                 break;
+
+            case "usage_update":
+            case "context_update": {
+                const session = useSessionStore.getState().getCurrentSession();
+                if (session) {
+                    useSessionStore.getState().updateSessionUsage(session.id, usageFromEvent(event, session.usage));
+                }
+                break;
+            }
+
+            case "compaction_start":
+                updateCurrentUsage({ compactionStatus: "running" });
+                break;
+
+            case "compaction_end":
+                updateCurrentUsage({ compactionStatus: "completed" });
+                break;
+
+            case "custom_message": {
+                const session = useSessionStore.getState().getCurrentSession();
+                if (!session) break;
+                const card = sanitizeCustomCard((event as unknown as { card?: unknown; details?: unknown }).card ?? (event as unknown as { details?: unknown }).details ?? event);
+                addMessage(session.id, {
+                    id: `cm_${card.id}`,
+                    role: "assistant",
+                    content: card.kind === "markdown-fallback" ? (card.content ?? "") : "",
+                    timestamp: new Date(),
+                    customCard: card,
+                }, { persist: true });
+                break;
+            }
 
             case "agent_end":
                 if (
@@ -513,10 +688,15 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 break;
 
             case "extension_error":
-                setError("Pi 扩展错误");
+                setError(eventMessage(event, "Pi 扩展错误"));
+                flushStreamPersist();
+                setIsStreaming(false);
+                setStreamingMessageId(null);
+                messageIdRef.current = null;
+                window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
         }
-    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist]);
+    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist, updateCurrentUsage, addMessage]);
 
     useEffect(() => {
         handleEventRef.current = handleEvent;
@@ -529,6 +709,32 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             return;
         }
         if (!content.trim()) return;
+        const aid = agentIdRef.current;
+        const session = aid ? null : getCurrentSession();
+        const isFollowUpWhileStreaming = isStreaming;
+        if (isFollowUpWhileStreaming) {
+            if (!aid && session) {
+                addMessage(session.id, {
+                    id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    role: "user",
+                    content,
+                    timestamp: new Date(),
+                });
+            }
+            try {
+                if (aid) {
+                    await window.piAPI.agentsPrompt({ agentId: aid, message: content });
+                } else {
+                    const result = await window.piAPI.sendPrompt(workspaceId, content);
+                    if (isIpcError(result)) {
+                        setError(result.fallback);
+                    }
+                }
+            } catch (err) {
+                setError(String(err));
+            }
+            return;
+        }
         setIsStreaming(true);
         setError(null);
         textRef.current = "";
@@ -544,14 +750,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         // v1.0.17: 通知 useTaskProgress 流式开始
         window.dispatchEvent(new CustomEvent("pi:stream-start"));
 
-        const aid = agentIdRef.current;
-        const outbound = usePlanStore.getState().enabled && !content.trimStart().startsWith("/")
-            ? `/plan\n${content}`
-            : content;
-
         // Agent workbench messages are owned by AgentRuntimeRegistry; legacy chats
         // still write the user message to the session store immediately.
-        const session = aid ? null : getCurrentSession();
         if (!aid && session) {
             sessionIdRef.current = session.id;
             addMessage(session.id, {
@@ -563,6 +763,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         }
 
         try {
+            const isSlashCommand = content.trimStart().startsWith("/");
+            const permissionPrefix = aid || isSlashCommand ? "" : describePermissionsForPrompt(sessionIdRef.current, workspaceId);
+            const guardedContent = `${permissionPrefix}${content}`;
+            const outbound = usePlanStore.getState().enabled && !isSlashCommand
+                ? `/plan\n${guardedContent}`
+                : guardedContent;
             if (aid) {
                 await window.piAPI.agentsPrompt({ agentId: aid, message: outbound });
             } else {
@@ -580,21 +786,30 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             // v1.0.17: 通知 useTaskProgress 流式异常结束
             window.dispatchEvent(new CustomEvent("pi:stream-end"));
         }
-    }, [getCurrentSession, addMessage]);
+    }, [getCurrentSession, addMessage, isStreaming]);
 
-    const stopStreaming = useCallback(() => {
+    const stopStreaming = useCallback((workspaceId: string) => {
         if (!window.piAPI) return;
         try {
             const aid = agentIdRef.current;
             if (aid && window.piAPI.agentsAbort) {
                 void window.piAPI.agentsAbort(aid);
             } else {
-                void window.piAPI.stop();
+                void Promise.resolve(window.piAPI.stop(workspaceId))
+                    .then((result) => {
+                        if (isIpcError(result)) {
+                            setError(result.fallback);
+                        }
+                    })
+                    .catch((err) => {
+                        setError(`停止失败: ${eventMessage(err, "未知错误")}`);
+                    });
             }
-        } catch {
-            // ignore
+        } catch (err) {
+            setError(`停止失败: ${eventMessage(err, "未知错误")}`);
         }
         setIsStreaming(false);
+        setStreamingMessageId(null);
         // v1.0.17: 通知 useTaskProgress 流式结束
         window.dispatchEvent(new CustomEvent("pi:stream-end"));
     }, []);

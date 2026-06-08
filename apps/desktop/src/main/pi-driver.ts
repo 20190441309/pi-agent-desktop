@@ -9,7 +9,7 @@
  */
 
 import { spawn, spawnSync, execSync, execFileSync, type ChildProcess } from 'child_process';
-import { existsSync, readFileSync, readdirSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, renameSync, rmSync } from 'fs';
 import { join } from 'path';
 import { homedir, platform } from 'os';
 import { EventEmitter } from 'events';
@@ -36,6 +36,14 @@ export interface PiStatus {
   defaultProvider: string | null;
   /** 默认 model */
   defaultModel: string | null;
+  /** Pi Desktop 托管 runtime 路径 */
+  managedRuntimePath?: string | null;
+  /** 当前实际 runtime 来源 */
+  runtimeSource?: 'managed' | 'global' | 'none';
+  /** runtime channel */
+  runtimeChannel?: 'stable' | 'latest';
+  /** 最近检测时间 */
+  lastCheckedAt?: number;
 }
 
 export interface PiInstallProgress {
@@ -70,6 +78,13 @@ export interface PiAgentConfig {
 
 const PI_NPM_PACKAGE = '@earendil-works/pi-coding-agent';
 const PI_AGENT_DIR = join(homedir(), '.pi', 'agent');
+const MANAGED_RUNTIME_ROOT = join(
+  process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'),
+  'PiDesktop',
+  'runtime',
+  'pi',
+);
+const MANAGED_RUNTIME_BACKUP = `${MANAGED_RUNTIME_ROOT}.previous`;
 
 // Windows 上 npm global bin 的常见位置
 const COMMON_PATHS = platform() === 'win32'
@@ -117,6 +132,10 @@ export class PiDriver extends EventEmitter {
       configExists: false,
       defaultProvider: null,
       defaultModel: null,
+      managedRuntimePath: MANAGED_RUNTIME_ROOT,
+      runtimeSource: 'none',
+      runtimeChannel: 'stable',
+      lastCheckedAt: Date.now(),
     };
 
     // 1. 检查配置目录
@@ -135,6 +154,7 @@ export class PiDriver extends EventEmitter {
       result.installed = true;
       result.executablePath = detection.path;
       result.installMethod = detection.method;
+      result.runtimeSource = detection.method === 'managed' ? 'managed' : 'global';
       result.localVersion = this.getLocalVersion(detection.path);
     }
 
@@ -166,6 +186,10 @@ export class PiDriver extends EventEmitter {
       configExists: existsSync(PI_AGENT_DIR),
       defaultProvider: null,
       defaultModel: null,
+      managedRuntimePath: MANAGED_RUNTIME_ROOT,
+      runtimeSource: 'none',
+      runtimeChannel: 'stable',
+      lastCheckedAt: Date.now(),
     };
 
     const config = this.loadConfig();
@@ -179,6 +203,7 @@ export class PiDriver extends EventEmitter {
       result.installed = true;
       result.executablePath = detection.path;
       result.installMethod = detection.method;
+      result.runtimeSource = detection.method === 'managed' ? 'managed' : 'global';
       result.localVersion = this.getLocalVersion(detection.path);
     }
 
@@ -192,14 +217,14 @@ export class PiDriver extends EventEmitter {
    * 安装 Pi CLI（npm install -g）
    */
   install(): Promise<void> {
-    return this.npmCommand('install', 'installing');
+    return this.npmCommand('install', 'installing', { managed: true });
   }
 
   /**
    * 更新 Pi CLI（npm update -g）
    */
   update(): Promise<void> {
-    return this.npmCommand('update', 'updating');
+    return this.npmCommand('update', 'updating', { managed: true, rollback: true });
   }
 
   /**
@@ -210,7 +235,7 @@ export class PiDriver extends EventEmitter {
       this.emitProgress('downloading', '正在卸载 Pi CLI...');
 
       const npm = this.getNpmCommand();
-      const args = ['uninstall', '-g', PI_NPM_PACKAGE];
+      const args = ['uninstall', '--prefix', MANAGED_RUNTIME_ROOT, PI_NPM_PACKAGE];
       const child = spawn(npm, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: platform() === 'win32',
@@ -223,6 +248,11 @@ export class PiDriver extends EventEmitter {
         if (code === 0) {
           this._cachedStatus = null;
           this.emitProgress('done', 'Pi CLI 已卸载');
+          try {
+            rmSync(MANAGED_RUNTIME_ROOT, { recursive: true, force: true });
+          } catch {
+            // ignore cleanup errors; status detection will report any residue
+          }
           resolve();
         } else {
           const msg = `卸载失败 (exit ${code}): ${stderr.trim()}`;
@@ -300,8 +330,19 @@ export class PiDriver extends EventEmitter {
    * v1.0.x fix: `where pi` 在 PowerShell alias / 多输出场景会拿到非可执行文件,需逐项验证
    *              且 Windows 走 `npm config get prefix` 拿真实 global bin
    */
+  getRuntimeCommand(): string | null {
+    return this.findPiExecutable()?.path ?? null;
+  }
+
   private findPiExecutable(): { path: string; method: string } | null {
     const isWin = platform() === 'win32';
+    const piCmd = isWin ? 'pi.cmd' : 'pi';
+
+    // 0. Pi Desktop 托管 runtime 优先
+    const managed = join(MANAGED_RUNTIME_ROOT, 'node_modules', '.bin', piCmd);
+    if (existsSync(managed)) {
+      return { path: managed, method: 'managed' };
+    }
 
     // 1. 用 which/where 检查 PATH,逐行验证是真实文件
     try {
@@ -345,7 +386,6 @@ export class PiDriver extends EventEmitter {
     }
 
     // 3. 兜底: 检查常见安装路径
-    const piCmd = isWin ? 'pi.cmd' : 'pi';
     for (const dir of COMMON_PATHS) {
       const candidate = join(dir, piCmd);
       if (existsSync(candidate)) {
@@ -481,15 +521,33 @@ export class PiDriver extends EventEmitter {
   /**
    * 执行 npm install -g 或 npm update -g
    */
-  private npmCommand(action: 'install' | 'update', stageLabel: string): Promise<void> {
+  private npmCommand(
+    action: 'install' | 'update',
+    stageLabel: string,
+    opts: { managed?: boolean; rollback?: boolean } = {},
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const npm = this.getNpmCommand();
-      const args = action === 'install'
-        ? ['install', '-g', PI_NPM_PACKAGE]
-        : ['update', '-g', PI_NPM_PACKAGE];
+      const args = opts.managed
+        ? ['install', '--prefix', MANAGED_RUNTIME_ROOT, action === 'update' ? `${PI_NPM_PACKAGE}@latest` : PI_NPM_PACKAGE]
+        : action === 'install'
+          ? ['install', '-g', PI_NPM_PACKAGE]
+          : ['update', '-g', PI_NPM_PACKAGE];
 
       this.emitProgress(stageLabel === 'installing' ? 'downloading' : 'downloading',
-        action === 'install' ? '正在安装 Pi CLI...' : '正在更新 Pi CLI...');
+        action === 'install' ? '正在安装托管 Pi Runtime...' : '正在更新托管 Pi Runtime...');
+
+      if (opts.rollback && existsSync(MANAGED_RUNTIME_ROOT)) {
+        try {
+          rmSync(MANAGED_RUNTIME_BACKUP, { recursive: true, force: true });
+          renameSync(MANAGED_RUNTIME_ROOT, MANAGED_RUNTIME_BACKUP);
+        } catch (err) {
+          const msg = `准备 runtime 回滚备份失败: ${err instanceof Error ? err.message : String(err)}`;
+          this.emitProgress('error', msg);
+          reject(new Error(msg));
+          return;
+        }
+      }
 
       this.npmProcess = spawn(npm, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -524,16 +582,25 @@ export class PiDriver extends EventEmitter {
           if (detection) {
             const version = this.getLocalVersion(detection.path);
             this.emitProgress('done', action === 'install'
-              ? `Pi CLI v${version || '?'} 安装成功`
-              : `Pi CLI 已更新至 v${version || '?'}`);
+              ? `托管 Pi Runtime v${version || '?'} 安装成功`
+              : `托管 Pi Runtime 已更新至 v${version || '?'}`);
+            if (opts.rollback) rmSync(MANAGED_RUNTIME_BACKUP, { recursive: true, force: true });
             this._cachedStatus = null; // 清除缓存
             resolve();
           } else {
-            const msg = '安装似乎成功但找不到 pi 可执行文件，请检查 npm global bin 是否在 PATH 中';
+            if (opts.rollback && existsSync(MANAGED_RUNTIME_BACKUP)) {
+              rmSync(MANAGED_RUNTIME_ROOT, { recursive: true, force: true });
+              renameSync(MANAGED_RUNTIME_BACKUP, MANAGED_RUNTIME_ROOT);
+            }
+            const msg = '安装似乎成功但找不到托管 pi 可执行文件';
             this.emitProgress('error', msg);
             reject(new Error(msg));
           }
         } else {
+          if (opts.rollback && existsSync(MANAGED_RUNTIME_BACKUP)) {
+            rmSync(MANAGED_RUNTIME_ROOT, { recursive: true, force: true });
+            renameSync(MANAGED_RUNTIME_BACKUP, MANAGED_RUNTIME_ROOT);
+          }
           const msg = `${action === 'install' ? '安装' : '更新'}失败 (exit ${code}): ${stderr.trim()}`;
           this.emitProgress('error', msg);
           reject(new Error(msg));

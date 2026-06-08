@@ -14,7 +14,7 @@
  *  - 安装中/更新中按钮 isLoading=true
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { usePiStatusStore } from '../../stores/pi-status-store';
 import { useTranslateIpcError } from '../../i18n';
 import type { IpcError } from '@shared';
@@ -49,20 +49,20 @@ function ProgressBar({ progress }: { progress: PiInstallProgress | null }): Reac
   return (
     <div className="mt-3">
       <div className="flex items-center justify-between text-xs mb-1">
-        <span className={isError ? 'text-red-400' : 'text-gray-400'}>
+        <span className={isError ? 'text-red-600' : 'text-[#666]'}>
           {stageLabels[progress.stage] || progress.stage}
         </span>
         {progress.percent != null && (
-          <span className="text-gray-500">{progress.percent}%</span>
+          <span className="text-[#888]">{progress.percent}%</span>
         )}
       </div>
-      <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
+      <div className="w-full h-1.5 bg-[#ececea] rounded-full overflow-hidden">
         <div
           className={`h-full ${color} rounded-full transition-all duration-300 ${!isDone && !isError ? 'animate-pulse' : ''}`}
           style={{ width: progress.percent != null ? `${progress.percent}%` : isDone ? '100%' : '60%' }}
         />
       </div>
-      <p className={`text-xs mt-1 ${isError ? 'text-red-400' : 'text-gray-500'}`}>
+      <p className={`text-xs mt-1 ${isError ? 'text-red-600' : 'text-[#777]'}`}>
         {progress.message}
       </p>
     </div>
@@ -74,8 +74,8 @@ function ProgressBar({ progress }: { progress: PiInstallProgress | null }): Reac
 function VersionBadge({ version, label }: { version: string | null; label: string }): React.JSX.Element {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-500">{label}</span>
-      <span className={`text-sm font-mono px-2 py-0.5 rounded ${version ? 'bg-gray-700 text-gray-200' : 'bg-gray-800 text-gray-500'}`}>
+      <span className="text-xs text-[#777]">{label}</span>
+      <span className={`text-sm font-mono px-2 py-0.5 rounded-md border ${version ? 'border-[#dededb] bg-white text-[#1f1f1f]' : 'border-[#ececea] bg-[#f7f7f5] text-[#999]'}`}>
         {version || '未安装'}
       </span>
     </div>
@@ -85,6 +85,7 @@ function VersionBadge({ version, label }: { version: string | null; label: strin
 // ── 主面板 ──────────────────────────────────────────────────────
 
 export function PiStatusPanel(): React.JSX.Element {
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
   const {
     status,
     loading,
@@ -126,12 +127,14 @@ export function PiStatusPanel(): React.JSX.Element {
   const updateAvailable = status?.updateAvailable ?? false;
 
   return (
-    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4">
+    <div className="rounded-lg border border-[#e4e4e0] bg-[#fbfbfa] p-4 text-[#1f1f1f]">
       {/* 标题栏 */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-lg">🤖</span>
-          <h3 className="text-sm font-medium text-gray-200">Pi CLI</h3>
+          <span className="flex h-7 w-7 items-center justify-center rounded-md border border-[#e4e4e0] bg-white font-mono text-xs font-semibold text-[#333]">
+            pi
+          </span>
+          <h3 className="text-sm font-medium text-[#1f1f1f]">Pi CLI</h3>
           {isInstalled && (
             <span
               className="w-2 h-2 rounded-full bg-[var(--color-success)]"
@@ -153,7 +156,7 @@ export function PiStatusPanel(): React.JSX.Element {
           onClick={refreshStatus}
           disabled={loading || isOperating}
           title="刷新状态"
-          className="text-gray-500 hover:text-gray-300"
+          className="text-[#666] hover:text-[#1f1f1f]"
         >
           {loading ? '⟳ 检测中...' : '⟳ 刷新'}
         </Button>
@@ -168,8 +171,8 @@ export function PiStatusPanel(): React.JSX.Element {
 
         {/* 配置信息 */}
         {isInstalled && status?.configExists && (
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <span>⚙️</span>
+          <div className="flex items-center gap-2 text-xs text-[#666]">
+            <span className="font-mono text-[10px] uppercase text-[#999]">cfg</span>
             <span>
               {status.defaultProvider || '未配置'}
               {status.defaultModel && ` / ${status.defaultModel}`}
@@ -179,15 +182,28 @@ export function PiStatusPanel(): React.JSX.Element {
 
         {/* 安装路径 */}
         {isInstalled && status?.executablePath && (
-          <div className="text-xs text-gray-600 truncate" title={status.executablePath}>
-            📁 {status.executablePath}
+          <div className="truncate font-mono text-xs text-[#777]" title={status.executablePath}>
+            {status.executablePath}
+          </div>
+        )}
+        {isInstalled && (
+          <div className="flex items-center justify-between gap-2 text-xs text-[#666]">
+            <span>Runtime</span>
+            <span className="rounded-md border border-[#e6e6e1] bg-white px-2 py-0.5 font-mono text-[11px]">
+              {status?.runtimeSource === "managed" ? "managed" : status?.runtimeSource === "global" ? "global" : status?.installMethod || "unknown"}
+            </span>
+          </div>
+        )}
+        {status?.managedRuntimePath && (
+          <div className="truncate font-mono text-[10px] text-[#999]" title={status.managedRuntimePath}>
+            managed: {status.managedRuntimePath}
           </div>
         )}
       </div>
 
       {/* 错误信息 */}
       {errorMessage && (
-        <div className="mb-3 p-2 bg-red-900/20 border border-red-800/30 rounded text-xs text-red-400" role="alert">
+        <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700" role="alert">
           {errorMessage}
         </div>
       )}
@@ -247,11 +263,7 @@ export function PiStatusPanel(): React.JSX.Element {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              if (window.confirm('确定要卸载 Pi CLI 吗？')) {
-                uninstall();
-              }
-            }}
+            onClick={() => setConfirmUninstall(true)}
             title="卸载 Pi CLI"
           >
             卸载
@@ -261,9 +273,44 @@ export function PiStatusPanel(): React.JSX.Element {
 
       {/* 未安装提示 */}
       {!isInstalled && !loading && !isOperating && (
-        <p className="text-xs text-gray-600 mt-2">
+        <p className="text-xs text-[#777] mt-2">
           Pi CLI 是 Pi Desktop 的核心引擎。安装后即可使用 AI 编程助手功能。
         </p>
+      )}
+
+      {confirmUninstall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35">
+          <div
+            className="w-[360px] rounded-2xl border border-[#e5e5e5] bg-white p-5 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="确认卸载 Pi CLI"
+          >
+            <h3 className="text-base font-semibold text-[#1a1a1a]">卸载 Pi CLI</h3>
+            <p className="mt-2 text-sm leading-6 text-[#666]">
+              卸载后 Pi Desktop 将无法启动新的 Pi Agent 对话，直到重新安装 Pi CLI。
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmUninstall(false)}
+                className="rounded-lg px-3 py-1.5 text-sm text-[#666] hover:bg-[#f5f5f5]"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmUninstall(false);
+                  void uninstall();
+                }}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
+              >
+                卸载
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -14,11 +14,6 @@ files:
   - '!build_output.txt'
 win:
   executableName: Pi Desktop
-  sign: false
-  signingHashAlgorithms: []
-  forceCodeSigning: false
-  signAndEditExecutable: false
-  signDlls: false
 nsis:
   artifactName: ${productName}-${version}-setup.${ext}
   shortcutName: ${productName}

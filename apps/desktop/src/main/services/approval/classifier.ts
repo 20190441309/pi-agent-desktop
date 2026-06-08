@@ -3,6 +3,7 @@
 // 决定审批如何处理: high → 弹模态预拦截, edit → 事后 diff + undo, read → 直接放行
 
 import type { RiskLevel } from "@shared/approval";
+import { isHighRiskCommand } from "@shared/command-risk";
 
 export type { RiskLevel };
 
@@ -15,20 +16,6 @@ export interface Classification {
     risk: RiskLevel;
     preview: string;
 }
-
-// 高危 bash 子命令模式
-const HIGH_RISK_BASH_PATTERNS: RegExp[] = [
-    /\brm\s+-rf?\s+(\/|~|\$HOME)(\s|$)/,
-    /\bsudo\b/,
-    /\bmkfs\b/,
-    /\bdd\s+if=/,
-    /\bchmod\s+777\s+\//,
-    /curl\s+.*\|\s*sh\b/,
-    /\bgit\s+push\s+.*--force\b/,
-    /\bgit\s+reset\s+--hard\b/,
-    /\bnpm\s+uninstall\s+-g\b/,
-    /\breg\s+delete\b/i,
-];
 
 // 高危写路径 (支持 Unix / Windows / ~ 前缀)
 const HIGH_RISK_PATH_PATTERNS: RegExp[] = [
@@ -82,9 +69,7 @@ export function classifyToolCall(call: ToolCall): Classification {
         const cmd = String(args.command ?? args.cmd ?? "").trim();
         if (!cmd) return { risk: "read", preview: "(empty)" };
 
-        for (const pat of HIGH_RISK_BASH_PATTERNS) {
-            if (pat.test(cmd)) return { risk: "high", preview: cmd };
-        }
+        if (isHighRiskCommand(cmd)) return { risk: "high", preview: cmd };
         for (const pat of EDIT_BASH_PATTERNS) {
             if (pat.test(cmd)) return { risk: "edit", preview: cmd };
         }

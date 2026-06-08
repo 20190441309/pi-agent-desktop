@@ -13,6 +13,7 @@ import {
     appendMessage,
     updateMessage,
     updateToolCall,
+    updateSessionMetadata,
 } from "../session-store";
 
 // ── In-memory mock for SessionPersistence ───────────────────────────────
@@ -145,6 +146,49 @@ describe("session-store: rename", () => {
         expect(after).toBe(before);
         expect(after).toBe(1);
         void s;
+    });
+});
+
+describe("session-store: metadata", () => {
+    it("createSession 初始化工作台元数据默认值", async () => {
+        const store = makeStore();
+        const s = await createSession(store, "ws1", "meta", "s1");
+        expect(s.favorite).toBe(false);
+        expect(s.tags).toEqual([]);
+        expect(s.readOnly).toBe(false);
+        expect(typeof s.lastOpenedAt).toBe("number");
+    });
+
+    it("updateSessionMetadata 写入收藏、标签、只读、usage 和工具权限", async () => {
+        const store = makeStore();
+        await createSession(store, "ws1", "meta", "s1");
+        const updated = await updateSessionMetadata(store, "s1", {
+            favorite: true,
+            tags: [" bug ", "bug", "windows"],
+            readOnly: true,
+            lastOpenedAt: 123,
+            usage: {
+                model: "m1",
+                provider: "p1",
+                totalTokens: 42,
+                compactionStatus: "running",
+                updatedAt: 456,
+            },
+            toolPermissions: {
+                fileRead: true,
+                fileWrite: false,
+                shell: false,
+                git: true,
+                network: false,
+                extensions: true,
+            },
+        });
+        expect(updated.favorite).toBe(true);
+        expect(updated.tags).toEqual(["bug", "windows"]);
+        expect(updated.readOnly).toBe(true);
+        expect(updated.lastOpenedAt).toBe(123);
+        expect(updated.usage?.totalTokens).toBe(42);
+        expect(updated.toolPermissions?.fileWrite).toBe(false);
     });
 });
 

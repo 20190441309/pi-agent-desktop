@@ -5,29 +5,36 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiEvent } from "@shared/events";
 import { usePiStream } from "./usePiStream";
 import { useSessionStore } from "../stores/session-store";
-import { useAgentStore } from "../stores/agent-store";
 
 let emitPiEvent: ((event: PiEvent) => void) | null = null;
-let emitAgentEvent: ((payload: { agentId: string; workspaceId: string; event: PiEvent }) => void) | null = null;
+const sendPrompt = vi.fn(async () => undefined);
+const stopPrompt = vi.fn<(_workspaceId: string) => Promise<unknown>>(async () => undefined);
 
 function HookHost(): null {
     usePiStream();
     return null;
 }
 
-function HookHostWithAgent() {
-    usePiStream("agent_1");
-    return null;
-}
-
 function HookStateHost() {
     const state = usePiStream();
-    return <div data-testid="stream-error">{state.error ?? ""}</div>;
+    return (
+        <div>
+            <div data-testid="stream-error">{state.error ?? ""}</div>
+            <button type="button" onClick={() => void state.startStreaming("ws1", "follow up")}>
+                send-follow-up
+            </button>
+            <button type="button" onClick={() => state.stopStreaming("ws1")}>
+                stop
+            </button>
+        </div>
+    );
 }
 
 beforeEach(() => {
     emitPiEvent = null;
-    emitAgentEvent = null;
+    sendPrompt.mockClear();
+    stopPrompt.mockReset();
+    stopPrompt.mockResolvedValue(undefined);
     (globalThis as { window: unknown }).window = {
         dispatchEvent: vi.fn(),
         // 2026-06-06 hotfix (T6): usePiStream 用 setTimeout/setInterval 防 debounce 卡住,
@@ -52,19 +59,10 @@ beforeEach(() => {
                 emitPiEvent = cb;
                 return vi.fn();
             }),
-            onAgentEvent: vi.fn((cb: (payload: { agentId: string; workspaceId: string; event: PiEvent }) => void) => {
-                emitAgentEvent = cb;
-                return vi.fn();
-            }),
+            sendPrompt,
+            stop: stopPrompt,
         },
     };
-    useAgentStore.setState({
-        agents: [],
-        currentAgentId: null,
-        messagesByAgent: {},
-        runtimeByAgent: {},
-        initialized: true,
-    });
     useSessionStore.setState({
         currentSessionId: "s1",
         sessions: [
@@ -210,75 +208,7 @@ describe("usePiStream", () => {
         });
     });
 
-    it("routes matching agent events to agent-store when agentId is provided", async () => {
-        await act(async () => {
-            render(<HookHostWithAgent />);
-        });
-        expect(emitAgentEvent).toBeTruthy();
-
-        await act(async () => {
-            emitAgentEvent?.({ agentId: "other_agent", workspaceId: "ws1", event: { type: "agent_start" } });
-            emitAgentEvent?.({
-                agentId: "other_agent",
-                workspaceId: "ws1",
-                event: {
-                    type: "message_update",
-                    assistantMessageEvent: {
-                        type: "text_delta",
-                        delta: "wrong agent",
-                    },
-                },
-            });
-            emitAgentEvent?.({ agentId: "agent_1", workspaceId: "ws1", event: { type: "agent_start" } });
-            emitAgentEvent?.({ agentId: "agent_1", workspaceId: "ws1", event: { type: "message_start" } });
-            emitAgentEvent?.({
-                agentId: "agent_1",
-                workspaceId: "ws1",
-                event: {
-                    type: "message_update",
-                    assistantMessageEvent: {
-                        type: "text_delta",
-                        delta: "agent hi",
-                    },
-                },
-            });
-        });
-
-        // Agent-store should have the message, not session-store
-        const agentMsgs = useAgentStore.getState().messagesByAgent["agent_1"];
-        expect(agentMsgs).toHaveLength(1);
-        expect(agentMsgs[0]).toMatchObject({
-            role: "assistant",
-            content: "agent hi",
-        });
-        // Session-store should NOT have received this message
-        const session = useSessionStore.getState().sessions[0];
-        expect(session.messages).toHaveLength(0);
-    });
-
-    it("preserves old session-store routing when agentId is null", async () => {
-        await act(async () => {
-            render(<HookHost />);
-        });
-        expect(emitPiEvent).toBeTruthy();
-
-        await act(async () => {
-            emitPiEvent?.({ type: "agent_start" });
-            emitPiEvent?.({ type: "message_start" });
-            emitPiEvent?.({
-                type: "message_update",
-                assistantMessageEvent: {
-                    type: "text_delta",
-                    delta: "session hi",
-                },
-            });
-        });
-
-        const session = useSessionStore.getState().sessions[0];
-        expect(session.messages).toHaveLength(1);
-        expect(session.messages[0].content).toBe("session hi");
-    });
-it("surfaces empty Pi turns as a visible error", async () => {
+    it("surfaces empty Pi turns as a visible error", async () => {
         await act(async () => {
             render(<HookStateHost />);
         });
@@ -289,5 +219,94 @@ it("surfaces empty Pi turns as a visible error", async () => {
         });
 
         expect(screen.getByTestId("stream-error").textContent).toContain("Pi 本轮没有返回内容");
+    });
+
+    it("surfaces extension errors with details and ends streaming", async () => {
+        await act(async () => {
+            render(<HookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({ type: "extension_error", message: "扩展无法读取 package.json" } as PiEvent);
+        });
+
+        expect(screen.getByTestId("stream-error").textContent).toContain("扩展无法读取 package.json");
+        expect((window.dispatchEvent as ReturnType<typeof vi.fn>).mock.calls.some((call) => {
+            const event = call[0] as Event;
+            return event.type === "pi:stream-end";
+        })).toBe(true);
+    });
+
+    it("shows stop IPC fallback instead of silently swallowing it", async () => {
+        stopPrompt.mockResolvedValueOnce({
+            __error: true,
+            code: "PI_STOP_FAILED",
+            fallback: "停止失败: agent is not running",
+        });
+        await act(async () => {
+            render(<HookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("stop").click();
+        });
+
+        expect(stopPrompt).toHaveBeenCalledWith("ws1");
+        expect(screen.getByTestId("stream-error").textContent).toContain("停止失败: agent is not running");
+    });
+
+    it("shows rejected stop errors instead of silently swallowing them", async () => {
+        stopPrompt.mockRejectedValueOnce(new Error("transport closed"));
+        await act(async () => {
+            render(<HookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("stop").click();
+        });
+
+        expect(screen.getByTestId("stream-error").textContent).toContain("停止失败: transport closed");
+    });
+
+    it("sends follow-up while streaming without resetting the active assistant message", async () => {
+        await act(async () => {
+            render(<HookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "text_delta",
+                    delta: "partial",
+                },
+            });
+        });
+
+        await act(async () => {
+            screen.getByText("send-follow-up").click();
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "text_delta",
+                    delta: " answer",
+                },
+            });
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up");
+        expect(session.messages).toHaveLength(2);
+        expect(session.messages[0]).toMatchObject({ role: "assistant", content: "partial answer" });
+        expect(session.messages[1]).toMatchObject({ role: "user", content: "follow up" });
+        expect((window.dispatchEvent as ReturnType<typeof vi.fn>).mock.calls.filter((call) => {
+            const event = call[0] as Event;
+            return event.type === "pi:stream-start";
+        })).toHaveLength(0);
     });
 });

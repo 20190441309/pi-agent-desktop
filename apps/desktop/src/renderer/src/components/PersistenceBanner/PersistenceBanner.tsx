@@ -1,5 +1,5 @@
 // 2026-06-06 hotfix: 持久化失败提示 banner
-// 当 session-store.persistErrorCount > 0 时显示, 提示用户消息可能没完整落盘
+// 当 session-store.persistErrorCount > 0 时显示, 提示用户会话数据可能没完整落盘
 // 用户点 ✕ 调 clearPersistErrors 重置计数
 
 import { useSessionStore } from "../../stores/session-store";
@@ -32,7 +32,7 @@ export function PersistenceBanner(): React.JSX.Element | null {
                 />
             </svg>
             <span className="flex-1 truncate">
-                消息持久化失败 {persistErrorCount} 次
+                会话数据持久化失败 {persistErrorCount} 次
                 {lastPersistError ? ` — ${lastPersistError}` : ""}
             </span>
             <button

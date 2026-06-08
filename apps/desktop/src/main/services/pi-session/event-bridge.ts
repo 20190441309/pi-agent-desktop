@@ -19,12 +19,18 @@ export function createEventBridge(workspaceId: string, send: IpcSender) {
                 case "tool_execution_end":
                 case "turn_end":
                 case "agent_end":
+                case "compaction_start":
+                case "compaction_end":
+                case "usage_update":
+                case "context_update":
+                case "custom_message":
+                case "queue_update":
                 case "extension_error":
                     send("pi:event", workspaceId, event);
                     break;
 
                 default:
-                    // 未知事件忽略 (queue_update, compaction_*, auto_retry_*, extension_error)
+                    // 未知事件忽略 (auto_retry_* 等暂未接入 renderer 的诊断事件)
                     break;
             }
         },

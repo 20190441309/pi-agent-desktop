@@ -28,6 +28,10 @@ import type {
     PiModelsFile,
     PiSettingsFile,
     ProviderTestResult,
+    GitStatus,
+    GitLogEntry,
+    GitBranch,
+    Workspace,
 } from "@shared";
 
 // 内部 helper: 把 ipcRenderer.on 的 (_event, payload) 签名转成 (payload)
@@ -76,23 +80,26 @@ const piAPI: PiAPI = {
 
     // Git
     gitUndo: (workspacePath, filePath) =>
-        ipcRenderer.invoke("git:undo", workspacePath, filePath),
+        ipcRenderer.invoke("git:undo", workspacePath, filePath) as Promise<void | IpcError>,
 
     // Pi stop
-    stop: () => ipcRenderer.invoke("pi:stop"),
+    stop: (workspaceId) => ipcRenderer.invoke("pi:stop", workspaceId),
 
     // Workspace
-    listWorkspaces: () => ipcRenderer.invoke("workspace:list"),
-    createWorkspace: (name, path) => ipcRenderer.invoke("workspace:create", name, path),
+    listWorkspaces: () => ipcRenderer.invoke("workspace:list") as Promise<Workspace[] | IpcError>,
+    createWorkspace: (name, path) => ipcRenderer.invoke("workspace:create", name, path) as Promise<Workspace | IpcError>,
     deleteWorkspace: (id) => ipcRenderer.invoke("workspace:delete", id),
-    selectWorkspace: (path) => ipcRenderer.invoke("workspace:select", path),
-    selectDirectory: () => ipcRenderer.invoke("workspace:select-directory"),
+    selectWorkspace: (path) => ipcRenderer.invoke("workspace:select", path) as Promise<void | IpcError>,
+    selectDirectory: () => ipcRenderer.invoke("workspace:select-directory") as Promise<string | null | IpcError>,
 
     // Session
     listSessions: () => ipcRenderer.invoke("session:list"),
     createSession: (workspaceId, title, id) => ipcRenderer.invoke("session:create", workspaceId, title, id),
     renameSession: (id, title) => ipcRenderer.invoke("session:rename", id, title),
     deleteSession: (id) => ipcRenderer.invoke("session:delete", id),
+    archiveSession: (id, archived) => ipcRenderer.invoke("session:archive", id, archived),
+    updateSessionMetadata: (id, updates) =>
+        ipcRenderer.invoke("session:update-metadata", id, updates),
     // 2026-06-06 hotfix: session messages 持久化桥接
     // fire-and-forget,失败由 caller 走 .catch + logger.error,不阻塞 UI 流式响应
     appendMessage: (sessionId, message) =>
@@ -143,14 +150,15 @@ const piAPI: PiAPI = {
     onPlanProgress: (cb) => subscribe<PlanProgressUpdate>("plan:progress", cb),
 
     // Git
-    getGitStatus: (workspacePath) => ipcRenderer.invoke("git:status", workspacePath),
+    getGitStatus: (workspacePath) => ipcRenderer.invoke("git:status", workspacePath) as Promise<GitStatus | null | IpcError>,
     gitDiff: (workspacePath, filePath) =>
-        ipcRenderer.invoke("git:diff", workspacePath, filePath),
-    gitDiffStaged: (workspacePath) => ipcRenderer.invoke("git:diff-staged", workspacePath),
-    gitAdd: (workspacePath, files) => ipcRenderer.invoke("git:add", workspacePath, files),
-    gitCommit: (workspacePath, message) => ipcRenderer.invoke("git:commit", workspacePath, message),
-    gitLog: (workspacePath, count) => ipcRenderer.invoke("git:log", workspacePath, count),
-    gitBranches: (workspacePath) => ipcRenderer.invoke("git:branches", workspacePath),
+        ipcRenderer.invoke("git:diff", workspacePath, filePath) as Promise<string | IpcError>,
+    gitDiffStaged: (workspacePath) => ipcRenderer.invoke("git:diff-staged", workspacePath) as Promise<string | IpcError>,
+    gitAdd: (workspacePath, files) => ipcRenderer.invoke("git:add", workspacePath, files) as Promise<void | IpcError>,
+    gitUnstage: (workspacePath, files) => ipcRenderer.invoke("git:unstage", workspacePath, files),
+    gitCommit: (workspacePath, message) => ipcRenderer.invoke("git:commit", workspacePath, message) as Promise<string | IpcError>,
+    gitLog: (workspacePath, count) => ipcRenderer.invoke("git:log", workspacePath, count) as Promise<GitLogEntry[] | IpcError>,
+    gitBranches: (workspacePath) => ipcRenderer.invoke("git:branches", workspacePath) as Promise<GitBranch[] | IpcError>,
 
     // Project detection
     detectProject: (workspacePath) => ipcRenderer.invoke("project:detect", workspacePath),
@@ -197,9 +205,13 @@ const piAPI: PiAPI = {
 
     // M2: 文件搜索
     filesList: (workspacePath, query) => ipcRenderer.invoke("files:list", workspacePath, query),
+    filesGetTree: (workspacePath, options) => ipcRenderer.invoke("files:getTree", workspacePath, options),
+    filesReadTextFile: (path, workspacePath) => ipcRenderer.invoke("files:readTextFile", path, workspacePath),
+    filesWriteTextFile: (path, content, workspacePath, options) => ipcRenderer.invoke("files:writeTextFile", path, content, workspacePath, options),
+    filesSearch: (workspacePath, query, options) => ipcRenderer.invoke("files:search", workspacePath, query, options),
 
     // v1.0.13: 多选文件,ChatInput 附件按钮
-    selectFiles: (opts) => ipcRenderer.invoke("files:select", opts) as Promise<string[]>,
+    selectFiles: (opts) => ipcRenderer.invoke("files:select", opts) as Promise<string[] | IpcError>,
 
     // M3: SkillHub
     skillsCheck: () => ipcRenderer.invoke("skills:check"),
@@ -211,11 +223,22 @@ const piAPI: PiAPI = {
     skillsGithubImport: (url) => ipcRenderer.invoke("skills:github-import", url),
     skillsWriteSkill: (name, content) => ipcRenderer.invoke("skills:write-skill", name, content),
 
+    packagesSearch: (query) => ipcRenderer.invoke("packages:search", query),
+    packagesListInstalled: () => ipcRenderer.invoke("packages:list-installed"),
+    packagesInstall: (source) => ipcRenderer.invoke("packages:install", source),
+    packagesRemove: (source) => ipcRenderer.invoke("packages:remove", source),
+    packagesUpdate: (source) => ipcRenderer.invoke("packages:update", source),
+    packagesRefreshCatalog: () => ipcRenderer.invoke("packages:refresh-catalog"),
+
+    openPath: (path) => ipcRenderer.invoke("shell:open-path", path),
+    revealPath: (path) => ipcRenderer.invoke("shell:reveal-path", path),
+
     // M4: Terminal
     createTerminal: (opts) => ipcRenderer.invoke("terminal:create", opts),
-    terminalInput: (terminalId, data) => ipcRenderer.invoke("terminal:input", terminalId, data),
+    terminalInput: (terminalId, data) =>
+        ipcRenderer.invoke("terminal:input", terminalId, data) as Promise<void | IpcError>,
     terminalResize: (terminalId, cols, rows) =>
-        ipcRenderer.invoke("terminal:resize", terminalId, cols, rows),
+        ipcRenderer.invoke("terminal:resize", terminalId, cols, rows) as Promise<void | IpcError>,
     closeTerminal: (terminalId) => ipcRenderer.invoke("terminal:close", terminalId),
     listTerminals: () => ipcRenderer.invoke("terminal:list"),
 

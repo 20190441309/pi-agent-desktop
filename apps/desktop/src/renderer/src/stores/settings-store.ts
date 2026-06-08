@@ -6,7 +6,7 @@
 //          启动时由 loadPiConfig 真从 Pi CLI 配置读;读不到时 Pi ChatInput / SettingsPanel 走空态
 
 import { create } from 'zustand';
-import { isIpcError, type AppSettings, type IpcError } from '@shared';
+import { isIpcError, type AppSettings, type IpcError, type ToolPermissions } from '@shared';
 import { logger } from '../utils/logger';
 
 export type { AppSettings };
@@ -42,6 +42,8 @@ interface SettingsState {
   loadPiConfig: () => Promise<void>;
   /** 清除最近写错误 (用户点 close 后清) */
   clearWriteError: () => void;
+  getWorkspaceToolDefaults: (workspaceId?: string | null) => ToolPermissions;
+  updateWorkspaceToolDefaults: (workspaceId: string, permissions: ToolPermissions) => void;
 }
 
 const defaultSettings: AppSettings = {
@@ -56,6 +58,36 @@ const defaultSettings: AppSettings = {
   showLineNumbers: true,
   wordWrap: true,
   permissionLevel: 'smart',
+  runtimeChannel: 'stable',
+  autoCompactionEnabled: false,
+  workspaceToolDefaults: {},
+};
+
+export const TOOL_PERMISSION_PRESETS: Record<"minimal" | "development" | "all", ToolPermissions> = {
+  minimal: {
+    fileRead: true,
+    fileWrite: false,
+    shell: false,
+    git: false,
+    network: false,
+    extensions: false,
+  },
+  development: {
+    fileRead: true,
+    fileWrite: true,
+    shell: true,
+    git: true,
+    network: false,
+    extensions: true,
+  },
+  all: {
+    fileRead: true,
+    fileWrite: true,
+    shell: true,
+    git: true,
+    network: true,
+    extensions: true,
+  },
 };
 
 /** 内部 helper: 把 setSettings 返的 (void | IpcError) / throw 统一成 lastWriteError */
@@ -64,12 +96,17 @@ function reportWriteError(e: unknown): IpcError | string {
     return String(e);
 }
 
+function getPiAPI(): Window["piAPI"] | undefined {
+  return typeof window !== "undefined" ? window.piAPI : undefined;
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => {
   // Load persisted settings from main process
   const loadSettings = async () => {
     try {
-      if (window.piAPI) {
-        const persisted = await window.piAPI.getSettings();
+      const piAPI = getPiAPI();
+      if (piAPI) {
+        const persisted = await piAPI.getSettings();
         set({ settings: { ...defaultSettings, ...persisted } });
       }
     } catch (e) {
@@ -87,20 +124,31 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     // 从 Pi CLI 加载本地配置
     loadPiConfig: async () => {
       try {
-        if (window.piAPI && window.piAPI.loadPiConfig) {
-          const config = (await window.piAPI.loadPiConfig()) as PiConfigPayload;
+        const piAPI = getPiAPI();
+        if (piAPI?.loadPiConfig) {
+          const config = (await piAPI.loadPiConfig()) as PiConfigPayload;
           if (config.models && config.models.length > 0) {
             set({ piModels: config.models });
           }
           // 如果 Pi 配置中有当前模型信息，自动更新
           if (config.currentModel) {
+            const next = {
+              model: config.currentModel.model,
+              provider: config.currentModel.provider,
+            };
             set((state) => ({
               settings: {
                 ...state.settings,
-                model: config.currentModel!.model,
-                provider: config.currentModel!.provider,
+                ...next,
               },
             }));
+            void piAPI.setSettings(next)
+              .then((result) => {
+                if (isIpcError(result)) {
+                  set({ lastWriteError: result });
+                }
+              })
+              .catch((e) => set({ lastWriteError: reportWriteError(e) }));
           }
         }
       } catch (e) {
@@ -113,13 +161,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       const merged = { ...previous, ...updates };
       // 乐观更新: 立刻改本地, 失败时回滚
       set({ settings: merged });
-      if (!window.piAPI) return;
+      const piAPI = getPiAPI();
+      if (!piAPI) return;
       // v1.0.6.1 后 setSettings 不再 throw, 但仍 try/catch 兜底老 throw 路径
-      window.piAPI.setSettings(updates)
+      piAPI.setSettings(updates)
         .then((result) => {
           if (isIpcError(result)) {
             // 写失败: 本地回滚 + 暴露错误
             set({ settings: previous, lastWriteError: result });
+          } else {
+            set({ lastWriteError: null });
           }
         })
         .catch((e) => {
@@ -131,11 +182,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     resetSettings: () => {
       const previous = get().settings;
       set({ settings: defaultSettings });
-      if (!window.piAPI) return;
-      window.piAPI.setSettings(defaultSettings)
+      const piAPI = getPiAPI();
+      if (!piAPI) return;
+      piAPI.setSettings(defaultSettings)
         .then((result) => {
           if (isIpcError(result)) {
             set({ settings: previous, lastWriteError: result });
+          } else {
+            set({ lastWriteError: null });
           }
         })
         .catch((e) => {
@@ -158,6 +212,21 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 
     clearWriteError: () => {
       set({ lastWriteError: null });
+    },
+
+    getWorkspaceToolDefaults: (workspaceId?: string | null) => {
+      if (!workspaceId) return TOOL_PERMISSION_PRESETS.development;
+      return get().settings.workspaceToolDefaults?.[workspaceId] ?? TOOL_PERMISSION_PRESETS.development;
+    },
+
+    updateWorkspaceToolDefaults: (workspaceId: string, permissions: ToolPermissions) => {
+      const current = get().settings.workspaceToolDefaults ?? {};
+      get().updateSettings({
+        workspaceToolDefaults: {
+          ...current,
+          [workspaceId]: permissions,
+        },
+      });
     },
   };
 });

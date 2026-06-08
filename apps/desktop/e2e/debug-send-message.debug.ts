@@ -22,8 +22,9 @@ test.describe('Debug: 发消息回复', () => {
 
     test('发消息 + 收主进程 stderr + 等 30s', async () => {
         // pipe main stderr/stdout
+        const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         app = await _electron.launch({
-            args: [electronMainEntry],
+            args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
         app.process().stdout?.on('data', (d) => process.stdout.write(`[m] ${d}`));

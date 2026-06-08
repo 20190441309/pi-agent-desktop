@@ -17,6 +17,7 @@ beforeEach(() => {
             createSession: async () => undefined,
             deleteSession: async () => undefined,
             renameSession: async () => undefined,
+            archiveSession: async () => undefined,
         },
         configurable: true,
     });
@@ -41,6 +42,60 @@ const seedTwoSessions = (): void => {
 };
 
 describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
+    it("草稿态只高亮新建任务", () => {
+        seedTwoSessions();
+        useSessionStore.setState({ currentSessionId: null });
+
+        render(<MiniMaxCodeSidebar currentSection="new-task" onSectionChange={appRoute} />);
+
+        expect(screen.getByRole("button", { name: "新建任务" }).getAttribute("aria-current")).toBe("page");
+        expect(screen.getByRole("button", { name: "了解项目" }).getAttribute("aria-current")).toBeNull();
+    });
+
+    it("提供显式搜索入口", () => {
+        let selected = "";
+        render(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={(section) => { selected = section; }} />);
+
+        fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+
+        expect(selected).toBe("search");
+    });
+
+    it("左侧主导航展示 Git 入口并可切换", () => {
+        let selected = "";
+        render(<MiniMaxCodeSidebar currentSection="git" onSectionChange={(section) => { selected = section; }} />);
+
+        const git = screen.getByRole("button", { name: "Git" });
+        expect(git.getAttribute("data-mmcode-section")).toBe("git");
+        expect(git.getAttribute("aria-current")).toBe("page");
+
+        fireEvent.click(git);
+
+        expect(selected).toBe("git");
+    });
+
+    it("左侧主导航展示 Files 入口并可切换", () => {
+        let selected = "";
+        render(<MiniMaxCodeSidebar currentSection="files" onSectionChange={(section) => { selected = section; }} />);
+
+        const files = screen.getByRole("button", { name: "文件" });
+        expect(files.getAttribute("data-mmcode-section")).toBe("files");
+        expect(files.getAttribute("aria-current")).toBe("page");
+
+        fireEvent.click(files);
+
+        expect(selected).toBe("files");
+    });
+
+    it("真实会话态不再高亮新建任务", () => {
+        seedTwoSessions();
+
+        render(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={appRoute} />);
+
+        expect(screen.getByRole("button", { name: "新建任务" }).getAttribute("aria-current")).toBeNull();
+        expect(screen.getByRole("button", { name: "对项目的看法" }).getAttribute("aria-current")).toBe("page");
+    });
+
     it("点击会话项 → onSectionChange('session:<id>') 被调 + store.currentSessionId 切换", () => {
         seedTwoSessions();
         render(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={appRoute} />);
@@ -86,5 +141,47 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         fireEvent.click(oldItem);
 
         expect(useSessionStore.getState().currentSessionId).toBe("s_old");
+    });
+
+    it("只显示当前 workspace 的任务历史", () => {
+        useSessionStore.setState({
+            sessions: [
+                { id: "s_w1", title: "当前项目", workspaceId: "w1", createdAt: new Date(), updatedAt: new Date("2026-06-06T11:00:00Z"), messages: [] },
+                { id: "s_w2", title: "其它项目", workspaceId: "w2", createdAt: new Date(), updatedAt: new Date("2026-06-06T12:00:00Z"), messages: [] },
+            ],
+            currentSessionId: "s_w1",
+        });
+
+        render(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+
+        expect(screen.getByRole("button", { name: "当前项目" })).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "其它项目" })).toBeNull();
+    });
+
+    it("归档会话后从任务历史移到已归档", () => {
+        seedTwoSessions();
+        render(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+
+        fireEvent.click(screen.getByRole("button", { name: "归档 了解项目" }));
+
+        expect(screen.getByText("已归档")).toBeTruthy();
+        expect(screen.getByRole("button", { name: "了解项目" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "恢复 了解项目" })).toBeTruthy();
+        expect(useSessionStore.getState().sessions.find((s) => s.id === "s_new")?.archived).toBe(true);
+    });
+
+    it("恢复已归档会话后可重新打开", () => {
+        useSessionStore.setState({
+            sessions: [
+                { id: "s_archived", title: "归档任务", workspaceId: "w1", createdAt: new Date(), updatedAt: new Date("2026-06-06T12:00:00Z"), messages: [], archived: true },
+            ],
+            currentSessionId: null,
+        });
+        render(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+
+        fireEvent.click(screen.getByRole("button", { name: "归档任务" }));
+
+        expect(useSessionStore.getState().sessions.find((s) => s.id === "s_archived")?.archived).toBe(false);
+        expect(useSessionStore.getState().currentSessionId).toBe("s_archived");
     });
 });

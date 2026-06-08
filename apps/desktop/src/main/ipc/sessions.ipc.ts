@@ -17,6 +17,8 @@ import {
     createSession as _createSession,
     renameSession as _renameSession,
     deleteSession as _deleteSession,
+    archiveSession as _archiveSession,
+    updateSessionMetadata as _updateSessionMetadata,
     appendMessage,
     updateMessage,
     updateToolCall,
@@ -24,6 +26,8 @@ import {
 } from "../services/session-store";
 import {
     appendMessageSchema,
+    archiveSessionSchema,
+    updateSessionMetadataSchema,
     updateMessageSchema,
     updateToolCallSchema,
 } from "./schemas";
@@ -93,6 +97,48 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
             );
         }
         return undefined;
+    });
+
+    ipcMain.handle("session:archive", async (_event, id: string, archived: boolean) => {
+        const parsed = archiveSessionSchema.safeParse([id, archived]);
+        if (!parsed.success) {
+            return ipcError(
+                "ipcErrors.session.archiveInvalid",
+                "归档会话参数无效",
+                { reason: parsed.error.issues[0]?.message ?? "unknown" },
+            );
+        }
+        try {
+            return await _archiveSession(store, id, archived);
+        } catch (err) {
+            log.error("[sessions.ipc] session:archive failed:", err);
+            return ipcError(
+                "ipcErrors.session.archiveFailed",
+                `归档会话失败: ${err instanceof Error ? err.message : String(err)}`,
+                { id },
+            );
+        }
+    });
+
+    ipcMain.handle("session:update-metadata", async (_event, id: string, raw: unknown) => {
+        const parsed = updateSessionMetadataSchema.safeParse([id, raw]);
+        if (!parsed.success) {
+            return ipcError(
+                "ipcErrors.session.updateMetadataInvalid",
+                "更新会话元数据参数无效",
+                { reason: parsed.error.issues[0]?.message ?? "unknown" },
+            );
+        }
+        try {
+            return await _updateSessionMetadata(store, id, raw as Parameters<typeof _updateSessionMetadata>[2]);
+        } catch (err) {
+            log.error("[sessions.ipc] session:update-metadata failed:", err);
+            return ipcError(
+                "ipcErrors.session.updateMetadataFailed",
+                `更新会话元数据失败: ${err instanceof Error ? err.message : String(err)}`,
+                { id },
+            );
+        }
     });
 
     // ── 新增 3 个 handler(消息持久化)───────────────────────────────

@@ -19,6 +19,15 @@ export interface InstalledSkill {
     enabled: boolean;
 }
 
+function skillhubEnv(): NodeJS.ProcessEnv {
+    return {
+        ...process.env,
+        PYTHONIOENCODING: "utf-8",
+        PYTHONUTF8: "1",
+        LC_ALL: process.platform === "win32" ? process.env.LC_ALL : "C.UTF-8",
+    };
+}
+
 interface SkillhubSearchPayload {
     results?: Array<{
         slug?: string;
@@ -51,7 +60,11 @@ export function parseSearchOutput(stdout: string): SkillInfo[] {
 export async function searchSkills(query: string, limit = 20): Promise<SkillInfo[]> {
     const args = ["search", query, "--json", "--search-limit", String(limit)];
     try {
-        const { stdout } = await execFile("skillhub", args, { timeout: 30_000 });
+        const { stdout } = await execFile("skillhub", args, {
+            timeout: 30_000,
+            env: skillhubEnv(),
+            windowsHide: true,
+        });
         return parseSearchOutput(String(stdout ?? ""));
     } catch (err) {
         throw new Error(`skillhub search failed: ${(err as Error).message}`);
@@ -60,7 +73,11 @@ export async function searchSkills(query: string, limit = 20): Promise<SkillInfo
 
 export async function listInstalled(): Promise<string[]> {
     try {
-        const { stdout } = await execFile("skillhub", ["list"], { timeout: 10_000 });
+        const { stdout } = await execFile("skillhub", ["list"], {
+            timeout: 10_000,
+            env: skillhubEnv(),
+            windowsHide: true,
+        });
         const trimmed = String(stdout ?? "").trim();
         if (!trimmed || trimmed.startsWith("No installed")) return [];
         return trimmed.split("\n").map((s: string) => s.trim()).filter(Boolean);
@@ -74,6 +91,8 @@ export async function installSkill(slug: string, cwd: string = process.cwd()): P
         await execFile("skillhub", ["install", slug, "--dir", "skills"], {
             timeout: 60_000,
             cwd,
+            env: skillhubEnv(),
+            windowsHide: true,
         });
     } catch (err) {
         throw new Error(`skillhub install failed for "${slug}": ${(err as Error).message}`);
@@ -88,7 +107,11 @@ export async function uninstallSkill(slug: string, cwd: string = process.cwd()):
 
 export async function checkSkillhubInstalled(): Promise<boolean> {
     try {
-        await execFile("skillhub", ["--version"], { timeout: 5000 });
+        await execFile("skillhub", ["--version"], {
+            timeout: 5000,
+            env: skillhubEnv(),
+            windowsHide: true,
+        });
         return true;
     } catch {
         return false;

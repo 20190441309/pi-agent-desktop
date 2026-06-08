@@ -5,6 +5,8 @@
 
 import { ipcMain, BrowserWindow, type BrowserWindow as BrowserWindowType } from "electron";
 import { execFileSync } from "child_process";
+import { rmSync } from "fs";
+import { isAbsolute, join, relative, resolve } from "path";
 import log from "electron-log/main";
 import { ipcError } from "@shared";
 import { WorkspaceRegistry } from "../services/pi-session/registry";
@@ -17,6 +19,8 @@ import {
 } from "../services/extensions/extension-ui-bridge";
 import type { ExtensionUiResponse, PermissionDecision, PermissionMode } from "@shared";
 import type { AgentRuntimeRegistry } from "../services/agent-runtime/registry";
+import { getProtectedPathReason } from "../services/protected-paths";
+import { gitUndoSchema } from "./schemas";
 
 interface WorkspaceLite {
     id: string;
@@ -28,7 +32,7 @@ interface ChatIpcDeps {
     registry: WorkspaceRegistry;
     /** 同步拿 workspace path 用 */
     getWorkspace: (id: string) => WorkspaceLite | undefined;
-    /** 同步拿 default workspace 路径 (workspaceId 为空时兜底) */
+    /** 同步拿 default workspace 路径 (legacy callers only) */
     getDefaultWorkspace: () => WorkspaceLite | undefined;
     /** 持久化 PendingEdits 状态 (可选, 用于窗口重启时恢复) */
     pendingEdits: PendingEdits;
@@ -75,7 +79,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     });
 
     ipcMain.handle("pi:send", async (_event, workspaceId: string, text: string) => {
-        const ws = deps.getWorkspace(workspaceId) ?? deps.getDefaultWorkspace();
+        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
         if (!ws) {
             return ipcError(
                 "ipcErrors.chat.workspaceNotFound",
@@ -112,34 +116,60 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     });
 
     ipcMain.handle("pi:stop", async (_event, workspaceId: string) => {
-        const ws = deps.getWorkspace(workspaceId) ?? deps.getDefaultWorkspace();
-        if (!ws) return;
+        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
+        if (!ws) {
+            return ipcError(
+                "ipcErrors.chat.workspaceNotFound",
+                `Workspace not found: ${workspaceId}`,
+                { id: workspaceId },
+            );
+        }
         if (deps.agentRegistry) {
             const agent = deps.agentRegistry.findDefaultAgent(ws.id);
-            if (agent) deps.agentRegistry.stop(agent.id);
-            return;
+            if (agent) await deps.agentRegistry.abort(agent.id);
+            return undefined;
         }
-        if (!deps.registry.has(ws.id)) return;
+        if (!deps.registry.has(ws.id)) return undefined;
         const wsSession = await deps.registry.get(ws.id, ws.path);
         wsSession.session.abort();
+        return undefined;
     });
 
     // M1: Git undo (撤销 file_edit 类改动)
     // 用 execFileSync 参数化 (避免 shell 注入)
     ipcMain.handle("git:undo", async (_event, workspacePath: string, filePath: string) => {
         try {
+            gitUndoSchema.parse([workspacePath, filePath]);
+        } catch (err) {
+            log.warn("[chat.ipc] git:undo invalid args:", err);
+            return ipcError(
+                "ipcErrors.chat.gitUndoInvalid",
+                `撤销文件改动参数无效: ${err instanceof Error ? err.message : String(err)}`,
+                { path: String(filePath ?? "") },
+            );
+        }
+
+        const workspaceRoot = resolve(workspacePath);
+        const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath);
+        const reason = getProtectedPathReason(targetPath, workspaceRoot);
+        if (reason) {
+            return ipcError("ipcErrors.files.protectedPath", reason, { path: targetPath });
+        }
+        const gitPath = relative(workspaceRoot, targetPath).replace(/\\/g, "/");
+
+        try {
             // 先试 git checkout (tracked file)
-            execFileSync("git", ["checkout", "--", filePath], { cwd: workspacePath, stdio: "ignore" });
+            execFileSync("git", ["checkout", "--", gitPath], { cwd: workspaceRoot, stdio: "ignore" });
         } catch {
-            // fallback: rm (untracked new file) — 参数化, 안전
+            // fallback: remove an untracked new file using Node APIs under the same workspace guard.
             try {
-                execFileSync("rm", [filePath], { cwd: workspacePath, stdio: "ignore" });
+                rmSync(join(workspaceRoot, gitPath), { force: true });
             } catch (err) {
                 log.error("[chat.ipc] git:undo failed:", err);
                 return ipcError(
                     "ipcErrors.chat.gitUndoFailed",
                     `撤销文件改动失败: ${err instanceof Error ? err.message : String(err)}`,
-                    { path: filePath },
+                    { path: gitPath },
                 );
             }
         }

@@ -14,7 +14,18 @@ import {
     settingsSetSchema,
     gitCommitSchema,
     gitAddSchema,
+    gitDiffSchema,
+    gitDiffStagedSchema,
+    gitUndoSchema,
+    packageSourceSchema,
+    terminalCreateSchema,
     terminalInputSchema,
+    terminalResizeSchema,
+    getFileTreeSchema,
+    readTextFileSchema,
+    searchFilesSchema,
+    listFilesSchema,
+    writeTextFileSchema,
 } from "../schemas";
 
 describe("workspaceCreateSchema", () => {
@@ -40,12 +51,22 @@ describe("workspaceCreateSchema", () => {
 });
 
 describe("settingsSetSchema", () => {
-    it("accepts a plain object", () => {
+    it("accepts known AppSettings fields with valid values", () => {
         expect(() => settingsSetSchema.parse([{ theme: "dark", fontSize: 14 }])).not.toThrow();
     });
 
-    it("accepts an empty object", () => {
-        expect(() => settingsSetSchema.parse([{}])).not.toThrow();
+    it("rejects an empty object", () => {
+        expect(() => settingsSetSchema.parse([{}])).toThrow(ZodError);
+    });
+
+    it("rejects unknown settings fields", () => {
+        expect(() => settingsSetSchema.parse([{ theme: "dark", madeUpFlag: true }])).toThrow(ZodError);
+    });
+
+    it("rejects invalid enum and numeric ranges", () => {
+        expect(() => settingsSetSchema.parse([{ theme: "system" }])).toThrow(ZodError);
+        expect(() => settingsSetSchema.parse([{ temperature: 3 }])).toThrow(ZodError);
+        expect(() => settingsSetSchema.parse([{ maxTokens: 0 }])).toThrow(ZodError);
     });
 
     it("rejects a non-object (string)", () => {
@@ -103,6 +124,44 @@ describe("gitAddSchema", () => {
     });
 });
 
+describe("gitDiffSchema", () => {
+    it("accepts workspacePath with optional filePath", () => {
+        expect(() => gitDiffSchema.parse(["C:/repo"])).not.toThrow();
+        expect(() => gitDiffSchema.parse(["C:/repo", "src/app.ts"])).not.toThrow();
+    });
+
+    it("rejects invalid workspacePath and empty filePath", () => {
+        expect(() => gitDiffSchema.parse([""])).toThrow(ZodError);
+        expect(() => gitDiffSchema.parse([null, "src/app.ts"])).toThrow(ZodError);
+        expect(() => gitDiffSchema.parse(["C:/repo", ""])).toThrow(ZodError);
+    });
+});
+
+describe("gitDiffStagedSchema", () => {
+    it("accepts workspacePath", () => {
+        expect(() => gitDiffStagedSchema.parse(["C:/repo"])).not.toThrow();
+    });
+
+    it("rejects invalid workspacePath", () => {
+        expect(() => gitDiffStagedSchema.parse([""])).toThrow(ZodError);
+        expect(() => gitDiffStagedSchema.parse([undefined])).toThrow(ZodError);
+    });
+});
+
+describe("gitUndoSchema", () => {
+    it("accepts workspacePath + filePath", () => {
+        expect(() => gitUndoSchema.parse(["C:/repo", "src/app.ts"])).not.toThrow();
+    });
+
+    it("rejects empty file paths", () => {
+        expect(() => gitUndoSchema.parse(["C:/repo", ""])).toThrow(ZodError);
+    });
+
+    it("rejects non-string workspacePath", () => {
+        expect(() => gitUndoSchema.parse([null, "src/app.ts"])).toThrow(ZodError);
+    });
+});
+
 describe("terminalInputSchema", () => {
     it("accepts terminalId + non-empty data", () => {
         expect(() => terminalInputSchema.parse(["pty-1", "ls -la\n"])).not.toThrow();
@@ -120,5 +179,88 @@ describe("terminalInputSchema", () => {
         // pty.write("") 是 no-op 但仍合法, 但我们 schema 拒绝空串以暴露 bug
         // (如果真要支持空串, 改 schema 即可; 此处选严格)
         expect(() => terminalInputSchema.parse(["pty-1", ""])).toThrow(ZodError);
+    });
+});
+
+describe("terminalCreateSchema", () => {
+    it("accepts optional id, cwd and sane dimensions", () => {
+        expect(() => terminalCreateSchema.parse([{ id: "pty_1", cwd: "C:/repo", cols: 80, rows: 24 }])).not.toThrow();
+        expect(() => terminalCreateSchema.parse([{}])).not.toThrow();
+    });
+
+    it("rejects empty ids, empty cwd and unreasonable dimensions", () => {
+        expect(() => terminalCreateSchema.parse([{ id: "" }])).toThrow(ZodError);
+        expect(() => terminalCreateSchema.parse([{ cwd: "" }])).toThrow(ZodError);
+        expect(() => terminalCreateSchema.parse([{ cols: 1, rows: 1 }])).toThrow(ZodError);
+    });
+
+    it("rejects unknown create options", () => {
+        expect(() => terminalCreateSchema.parse([{ cwd: "C:/repo", shell: "cmd.exe" }])).toThrow(ZodError);
+    });
+});
+
+describe("terminalResizeSchema", () => {
+    it("accepts terminal id and sane dimensions", () => {
+        expect(() => terminalResizeSchema.parse(["pty_1", 120, 40])).not.toThrow();
+    });
+
+    it("rejects blank ids and unreasonable dimensions", () => {
+        expect(() => terminalResizeSchema.parse(["", 120, 40])).toThrow(ZodError);
+        expect(() => terminalResizeSchema.parse(["pty_1", 1, 40])).toThrow(ZodError);
+        expect(() => terminalResizeSchema.parse(["pty_1", 120, 1])).toThrow(ZodError);
+    });
+});
+
+describe("packageSourceSchema", () => {
+    it("accepts bare package names and supported source URIs", () => {
+        expect(() => packageSourceSchema.parse(["pi-web-access"])).not.toThrow();
+        expect(() => packageSourceSchema.parse(["@scope/pi-git"])).not.toThrow();
+        expect(() => packageSourceSchema.parse(["npm:@scope/pi-git"])).not.toThrow();
+        expect(() => packageSourceSchema.parse(["https://github.com/user/repo"])).not.toThrow();
+        expect(() => packageSourceSchema.parse(["git:ssh://git@github.com/user/repo"])).not.toThrow();
+    });
+
+    it("rejects blank, whitespace, control chars and unsupported protocols", () => {
+        expect(() => packageSourceSchema.parse([""])).toThrow(ZodError);
+        expect(() => packageSourceSchema.parse([" pi-web-access"])).toThrow(ZodError);
+        expect(() => packageSourceSchema.parse(["pi web access"])).toThrow(ZodError);
+        expect(() => packageSourceSchema.parse(["npm:bad\nname"])).toThrow(ZodError);
+        expect(() => packageSourceSchema.parse(["ftp://example.com/pkg"])).toThrow(ZodError);
+    });
+
+    it("rejects overly long sources", () => {
+        expect(() => packageSourceSchema.parse(["a".repeat(257)])).toThrow(ZodError);
+    });
+});
+
+describe("writeTextFileSchema", () => {
+    it("accepts target path, text content and optional workspace path", () => {
+        expect(() => writeTextFileSchema.parse(["C:/repo/a.ts", "hello", "C:/repo"])).not.toThrow();
+        expect(() => writeTextFileSchema.parse(["C:/repo/a.ts", "hello"])).not.toThrow();
+        expect(() => writeTextFileSchema.parse(["C:/repo/a.ts", "hello", "C:/repo", { expectedMtimeMs: 123 }])).not.toThrow();
+    });
+
+    it("rejects blank paths and overly large content", () => {
+        expect(() => writeTextFileSchema.parse(["", "hello", "C:/repo"])).toThrow(ZodError);
+        expect(() => writeTextFileSchema.parse(["C:/repo/a.ts", "x".repeat(1024 * 1024 + 1), "C:/repo"])).toThrow(ZodError);
+        expect(() => writeTextFileSchema.parse(["C:/repo/a.ts", "hello", "C:/repo", { expectedMtimeMs: -1 }])).toThrow(ZodError);
+    });
+});
+
+describe("file IPC schemas", () => {
+    it("accepts valid tree, read, search and list arguments", () => {
+        expect(() => getFileTreeSchema.parse(["C:/repo", { maxDepth: 5, maxEntries: 1600 }])).not.toThrow();
+        expect(() => readTextFileSchema.parse(["C:/repo/a.ts", "C:/repo"])).not.toThrow();
+        expect(() => searchFilesSchema.parse(["C:/repo", "app", { limit: 80 }])).not.toThrow();
+        expect(() => listFilesSchema.parse(["C:/repo", "app"])).not.toThrow();
+    });
+
+    it("rejects blank paths, blank search queries and unreasonable options", () => {
+        expect(() => getFileTreeSchema.parse([""])).toThrow(ZodError);
+        expect(() => getFileTreeSchema.parse(["C:/repo", { maxDepth: 99 }])).toThrow(ZodError);
+        expect(() => readTextFileSchema.parse(["C:/repo/a.ts", ""])).toThrow(ZodError);
+        expect(() => searchFilesSchema.parse(["C:/repo", ""])).toThrow(ZodError);
+        expect(() => searchFilesSchema.parse(["C:/repo", "app", { limit: 999 }])).toThrow(ZodError);
+        expect(() => listFilesSchema.parse([""])).toThrow(ZodError);
     });
 });

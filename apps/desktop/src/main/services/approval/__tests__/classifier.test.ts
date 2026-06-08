@@ -20,6 +20,10 @@ describe("classifyToolCall", () => {
         it("flags git push --force", () => {
             expect(classifyToolCall(t("bash", { command: "git push --force origin main" })).risk).toBe("high");
         });
+        it("flags broad destructive project cleanup through shared command risk rules", () => {
+            expect(classifyToolCall(t("bash", { command: "rm -rf dist" })).risk).toBe("high");
+            expect(classifyToolCall(t("bash", { command: "git clean -fd" })).risk).toBe("high");
+        });
         it("flags write to ~/.ssh", () => {
             expect(classifyToolCall(t("write", { file_path: "~/.ssh/id_rsa", content: "x" })).risk).toBe("high");
         });

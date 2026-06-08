@@ -65,10 +65,18 @@ describe("EventBridge", () => {
         expect(send).toHaveBeenCalledWith("pi:event", "ws_1", event);
     });
 
+    it("forwards queue_update so renderer can show steer and follow-up queues", () => {
+        const send = vi.fn();
+        const bridge = createEventBridge("ws_1", send);
+        const event = { type: "queue_update", steering: ["adjust"], followUp: ["test"] } as const;
+        bridge.handleEvent(event as any);
+        expect(send).toHaveBeenCalledWith("pi:event", "ws_1", event);
+    });
+
     it("ignores unknown events", () => {
         const send = vi.fn();
         const bridge = createEventBridge("ws_1", send);
-        bridge.handleEvent({ type: "queue_update", steering: [], followUp: [] } as any);
+        bridge.handleEvent({ type: "auto_retry_start" } as any);
         expect(send).not.toHaveBeenCalled();
     });
 });

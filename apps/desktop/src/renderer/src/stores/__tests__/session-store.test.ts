@@ -30,6 +30,7 @@ function makePiAPI() {
         appendMessage: vi.fn(async () => undefined),
         updateMessage: vi.fn(async () => undefined),
         updateToolCall: vi.fn(async () => undefined),
+        updateSessionMetadata: vi.fn(async () => undefined),
     };
 }
 
@@ -120,6 +121,96 @@ describe("session-store: renameSession", () => {
         expect(state.sessions.find((s) => s.id === "a")!.title).toBe("A2");
         expect(state.sessions.find((s) => s.id === "b")!.title).toBe("B");
     });
+
+    it("持久化失败会记录 persistErrorCount, 但本地标题仍乐观更新", async () => {
+        useSessionStore.setState({ sessions: [], currentSessionId: null, persistErrorCount: 0, lastPersistError: null });
+        seedSession("s1", "old");
+        piAPI.renameSession.mockRejectedValueOnce(new Error("rename disk full"));
+
+        useSessionStore.getState().renameSession("s1", "new");
+
+        expect(useSessionStore.getState().sessions[0].title).toBe("new");
+        await new Promise((r) => setTimeout(r, 0));
+        expect(useSessionStore.getState().persistErrorCount).toBe(1);
+        expect(useSessionStore.getState().lastPersistError).toContain("rename disk full");
+    });
+});
+
+describe("session-store: setCurrentSession", () => {
+    it("records lastOpenedAt without changing updatedAt", () => {
+        useSessionStore.setState({ sessions: [], currentSessionId: null });
+        seedSession("s1", "A");
+        const beforeUpdatedAt = useSessionStore.getState().sessions[0].updatedAt;
+        useSessionStore.setState({
+            sessions: useSessionStore.getState().sessions.map((session) => ({
+                ...session,
+                readOnly: true,
+                lastOpenedAt: new Date(1),
+            })),
+        });
+        const openedAt = new Date(10_000);
+        vi.useFakeTimers();
+        vi.setSystemTime(openedAt);
+
+        useSessionStore.getState().setCurrentSession("s1");
+
+        vi.useRealTimers();
+        const session = useSessionStore.getState().sessions[0];
+        expect(useSessionStore.getState().currentSessionId).toBe("s1");
+        expect(session.readOnly).toBe(false);
+        expect(session.lastOpenedAt).toEqual(openedAt);
+        expect(session.updatedAt).toEqual(beforeUpdatedAt);
+        expect(piAPI.updateSessionMetadata).toHaveBeenCalledWith("s1", {
+            readOnly: false,
+            lastOpenedAt: openedAt.getTime(),
+        });
+    });
+
+    it("ignores missing session ids", () => {
+        useSessionStore.setState({ sessions: [], currentSessionId: null });
+        seedSession("s1", "A");
+        piAPI.updateSessionMetadata.mockClear();
+
+        useSessionStore.getState().setCurrentSession("missing");
+
+        expect(useSessionStore.getState().currentSessionId).toBe("s1");
+        expect(piAPI.updateSessionMetadata).not.toHaveBeenCalled();
+    });
+});
+
+describe("session-store: openReadOnlySession", () => {
+    it("records read-only lastOpenedAt without changing updatedAt", () => {
+        useSessionStore.setState({ sessions: [], currentSessionId: null });
+        seedSession("s1", "A");
+        const beforeUpdatedAt = useSessionStore.getState().sessions[0].updatedAt;
+        const openedAt = new Date(20_000);
+        vi.useFakeTimers();
+        vi.setSystemTime(openedAt);
+
+        useSessionStore.getState().openReadOnlySession("s1");
+
+        vi.useRealTimers();
+        const session = useSessionStore.getState().sessions[0];
+        expect(useSessionStore.getState().currentSessionId).toBe("s1");
+        expect(session.readOnly).toBe(true);
+        expect(session.lastOpenedAt).toEqual(openedAt);
+        expect(session.updatedAt).toEqual(beforeUpdatedAt);
+        expect(piAPI.updateSessionMetadata).toHaveBeenCalledWith("s1", {
+            readOnly: true,
+            lastOpenedAt: openedAt.getTime(),
+        });
+    });
+
+    it("ignores missing session ids", () => {
+        useSessionStore.setState({ sessions: [], currentSessionId: null });
+        seedSession("s1", "A");
+        piAPI.updateSessionMetadata.mockClear();
+
+        useSessionStore.getState().openReadOnlySession("missing");
+
+        expect(useSessionStore.getState().currentSessionId).toBe("s1");
+        expect(piAPI.updateSessionMetadata).not.toHaveBeenCalled();
+    });
 });
 
 describe("session-store: deleteSession", () => {
@@ -131,14 +222,51 @@ describe("session-store: deleteSession", () => {
         expect(useSessionStore.getState().sessions).toHaveLength(1);
     });
 
-    it("删的是当前 session → currentSessionId 切到剩下的第一个", () => {
+    it("删的是当前 session → currentSessionId 切到最近活跃的未归档 session", () => {
         useSessionStore.setState({ sessions: [], currentSessionId: null });
-        seedSession("s1", "A");
-        seedSession("s2", "B");
-        useSessionStore.setState({ currentSessionId: "s1" });
-        useSessionStore.getState().deleteSession("s1");
-        // 剩下的 = [s2]
-        expect(useSessionStore.getState().currentSessionId).toBe("s2");
+        useSessionStore.setState({
+            sessions: [
+                {
+                    id: "current",
+                    title: "Current",
+                    workspaceId: "ws-1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(0),
+                    messages: [],
+                },
+                {
+                    id: "older-edited",
+                    title: "Older",
+                    workspaceId: "ws-1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(5),
+                    messages: [],
+                },
+                {
+                    id: "recent-opened",
+                    title: "Recent",
+                    workspaceId: "ws-1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(1),
+                    lastOpenedAt: new Date(10),
+                    messages: [],
+                },
+                {
+                    id: "archived-recent",
+                    title: "Archived",
+                    workspaceId: "ws-1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(99),
+                    archived: true,
+                    messages: [],
+                },
+            ],
+            currentSessionId: "current",
+        });
+
+        useSessionStore.getState().deleteSession("current");
+
+        expect(useSessionStore.getState().currentSessionId).toBe("recent-opened");
     });
 
     it("删的不是当前 session → currentSessionId 保持", () => {
@@ -155,6 +283,138 @@ describe("session-store: deleteSession", () => {
         seedSession("s1", "only");
         useSessionStore.getState().deleteSession("s1");
         expect(useSessionStore.getState().currentSessionId).toBeNull();
+    });
+
+    it("持久化失败会记录 persistErrorCount, 但本地删除仍保留", async () => {
+        useSessionStore.setState({ sessions: [], currentSessionId: null, persistErrorCount: 0, lastPersistError: null });
+        seedSession("s1", "A");
+        piAPI.deleteSession.mockRejectedValueOnce(new Error("delete EIO"));
+
+        useSessionStore.getState().deleteSession("s1");
+
+        expect(useSessionStore.getState().sessions).toHaveLength(0);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(useSessionStore.getState().persistErrorCount).toBe(1);
+        expect(useSessionStore.getState().lastPersistError).toContain("delete EIO");
+    });
+});
+
+describe("session-store: archiveSession", () => {
+    it("归档当前 session 后切到最近活跃的未归档 session", () => {
+        useSessionStore.setState({
+            sessions: [
+                {
+                    id: "current",
+                    title: "Current",
+                    workspaceId: "ws-1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(0),
+                    messages: [],
+                },
+                {
+                    id: "recent-opened",
+                    title: "Recent",
+                    workspaceId: "ws-1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(1),
+                    lastOpenedAt: new Date(10),
+                    messages: [],
+                },
+                {
+                    id: "newer-archived",
+                    title: "Archived",
+                    workspaceId: "ws-1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(100),
+                    archived: true,
+                    messages: [],
+                },
+            ],
+            currentSessionId: "current",
+        });
+
+        useSessionStore.getState().archiveSession("current", true);
+
+        expect(useSessionStore.getState().currentSessionId).toBe("recent-opened");
+    });
+
+    it("持久化失败会记录 persistErrorCount, 但本地归档仍乐观更新", async () => {
+        useSessionStore.setState({ sessions: [], currentSessionId: null, persistErrorCount: 0, lastPersistError: null });
+        seedSession("s1", "A");
+        piAPI.archiveSession = vi.fn(async () => {
+            throw new Error("archive failed");
+        });
+
+        useSessionStore.getState().archiveSession("s1", true);
+
+        expect(useSessionStore.getState().sessions[0].archived).toBe(true);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(useSessionStore.getState().persistErrorCount).toBe(1);
+        expect(useSessionStore.getState().lastPersistError).toContain("archive failed");
+    });
+});
+
+describe("session-store: session forks", () => {
+    it("continues from a specific message by copying history up to that point", async () => {
+        useSessionStore.setState({ sessions: [], currentSessionId: null });
+        useSessionStore.setState({
+            sessions: [
+                {
+                    id: "source",
+                    title: "Long task",
+                    workspaceId: "ws-1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(0),
+                    messages: [
+                        { id: "m1", role: "user", content: "start", timestamp: new Date(1) },
+                        { id: "m2", role: "assistant", content: "middle", timestamp: new Date(2) },
+                        { id: "m3", role: "user", content: "later", timestamp: new Date(3) },
+                    ],
+                    toolPermissions: {
+                        fileRead: true,
+                        fileWrite: false,
+                        shell: true,
+                        git: true,
+                        network: false,
+                        extensions: false,
+                    },
+                },
+            ],
+            currentSessionId: "source",
+        });
+
+        const fork = await useSessionStore.getState().continueSession("source", "m2");
+        const stored = useSessionStore.getState().sessions.find((session) => session.id === fork.id)!;
+
+        expect(stored.parentSessionId).toBe("source");
+        expect(stored.forkedFromMessageId).toBe("m2");
+        expect(stored.messages.map((message) => message.id)).toEqual(["m1", "m2"]);
+        expect(stored.messages[1].content).toBe("middle");
+        expect(stored.toolPermissions?.fileRead).toBe(true);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(piAPI.appendMessage).toHaveBeenCalledTimes(2);
+        expect(piAPI.updateSessionMetadata).toHaveBeenCalledWith(
+            stored.id,
+            expect.objectContaining({ parentSessionId: "source", forkedFromMessageId: "m2" }),
+        );
+    });
+
+    it("throws when continuing from a missing message id", async () => {
+        useSessionStore.setState({
+            sessions: [
+                {
+                    id: "source",
+                    title: "Long task",
+                    workspaceId: "ws-1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(0),
+                    messages: [{ id: "m1", role: "user", content: "start", timestamp: new Date(1) }],
+                },
+            ],
+            currentSessionId: "source",
+        });
+
+        await expect(useSessionStore.getState().continueSession("source", "missing")).rejects.toThrow("Message not found");
     });
 });
 
@@ -300,6 +560,36 @@ describe("session-store (2026-06-06 hotfix): messages 持久化", () => {
         useSessionStore.getState().clearPersistErrors();
         expect(useSessionStore.getState().persistErrorCount).toBe(0);
         expect(useSessionStore.getState().lastPersistError).toBeNull();
+    });
+});
+
+describe("session-store: metadata 持久化错误", () => {
+    it("updateSessionMetadata IPC reject → persistErrorCount +1", async () => {
+        useSessionStore.setState({ sessions: [], currentSessionId: null, persistErrorCount: 0, lastPersistError: null });
+        seedSession("s1", "t");
+        piAPI.updateSessionMetadata.mockRejectedValueOnce(new Error("metadata disk full"));
+
+        useSessionStore.getState().updateSessionMetadata("s1", { favorite: true });
+
+        expect(useSessionStore.getState().sessions[0].favorite).toBe(true);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(useSessionStore.getState().persistErrorCount).toBe(1);
+        expect(useSessionStore.getState().lastPersistError).toContain("metadata disk full");
+    });
+
+    it("updateSessionMetadata IPC IpcError → persistErrorCount +1", async () => {
+        useSessionStore.setState({ sessions: [], currentSessionId: null, persistErrorCount: 0, lastPersistError: null });
+        seedSession("s1", "t");
+        piAPI.updateSessionMetadata.mockResolvedValueOnce({
+            code: "ipcErrors.sessions.updateMetadataFailed",
+            fallback: "更新会话元数据失败: EACCES",
+        });
+
+        useSessionStore.getState().setSessionTags("s1", ["prod"]);
+
+        await new Promise((r) => setTimeout(r, 0));
+        expect(useSessionStore.getState().persistErrorCount).toBe(1);
+        expect(useSessionStore.getState().lastPersistError).toBe("更新会话元数据失败: EACCES");
     });
 });
 

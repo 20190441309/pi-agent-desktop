@@ -59,7 +59,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
     checkAvailability: async () => {
         try {
-            const available = narrowCheck(await window.piAPI?.skillsCheck());
+            if (!window.piAPI?.skillsCheck) throw new Error("SkillHub availability IPC unavailable");
+            const available = narrowCheck(await window.piAPI.skillsCheck());
             set({ skillhubAvailable: available });
         } catch {
             set({ skillhubAvailable: false });
@@ -74,7 +75,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         }
         set({ marketLoading: true, error: null });
         try {
-            const results = narrowSearch(await window.piAPI?.skillsSearch(q));
+            if (!window.piAPI?.skillsSearch) throw new Error("Skill search IPC unavailable");
+            const results = narrowSearch(await window.piAPI.skillsSearch(q));
             set({ marketResults: results, marketLoading: false });
         } catch (err) {
             set({ error: (err as Error).message, marketLoading: false });
@@ -84,7 +86,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     refreshInstalled: async () => {
         set({ installedLoading: true, error: null });
         try {
-            const installed = narrowInstalled(await window.piAPI?.skillsInstalled());
+            if (!window.piAPI?.skillsInstalled) throw new Error("Installed skills IPC unavailable");
+            const installed = narrowInstalled(await window.piAPI.skillsInstalled());
             set({ installed, installedLoading: false });
         } catch (err) {
             set({ error: (err as Error).message, installedLoading: false });
@@ -94,7 +97,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     installSkill: async (slug) => {
         set({ error: null });
         try {
-            await window.piAPI?.skillsInstall(slug);
+            if (!window.piAPI?.skillsInstall) throw new Error("Skill install IPC unavailable");
+            await window.piAPI.skillsInstall(slug);
             await get().refreshInstalled();
         } catch (err) {
             set({ error: (err as Error).message });
@@ -105,7 +109,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     uninstallSkill: async (slug) => {
         set({ error: null });
         try {
-            await window.piAPI?.skillsUninstall(slug);
+            if (!window.piAPI?.skillsUninstall) throw new Error("Skill uninstall IPC unavailable");
+            await window.piAPI.skillsUninstall(slug);
             await get().refreshInstalled();
         } catch (err) {
             set({ error: (err as Error).message });
@@ -114,7 +119,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
     toggleSkill: async (slug, enabled) => {
         try {
-            await window.piAPI?.skillsToggle(slug, enabled);
+            if (!window.piAPI?.skillsToggle) throw new Error("Skill toggle IPC unavailable");
+            await window.piAPI.skillsToggle(slug, enabled);
             await get().refreshInstalled();
         } catch (err) {
             set({ error: (err as Error).message });

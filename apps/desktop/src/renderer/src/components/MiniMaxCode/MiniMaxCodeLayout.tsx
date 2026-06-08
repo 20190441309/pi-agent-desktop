@@ -15,6 +15,14 @@ import React from "react";
 import { MiniMaxCodeTitleBar } from "./MiniMaxCodeTitleBar";
 
 export interface MiniMaxCodeLayoutProps {
+    /** 顶部标题 */
+    title?: string;
+    /** 顶部中间摘要 */
+    subtitle?: string;
+    /** 顶部状态文案 */
+    statusLabel?: string;
+    /** 顶部状态色 */
+    statusTone?: "idle" | "ready" | "busy" | "error";
     /** 左侧栏(任务/技能/历史导航) */
     leftSlot: React.ReactNode;
     /** 主区(对话/内容) */
@@ -33,7 +41,43 @@ export interface MiniMaxCodeLayoutProps {
     className?: string;
 }
 
+const SidebarToggleIcon: React.FC<{ side: "left" | "right"; collapsed: boolean }> = ({ side, collapsed }) => (
+    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+        <rect x="2" y="3" width="12" height="10" rx="1.5" />
+        {side === "left" ? <line x1="6" y1="3" x2="6" y2="13" /> : <line x1="10" y1="3" x2="10" y2="13" />}
+        {collapsed && side === "left" && <path d="M8.5 6 10.5 8 8.5 10" strokeLinecap="round" strokeLinejoin="round" />}
+        {collapsed && side === "right" && <path d="M7.5 6 5.5 8 7.5 10" strokeLinecap="round" strokeLinejoin="round" />}
+    </svg>
+);
+
+const FloatingToggleButton: React.FC<{
+    side: "left" | "right";
+    collapsed: boolean;
+    onClick?: () => void;
+}> = ({ side, collapsed, onClick }) => {
+    if (!onClick) return null;
+    const sideClass = side === "left" ? "left-3" : "right-3";
+    const label = side === "left"
+        ? collapsed ? "展开左侧栏" : "折叠左侧栏"
+        : collapsed ? "展开右侧栏" : "折叠右侧栏";
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-label={label}
+            title={label}
+            className={`absolute top-4 z-30 flex h-7 w-7 items-center justify-center rounded-md text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${sideClass}`}
+        >
+            <SidebarToggleIcon side={side} collapsed={collapsed} />
+        </button>
+    );
+};
+
 export function MiniMaxCodeLayout({
+    title = "Pi Agent",
+    subtitle,
+    statusLabel,
+    statusTone,
     leftSlot,
     centerSlot,
     rightSlot,
@@ -49,14 +93,24 @@ export function MiniMaxCodeLayout({
             data-mmcode-layout="root"
         >
             <MiniMaxCodeTitleBar
-                title="Pi Agent"
-                leftCollapsed={leftCollapsed}
-                rightCollapsed={rightCollapsed}
-                onToggleLeft={onCollapseLeft}
-                onToggleRight={onCollapseRight}
+                title={title}
+                subtitle={subtitle}
+                statusLabel={statusLabel}
+                statusTone={statusTone}
             />
 
-            <div className="flex min-h-0 flex-1 w-full">
+            <div className="relative flex min-h-0 flex-1 w-full">
+                <FloatingToggleButton
+                    side="left"
+                    collapsed={leftCollapsed}
+                    onClick={onCollapseLeft}
+                />
+                <FloatingToggleButton
+                    side="right"
+                    collapsed={rightCollapsed}
+                    onClick={onCollapseRight}
+                />
+
                 {/* 左侧栏 */}
                 <aside
                     className="flex shrink-0 flex-col bg-[var(--mm-bg-sidebar)] animate-layout overflow-hidden"

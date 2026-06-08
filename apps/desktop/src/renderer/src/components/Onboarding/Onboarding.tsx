@@ -16,7 +16,7 @@ import { useWorkspaceStore } from "../../stores/workspace-store";
 import { markFirstLaunchDone } from "../../utils/first-launch";
 import { useI18n, useTranslateIpcError } from "../../i18n";
 import { logger } from "../../utils/logger";
-import type { IpcError } from "@shared";
+import { isIpcError, type IpcError } from "@shared";
 
 export interface OnboardingProps {
     /** 关闭回调（完成时由父组件调用） */
@@ -30,9 +30,10 @@ type Step = 1 | 2 | 3;
 export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingProps): React.JSX.Element {
     const [step, setStep] = useState<Step>(1);
     const [installing, setInstalling] = useState(false);
+    const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
     const { status, loading, error, progress, isOperating, refreshStatus, install } = usePiStatusStore();
-    const { getCurrentWorkspace, addWorkspace } = useWorkspaceStore();
+    const { getCurrentWorkspace, createWorkspace } = useWorkspaceStore();
     const { t } = useI18n();
     // v1.0.8: store.error 现在可能是 IpcError, 走 t() 翻译; string 兜底直接显示
     const translateIpcError = useTranslateIpcError();
@@ -74,22 +75,31 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
     const handleSelectWorkspace = useCallback(async () => {
         if (!window.piAPI?.selectDirectory) return;
         const path = await window.piAPI.selectDirectory();
+        if (isIpcError(path)) {
+            setWorkspaceError(path.fallback);
+            return;
+        }
         if (!path) return;
         const name = path.split(/[\\/]/).pop() || t("onboarding.step2.workspaceFallback");
         try {
-            if (window.piAPI.createWorkspace) {
-                const ws = await window.piAPI.createWorkspace(name, path);
-                addWorkspace(ws.name, ws.path);
-            } else {
-                addWorkspace(name, path);
+            const ws = await createWorkspace(name, path);
+            if (!ws) {
+                setWorkspaceError(useWorkspaceStore.getState().lastError ?? "创建 workspace 失败");
+                return;
             }
             if (window.piAPI.selectWorkspace) {
-                await window.piAPI.selectWorkspace(path);
+                const result = await window.piAPI.selectWorkspace(path);
+                if (isIpcError(result)) {
+                    setWorkspaceError(result.fallback);
+                    return;
+                }
             }
+            setWorkspaceError(null);
         } catch (e) {
             logger.error("[Onboarding] failed to create workspace:", e);
+            setWorkspaceError(e instanceof Error ? e.message : String(e));
         }
-    }, [addWorkspace, t]);
+    }, [createWorkspace, t]);
 
     // 步骤 3：完成
     const handleFinish = useCallback(() => {
@@ -241,6 +251,12 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                     : t("onboarding.step2.status.hint")}
                             </p>
                         </div>
+
+                        {workspaceError && (
+                            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+                                {workspaceError}
+                            </div>
+                        )}
 
                         <div className="flex gap-2">
                             <button

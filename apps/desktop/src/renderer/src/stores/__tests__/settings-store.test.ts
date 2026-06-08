@@ -77,6 +77,15 @@ describe("settings-store: updateSettings 走 IPC 错误路径", () => {
         expect(mockApi.setSettings).toHaveBeenCalledWith({ fontSize: 18 });
     });
 
+    it("成功: 清除上一次写错误", async () => {
+        mockApi.setSettings.mockResolvedValue(undefined);
+        useSettingsStore.setState({ lastWriteError: "stale error" });
+        useSettingsStore.getState().updateSettings({ fontSize: 16 });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(useSettingsStore.getState().lastWriteError).toBeNull();
+    });
+
     it("失败 (IpcError): 调 setSettings, lastWriteError 写入 IpcError", async () => {
         const err = ipcError("ipcErrors.settings.saveFailed", "保存失败: EACCES", { message: "EACCES" });
         mockApi.setSettings.mockResolvedValue(err);
@@ -127,12 +136,13 @@ describe("settings-store: updateSettings 走 IPC 错误路径", () => {
 describe("settings-store: resetSettings 走 IPC 错误路径", () => {
     it("成功: 调 setSettings(defaultSettings)", async () => {
         mockApi.setSettings.mockResolvedValue({});
-        useSettingsStore.setState({ lastWriteError: null });
+        useSettingsStore.setState({ lastWriteError: "stale reset error" });
         useSettingsStore.getState().resetSettings();
         await Promise.resolve();
         await Promise.resolve();
         expect(mockApi.setSettings).toHaveBeenCalled();
         expect(useSettingsStore.getState().settings.fontSize).toBe(14); // 复位到 default
+        expect(useSettingsStore.getState().lastWriteError).toBeNull();
     });
 
     it("失败 (IpcError): lastWriteError 写入", async () => {

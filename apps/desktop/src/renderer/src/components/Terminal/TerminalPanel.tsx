@@ -4,40 +4,42 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { isIpcError } from "@shared";
+import type { TerminalCommandMode } from "../../utils/terminal-command";
 import "@xterm/xterm/css/xterm.css";
+
+const MAX_OUTPUT_BUFFER = 20000;
+const ANSI_ESCAPE_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
 
 interface Tab {
     id: string;
-    terminalId?: string;
     title: string;
     terminal: Terminal;
     fitAddon: FitAddon;
     containerRef: React.RefObject<HTMLDivElement | null>;
     cwd: string;
-    initialized: boolean;
-    unsubs: Array<() => void>;
-}
-
-interface TerminalResource {
-    terminalId: string;
-    unsubs: Array<() => void>;
+    output: string;
 }
 
 interface TerminalPanelProps {
     workspacePath?: string;
-    agentId?: string;
     isOpen: boolean;
     onClose: () => void;
+    initialCommand?: { command: string; mode?: TerminalCommandMode; nonce: number } | null;
 }
 
-export function TerminalPanel({ workspacePath, agentId, isOpen, onClose }: TerminalPanelProps): React.ReactElement | null {
+export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }: TerminalPanelProps): React.ReactElement | null {
     const [tabs, setTabs] = useState<Tab[]>([]);
+    const tabsRef = useRef<Tab[]>([]);
     const [activeId, setActiveId] = useState<string | null>(null);
-    const resourcesRef = useRef(new Map<string, TerminalResource>());
-    const closedTabIdsRef = useRef(new Set<string>());
+    const [copiedOutput, setCopiedOutput] = useState(false);
+    const [createError, setCreateError] = useState<string | null>(null);
+    const [inputError, setInputError] = useState<string | null>(null);
+    const [copyError, setCopyError] = useState<string | null>(null);
 
-    const createTab = () => {
-        if (!window.piAPI) return;
+    const createTab = async (): Promise<string | null> => {
+        if (!window.piAPI) return null;
+        setCreateError(null);
         const id = `term_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         const containerRef = React.createRef<HTMLDivElement>();
 
@@ -50,29 +52,77 @@ export function TerminalPanel({ workspacePath, agentId, isOpen, onClose }: Termi
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
 
-        const newTab: Tab = {
+        const result = await window.piAPI.createTerminal({
             id,
+            cwd: workspacePath,
+            cols: term.cols,
+            rows: term.rows,
+        });
+        if (isIpcError(result)) {
+            term.dispose();
+            setCreateError(result.fallback);
+            return null;
+        }
+        const { id: actualId, cwd: actualCwd } = result;
+
+        term.onData((data: string) => {
+            void window.piAPI.terminalInput(actualId, data)
+                .then((result) => {
+                    if (isIpcError(result)) setInputError(result.fallback);
+                    else setInputError(null);
+                })
+                .catch((error: unknown) => {
+                    setInputError(`发送终端输入失败: ${error instanceof Error ? error.message : String(error)}`);
+                });
+        });
+
+        const unsubOut = window.piAPI.onTerminalOutput(actualId, (data: string) => {
+            term.write(data);
+            setTabs((prev) =>
+                prev.map((tab) =>
+                    tab.id === actualId
+                        ? { ...tab, output: `${tab.output}${data}`.slice(-MAX_OUTPUT_BUFFER) }
+                        : tab,
+                ),
+            );
+        });
+        const unsubExit = window.piAPI.onTerminalExit(actualId, (code: number | null) => {
+            const message = `\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`;
+            term.write(message);
+            setTabs((prev) =>
+                prev.map((tab) =>
+                    tab.id === actualId
+                        ? { ...tab, output: `${tab.output}${message}`.slice(-MAX_OUTPUT_BUFFER) }
+                        : tab,
+                ),
+            );
+        });
+
+        // Stash unsubs for cleanup in closeTab (xterm has no onDispose event)
+        (term as unknown as { _unsubs: Array<() => void> })._unsubs = [unsubOut, unsubExit];
+
+        // Cleanup happens in closeTab (term.dispose() + IPC close)
+
+        const newTab: Tab = {
+            id: actualId,
             title: `Terminal ${tabs.length + 1}`,
             terminal: term,
             fitAddon,
             containerRef,
-            cwd: workspacePath ?? "",
-            initialized: false,
-            unsubs: [],
+            cwd: actualCwd || workspacePath || "",
+            output: "",
         };
         setTabs((prev) => [...prev, newTab]);
-        setActiveId(id);
+        setActiveId(actualId);
+        return actualId;
     };
 
     const closeTab = (id: string) => {
-        closedTabIdsRef.current.add(id);
         const tab = tabs.find((t) => t.id === id);
-        const resource = resourcesRef.current.get(id);
-        resourcesRef.current.delete(id);
         if (tab) {
-            for (const unsub of resource?.unsubs ?? tab.unsubs) unsub();
+            (tab.terminal as unknown as { _unsubs?: Array<() => void> })._unsubs?.forEach((unsub) => unsub());
             tab.terminal.dispose();
-            void window.piAPI?.closeTerminal(resource?.terminalId ?? tab.terminalId ?? id);
+            void window.piAPI?.closeTerminal(id);
         }
         setTabs((prev) => prev.filter((t) => t.id !== id));
         if (activeId === id) {
@@ -81,76 +131,85 @@ export function TerminalPanel({ workspacePath, agentId, isOpen, onClose }: Termi
         }
     };
 
-    const activeTab = tabs.find((t) => t.id === activeId);
+    useEffect(() => {
+        tabsRef.current = tabs;
+    }, [tabs]);
 
     useEffect(() => {
-        for (const tab of tabs) {
-            const element = tab.containerRef.current;
-            if (tab.initialized || !element || !window.piAPI) continue;
+        return () => {
+            for (const tab of tabsRef.current) {
+                (tab.terminal as unknown as { _unsubs?: Array<() => void> })._unsubs?.forEach((unsub) => unsub());
+                tab.terminal.dispose();
+                void window.piAPI?.closeTerminal(tab.id);
+            }
+            tabsRef.current = [];
+        };
+    }, []);
 
-            tab.terminal.open(element);
-            tab.fitAddon.fit();
-            setTabs((prev) =>
-                prev.map((item) =>
-                    item.id === tab.id ? { ...item, initialized: true } : item,
-                ),
-            );
+    const activeTab = tabs.find((t) => t.id === activeId);
 
-            void (async () => {
-                const { id: actualId } = await window.piAPI.createTerminal({
-                    id: tab.id,
-                    cwd: workspacePath,
-                    agentId,
-                    cols: tab.terminal.cols,
-                    rows: tab.terminal.rows,
-                });
+    const clearActiveTerminal = (): void => {
+        if (!activeTab) return;
+        activeTab.terminal.clear();
+        setTabs((prev) => prev.map((tab) => tab.id === activeTab.id ? { ...tab, output: "" } : tab));
+        setCopiedOutput(false);
+        setCopyError(null);
+    };
 
-                if (closedTabIdsRef.current.has(tab.id)) {
-                    void window.piAPI?.closeTerminal(actualId);
-                    return;
-                }
-
-                const dataDisposable = tab.terminal.onData((data: string) => {
-                    void window.piAPI.terminalInput(actualId, data);
-                });
-                const unsubOut = window.piAPI.onTerminalOutput(actualId, (data: string) => {
-                    tab.terminal.write(data);
-                });
-                const unsubExit = window.piAPI.onTerminalExit(actualId, (code: number | null) => {
-                    tab.terminal.write(`\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`);
-                });
-                const unsubs = [
-                    () => dataDisposable?.dispose?.(),
-                    unsubOut,
-                    unsubExit,
-                ];
-                resourcesRef.current.set(tab.id, { terminalId: actualId, unsubs });
-
-                if (closedTabIdsRef.current.has(tab.id)) {
-                    for (const unsub of unsubs) unsub();
-                    resourcesRef.current.delete(tab.id);
-                    void window.piAPI?.closeTerminal(actualId);
-                    return;
-                }
-
-                setTabs((prev) =>
-                    prev.map((item) =>
-                        item.id === tab.id ? { ...item, terminalId: actualId, unsubs } : item,
-                    ),
-                );
-            })();
+    const copyActiveOutput = async (): Promise<void> => {
+        if (!activeTab?.output) return;
+        try {
+            await navigator.clipboard.writeText(stripAnsi(activeTab.output));
+        } catch (error) {
+            setCopiedOutput(false);
+            setCopyError(`复制终端输出失败: ${error instanceof Error ? error.message : String(error)}`);
+            return;
         }
-    }, [agentId, tabs, workspacePath]);
+        setCopyError(null);
+        setCopiedOutput(true);
+        setTimeout(() => setCopiedOutput(false), 1400);
+    };
+
+    const sendCommand = async (command: string, mode: TerminalCommandMode = "run"): Promise<void> => {
+        const trimmed = command.trim();
+        if (!trimmed || !window.piAPI) return;
+        setInputError(null);
+        const targetId = activeId ?? await createTab();
+        if (!targetId) {
+            setCreateError((current) => current ?? "终端不可用，命令未发送。");
+            return;
+        }
+        setActiveId(targetId);
+        try {
+            const result = await window.piAPI.terminalInput(targetId, mode === "draft" ? trimmed : `${trimmed}\n`);
+            if (isIpcError(result)) {
+                setInputError(result.fallback);
+            }
+        } catch (error) {
+            setInputError(`发送终端输入失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    };
 
     // Resize active tab when panel resizes
     useEffect(() => {
         if (!activeTab) return;
+        const opened = (activeTab.terminal as unknown as { _opened?: boolean })._opened;
+        if (!opened && activeTab.containerRef.current) {
+            activeTab.terminal.open(activeTab.containerRef.current);
+            (activeTab.terminal as unknown as { _opened?: boolean })._opened = true;
+        }
         const resize = () => {
             try {
                 activeTab.fitAddon.fit();
-                void window.piAPI?.terminalResize(activeTab.id, activeTab.terminal.cols, activeTab.terminal.rows);
-            } catch {
-                // ignore
+                void window.piAPI?.terminalResize(activeTab.id, activeTab.terminal.cols, activeTab.terminal.rows)
+                    .then((result) => {
+                        if (isIpcError(result)) setInputError(result.fallback);
+                    })
+                    .catch((error: unknown) => {
+                        setInputError(`调整终端尺寸失败: ${error instanceof Error ? error.message : String(error)}`);
+                    });
+            } catch (error) {
+                setInputError(`调整终端尺寸失败: ${error instanceof Error ? error.message : String(error)}`);
             }
         };
         const obs = new ResizeObserver(resize);
@@ -158,12 +217,18 @@ export function TerminalPanel({ workspacePath, agentId, isOpen, onClose }: Termi
         return () => obs.disconnect();
     }, [activeTab]);
 
+    useEffect(() => {
+        if (!initialCommand?.command) return;
+        void sendCommand(initialCommand.command, initialCommand.mode ?? "run");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialCommand?.nonce]);
+
     if (!isOpen) return null;
 
     return (
         <div className="border-t border-[#e5e5e5] bg-white flex flex-col h-64">
             {/* Tab bar */}
-            <div className="flex items-center px-2 py-1 border-b border-[#e5e5e5] bg-[#fafafa]">
+            <div className="flex items-center gap-2 px-2 py-1 border-b border-[#e5e5e5] bg-[#fafafa]">
                 <div className="flex items-center gap-1 flex-1 overflow-x-auto">
                     {tabs.map((t) => (
                         <div
@@ -177,38 +242,90 @@ export function TerminalPanel({ workspacePath, agentId, isOpen, onClose }: Termi
                             <button
                                 type="button"
                                 onClick={() => setActiveId(t.id)}
-                                className="flex min-w-0 items-center gap-2"
+                                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                title={`${t.title} - ${t.cwd || "workspace"}`}
                             >
                                 <span className="font-mono">▣</span>
-                                <span>{t.title}</span>
+                                <span className="truncate">{t.title}</span>
                             </button>
                             <button
                                 type="button"
-                                aria-label={`关闭终端 ${t.title}`}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     closeTab(t.id);
                                 }}
                                 className="text-[#999] hover:text-red-500 ml-1"
+                                aria-label={`关闭终端 ${t.title}`}
+                                title={`关闭 ${t.title}`}
                             >
                                 ✕
                             </button>
                         </div>
                     ))}
                 </div>
+                {activeTab && (
+                    <div className="hidden min-w-0 max-w-[32%] items-center gap-1 rounded border border-[#eeeeea] bg-white px-2 py-1 text-[10px] text-[#777] md:flex">
+                        <span className="shrink-0 text-[#aaa]">cwd</span>
+                        <span className="truncate font-mono" title={activeTab.cwd || "workspace"}>
+                            {activeTab.cwd || "workspace"}
+                        </span>
+                    </div>
+                )}
                 <button
+                    type="button"
+                    onClick={() => void copyActiveOutput()}
+                    disabled={!activeTab?.output}
+                    className="rounded px-2 py-1 text-xs text-[#666] hover:bg-[#e5e5e5] disabled:cursor-not-allowed disabled:text-[#bbb] disabled:hover:bg-transparent"
+                    title={activeTab?.output ? "复制当前终端最近输出" : "当前终端暂无输出"}
+                >
+                    {copiedOutput ? "已复制" : "复制输出"}
+                </button>
+                <button
+                    type="button"
+                    onClick={clearActiveTerminal}
+                    disabled={!activeTab}
+                    className="rounded px-2 py-1 text-xs text-[#666] hover:bg-[#e5e5e5] disabled:cursor-not-allowed disabled:text-[#bbb] disabled:hover:bg-transparent"
+                    title="清空当前终端屏幕和输出缓存"
+                >
+                    清屏
+                </button>
+                <button
+                    type="button"
                     onClick={() => void createTab()}
                     className="text-xs px-2 py-1 text-[#666] hover:bg-[#e5e5e5] rounded"
+                    title="新建终端"
                 >
                     +
                 </button>
                 <button
+                    type="button"
                     onClick={onClose}
                     className="text-xs px-2 py-1 text-[#666] hover:bg-[#e5e5e5] rounded ml-1"
+                    title="收起终端"
                 >
                     ✕
                 </button>
             </div>
+            {initialCommand?.mode === "draft" && (
+                <div className="border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+                    高风险命令已填入终端但未执行，请确认后手动按 Enter。
+                </div>
+            )}
+            {createError && (
+                <div className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700" role="alert">
+                    {createError}
+                </div>
+            )}
+            {inputError && (
+                <div className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700" role="alert">
+                    {inputError}
+                </div>
+            )}
+            {copyError && (
+                <div className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700" role="alert">
+                    {copyError}
+                </div>
+            )}
 
             {/* Active terminal */}
             <div className="flex-1 relative">
@@ -245,4 +362,8 @@ export function TerminalPanel({ workspacePath, agentId, isOpen, onClose }: Termi
             </div>
         </div>
     );
+}
+
+function stripAnsi(value: string): string {
+    return value.replace(ANSI_ESCAPE_PATTERN, "");
 }

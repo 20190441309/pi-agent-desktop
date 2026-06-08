@@ -124,13 +124,26 @@
     },
     "commands": {
       "new_chat": "New chat",
+      "open_files": "Open Files",
+      "open_git": "Open Source Control",
+      "open_sessions": "Open Sessions",
+      "git_open_change": "Open change {{file}}",
+      "git_open_diff": "View diff {{file}}",
+      "git_stage_file": "Stage {{file}}",
       "open_skills": "Open Skills",
       "open_settings": "Open settings",
       "switch_workspace": "Switch workspace",
       "toggle_terminal": "Toggle terminal"
     },
+    "projectScriptPrefix": "Run script",
     "states": {
       "fileSearchFailed": "File search failed",
+      "projectCommandsUnavailable": "Project scripts unavailable",
+      "projectScriptSent": "Sent script {{name}} to terminal",
+      "projectScriptDrafted": "Drafted high-risk script {{name}} in terminal; review before running",
+      "gitStageSuccess": "Staged {{file}}",
+      "gitDiffOpened": "Opened diff for {{file}}",
+      "gitChangeOpened": "Opened changed file {{file}}",
       "noFileResults": "No matches",
       "noHistory": "No history yet (start a new chat to try)",
       "noFileQuery": "Type a filename to search",
@@ -283,13 +296,26 @@
     "title": "Settings",
     "tabsAria": "Settings categories",
     "tab": {
+      "appearance": "Appearance",
       "general": "General",
       "model": "Model",
       "piagent": "Pi Agent",
       "about": "About"
     },
+    "tabCaption": {
+      "appearance": "Theme and font",
+      "general": "Language and editor",
+      "model": "Model parameters",
+      "piagent": "CLI and providers",
+      "about": "Version info"
+    },
+    "appearance": {
+      "heading": "Appearance",
+      "description": "Tune the Pi Agent desktop theme and text density."
+    },
     "general": {
-      "heading": "General settings"
+      "heading": "General settings",
+      "description": "Control language, save behavior, and editor display preferences."
     },
     "language": {
       "label": "Language",
@@ -319,13 +345,17 @@
     },
     "modelTab": {
       "heading": "Model settings",
+      "description": "These options affect the default request parameters the desktop sends to Pi CLI.",
       "current": "Current model",
+      "currentDescription": "Loaded from Pi CLI config. Unconfigured placeholder models are not shown.",
+      "empty": "No model configuration detected (Pi CLI is not configured)",
       "temperature": "Temperature: {{value}}",
       "temperatureAria": "Temperature",
       "maxTokens": "Max tokens"
     },
     "piagent": {
       "heading": "Pi Agent configuration",
+      "description": "Review the local Pi CLI, default model, and provider configuration.",
       "configPath": "Config directory",
       "defaultProvider": "Default provider",
       "defaultModel": "Default model",
@@ -410,9 +440,9 @@
     "connected": "Connected",
     "disconnected": "Disconnected",
     "placeholder": {
-      "search": "🔍 Global search (Ctrl+K)",
-      "automation": "🤖 Automation (v1.1)",
-      "settings": "⚙️ Settings (click the 'Settings' button on the top right)"
+      "search": "Global search (Ctrl+K)",
+      "automation": "Automation",
+      "settings": "Settings"
     }
   }
 }

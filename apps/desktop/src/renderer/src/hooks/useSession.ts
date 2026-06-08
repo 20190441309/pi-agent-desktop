@@ -11,7 +11,7 @@ interface UseSessionReturn {
   sessions: Session[];
   currentSession: Session | null;
   currentSessionId: string | null;
-  createSession: () => Session;
+  createSession: () => Promise<Session>;
   deleteSession: (sessionId: string) => void;
   switchSession: (sessionId: string) => void;
   addMessage: (message: Message) => void;

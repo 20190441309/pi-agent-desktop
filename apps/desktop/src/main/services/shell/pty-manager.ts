@@ -113,23 +113,27 @@ export class PtyManager {
 
     write(id: string, data: string): void {
         const entry = this.map.get(id);
-        if (entry) {
-            try {
-                entry.pty.write(data);
-            } catch (err) {
-                log.error(`[PtyManager] write error for ${id}:`, err);
-            }
+        if (!entry) {
+            throw new Error(`Pty "${id}" does not exist`);
+        }
+        try {
+            entry.pty.write(data);
+        } catch (err) {
+            log.error(`[PtyManager] write error for ${id}:`, err);
+            throw err;
         }
     }
 
     resize(id: string, cols: number, rows: number): void {
         const entry = this.map.get(id);
-        if (entry) {
-            try {
-                entry.pty.resize(cols, rows);
-            } catch (err) {
-                log.error(`[PtyManager] resize error for ${id}:`, err);
-            }
+        if (!entry) {
+            throw new Error(`Pty "${id}" does not exist`);
+        }
+        try {
+            entry.pty.resize(cols, rows);
+        } catch (err) {
+            log.error(`[PtyManager] resize error for ${id}:`, err);
+            throw err;
         }
     }
 

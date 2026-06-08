@@ -7,11 +7,13 @@
 
 import React, { useEffect, useState } from "react";
 import { SkillsMarketplace } from "./SkillsMarketplace";
-import { MySkills } from "./MySkills";
+import { InstalledAddons } from "./InstalledAddons";
+import { PiPackagesMarketplace } from "./PiPackagesMarketplace";
 import { SkillCreateDropdown } from "./SkillCreateDropdown";
 import { useSkillsStore } from "../../stores/skills-store";
+import { usePiPackagesStore } from "../../stores/pi-packages-store";
 
-type Tab = "market" | "mine";
+type Tab = "pi" | "skillhub" | "installed";
 
 /** SKILL.md 模板 — 用户在"编写技能"modal 里基于此填写 */
 // v1.0.15: 不再用 'TODO: ...' 假占位 — 空字段就空着,让 SKILL.md frontmatter
@@ -37,11 +39,17 @@ ${body}
 };
 
 export function SkillsPanel(): React.JSX.Element {
-    const [tab, setTab] = useState<Tab>("market");
-    const [githubDialog, setGithubDialog] = useState<{ open: boolean; url: string; result: string }>({
+    const [tab, setTab] = useState<Tab>("pi");
+    const [githubDialog, setGithubDialog] = useState<{
+        open: boolean;
+        url: string;
+        result: string;
+        importing: boolean;
+    }>({
         open: false,
         url: "",
         result: "",
+        importing: false,
     });
     const [writeDialog, setWriteDialog] = useState<{
         open: boolean;
@@ -49,14 +57,20 @@ export function SkillsPanel(): React.JSX.Element {
         description: string;
         body: string;
         copied: boolean;
-    }>({ open: false, name: "", description: "", body: "", copied: false });
+        error: string | null;
+    }>({ open: false, name: "", description: "", body: "", copied: false, error: null });
     const { marketQuery, setMarketQuery } = useSkillsStore();
+    const { query: packageQuery, setQuery: setPackageQuery } = usePiPackagesStore();
 
     // 子组件(MySkills) 可通过自定义事件请求切 tab
     useEffect(() => {
         const onSetTab = (e: Event) => {
-            const detail = (e as CustomEvent<"market" | "mine">).detail;
-            if (detail === "market" || detail === "mine") {
+            const detail = (e as CustomEvent<Tab | "market" | "mine">).detail;
+            if (detail === "market") {
+                setTab("skillhub");
+            } else if (detail === "mine") {
+                setTab("installed");
+            } else if (detail === "pi" || detail === "skillhub" || detail === "installed") {
                 setTab(detail);
             }
         };
@@ -81,34 +95,39 @@ export function SkillsPanel(): React.JSX.Element {
     };
 
     // v1.0.17: "GitHub 导入" — 真 git clone + 检查 SKILL.md
-    const handleImportFromGitHub = async (): Promise<void> => {
-        const url = window.prompt("粘 GitHub 仓库 URL (e.g. https://github.com/user/repo):");
-        if (!url) return;
+    const handleImportFromGitHub = async (url: string): Promise<void> => {
+        const trimmedUrl = url.trim();
+        if (!trimmedUrl) {
+            setGithubDialog((d) => ({ ...d, result: "请输入 GitHub 仓库 URL" }));
+            return;
+        }
+        setGithubDialog((d) => ({ ...d, url: trimmedUrl, result: "", importing: true }));
         try {
-            const result = await window.piAPI?.skillsGithubImport(url);
+            const result = await window.piAPI?.skillsGithubImport(trimmedUrl);
             if (result && typeof result === "object" && "success" in result) {
                 const r = result as { success: boolean; path?: string; slug?: string; skillMdFound?: boolean };
                 if (r.success) {
                     setGithubDialog({
                         open: true,
-                        url,
+                        url: trimmedUrl,
                         result: `导入成功! ${r.skillMdFound ? "已检测到 SKILL.md" : "未检测到 SKILL.md (可能需要手动配置)"}\n路径: ${r.path ?? "unknown"}`,
+                        importing: false,
                     });
                 } else {
-                    setGithubDialog({ open: true, url, result: `导入失败: ${String((result as { message?: string }).message ?? "未知错误")}` });
+                    setGithubDialog({ open: true, url: trimmedUrl, result: `导入失败: ${String((result as { message?: string }).message ?? "未知错误")}`, importing: false });
                 }
             } else {
-                setGithubDialog({ open: true, url, result: String(result ?? "无返回结果") });
+                setGithubDialog({ open: true, url: trimmedUrl, result: String(result ?? "无返回结果"), importing: false });
             }
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            setGithubDialog({ open: true, url, result: `导入失败: ${msg}` });
+            setGithubDialog({ open: true, url: trimmedUrl, result: `导入失败: ${msg}`, importing: false });
         }
     };
 
     // v1.0.14: "编写技能" — 打开写 modal, 让用户填 name + description + body
     const handleWriteDirect = (): void => {
-        setWriteDialog({ open: true, name: "", description: "", body: "", copied: false });
+        setWriteDialog({ open: true, name: "", description: "", body: "", copied: false, error: null });
     };
 
     // v1.0.17: 写盘而非只复制到剪贴板
@@ -116,9 +135,10 @@ export function SkillsPanel(): React.JSX.Element {
         const text = SKILL_TEMPLATE(writeDialog.name, writeDialog.description, writeDialog.body);
         const safeName = writeDialog.name.trim().replace(/[^a-zA-Z0-9-_]/g, "").toLowerCase();
         if (!safeName) {
-            window.alert("请输入有效的技能名称 (只允许字母、数字、连字符和下划线)");
+            setWriteDialog((d) => ({ ...d, error: "请输入有效的技能名称 (只允许字母、数字、连字符和下划线)" }));
             return;
         }
+        setWriteDialog((d) => ({ ...d, error: null }));
         try {
             const result = await window.piAPI?.skillsWriteSkill(safeName, text);
             if (result && typeof result === "object" && "success" in result) {
@@ -126,9 +146,9 @@ export function SkillsPanel(): React.JSX.Element {
                 if (r.success) {
                     setWriteDialog((d) => ({ ...d, copied: true }));
                     // 3 秒后自动关闭 modal
-                    setTimeout(() => setWriteDialog({ open: false, name: "", description: "", body: "", copied: false }), 3000);
+                    setTimeout(() => setWriteDialog({ open: false, name: "", description: "", body: "", copied: false, error: null }), 3000);
                 } else {
-                    window.alert(`保存失败: ${String((result as { message?: string }).message ?? "未知错误")}`);
+                    setWriteDialog((d) => ({ ...d, error: `保存失败: ${String((result as { message?: string }).message ?? "未知错误")}` }));
                 }
             }
         } catch (err) {
@@ -137,17 +157,26 @@ export function SkillsPanel(): React.JSX.Element {
                 await navigator.clipboard.writeText(text);
                 setWriteDialog((d) => ({ ...d, copied: true }));
                 setTimeout(() => setWriteDialog((d) => ({ ...d, copied: false })), 3000);
-            } catch {
-                window.alert(`保存失败,请手动复制:\n\n${err instanceof Error ? err.message : String(err)}`);
+            } catch (clipboardErr) {
+                const saveMessage = err instanceof Error ? err.message : String(err);
+                const clipboardMessage = clipboardErr instanceof Error ? clipboardErr.message : String(clipboardErr);
+                setWriteDialog((d) => ({
+                    ...d,
+                    error: `保存失败，且无法复制到剪贴板。保存错误: ${saveMessage}；复制错误: ${clipboardMessage}`,
+                }));
             }
         }
     };
 
     return (
-        <div className="flex flex-col h-full bg-[var(--mm-bg-sidebar)]" role="region" aria-label="技能面板">
+        <div className="flex flex-col h-full bg-[var(--mm-bg-sidebar)]" role="region" aria-label="插件面板">
             <div className="flex items-center gap-3 px-4 py-3 border-b border-[#e5e5e5]">
-                <div className="flex items-center gap-1" role="tablist" aria-label="技能面板分类">
-                    {([["market", "市场"], ["mine", "我的"]] as const).map(([id, label]) => {
+                <div className="min-w-0">
+                    <h1 className="m-0 text-[14px] font-medium text-[var(--mm-text-primary)]">插件与技能</h1>
+                    <p className="m-0 text-[11px] text-[var(--mm-text-tertiary)]">安装 Pi packages，管理本地 skills</p>
+                </div>
+                <div className="flex items-center gap-1 rounded-lg bg-[#f0f0ed] p-1" role="tablist" aria-label="插件面板分类">
+                    {([["pi", "Pi 插件"], ["skillhub", "SkillHub"], ["installed", "已安装"]] as const).map(([id, label]) => {
                         const isActive = tab === id;
                         return (
                             <button
@@ -158,10 +187,10 @@ export function SkillsPanel(): React.JSX.Element {
                                 aria-controls={`skills-tabpanel-${id}`}
                                 id={`skills-tab-${id}`}
                                 onClick={() => setTab(id)}
-                                className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
                                     isActive
-                                        ? "bg-[#1a1a1a] text-white"
-                                        : "text-[#666] hover:bg-[#f5f5f5]"
+                                        ? "bg-white text-[#1a1a1a] shadow-sm"
+                                        : "text-[#666] hover:bg-[#f7f7f4]"
                                 }`}
                             >
                                 {label}
@@ -170,20 +199,30 @@ export function SkillsPanel(): React.JSX.Element {
                     })}
                 </div>
                 <div className="flex-1" />
-                {tab === "market" && (
+                {tab === "pi" && (
                     <input
                         type="text"
-                        placeholder="搜索技能..."
+                        placeholder="搜索 Pi 插件..."
+                        value={packageQuery}
+                        onChange={(e) => setPackageQuery(e.target.value)}
+                        aria-label="搜索 Pi 插件"
+                        className="pl-3 pr-3 py-1.5 bg-white border border-[#e5e5e5] rounded-md text-sm text-[#1a1a1a] placeholder:text-[#999] focus:outline-none focus:border-[#1a1a1a] w-64"
+                    />
+                )}
+                {tab === "skillhub" && (
+                    <input
+                        type="text"
+                        placeholder="搜索 SkillHub skills..."
                         value={marketQuery}
                         onChange={(e) => setMarketQuery(e.target.value)}
-                        aria-label="搜索技能"
-                        className="pl-3 pr-3 py-1.5 bg-[#f5f5f5] border border-[#e5e5e5] rounded text-sm text-[#1a1a1a] placeholder:text-[#999] focus:outline-none focus:border-[#1a1a1a] w-64"
+                        aria-label="搜索 SkillHub"
+                        className="pl-3 pr-3 py-1.5 bg-white border border-[#e5e5e5] rounded-md text-sm text-[#1a1a1a] placeholder:text-[#999] focus:outline-none focus:border-[#1a1a1a] w-64"
                     />
                 )}
                 <SkillCreateDropdown
                     onBuildWithPi={handleBuildWithPi}
                     onWriteDirect={handleWriteDirect}
-                    onImportFromGitHub={() => void handleImportFromGitHub()}
+                    onImportFromGitHub={() => setGithubDialog({ open: true, url: "", result: "", importing: false })}
                 />
             </div>
 
@@ -193,10 +232,12 @@ export function SkillsPanel(): React.JSX.Element {
                 id={`skills-tabpanel-${tab}`}
                 aria-labelledby={`skills-tab-${tab}`}
             >
-                {tab === "market" ? <SkillsMarketplace /> : <MySkills />}
+                {tab === "pi" && <PiPackagesMarketplace />}
+                {tab === "skillhub" && <SkillsMarketplace />}
+                {tab === "installed" && <InstalledAddons />}
             </div>
 
-            {/* GitHub 导入结果 — 弹 modal 显示主进程返回 */}
+            {/* GitHub 导入 — 弹 modal 输入 URL 并显示主进程返回 */}
             {githubDialog.open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div
@@ -206,17 +247,45 @@ export function SkillsPanel(): React.JSX.Element {
                         aria-label="从 GitHub 导入"
                     >
                         <h3 className="text-lg font-semibold mb-2 text-[var(--mm-text-primary)]">从 GitHub 导入</h3>
-                        <p className="text-xs text-[var(--mm-text-tertiary)] mb-1">URL</p>
-                        <p className="text-sm text-[var(--mm-text-primary)] mb-3 break-all font-mono">{githubDialog.url}</p>
-                        <p className="text-sm text-[var(--mm-text-secondary)] mb-4">{githubDialog.result}</p>
-                        <button
-                            type="button"
-                            onClick={() => setGithubDialog({ open: false, url: "", result: "" })}
-                            className="px-4 py-2 bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] rounded"
-                            aria-label="关闭"
-                        >
-                            关闭
-                        </button>
+                        <label htmlFor="skill-github-url" className="mb-1 block text-xs text-[var(--mm-text-tertiary)]">GitHub 仓库 URL</label>
+                        <input
+                            id="skill-github-url"
+                            type="url"
+                            value={githubDialog.url}
+                            onChange={(e) => setGithubDialog((d) => ({ ...d, url: e.target.value, result: "" }))}
+                            placeholder="https://github.com/user/repo"
+                            className="mb-3 w-full rounded border border-[var(--color-border)] bg-[var(--color-hover)] px-3 py-2 text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)]"
+                        />
+                        {githubDialog.result && (
+                            <p
+                                className={`mb-4 whitespace-pre-wrap rounded border px-3 py-2 text-sm ${
+                                    githubDialog.result.includes("失败") || githubDialog.result.includes("请输入")
+                                        ? "border-red-200 bg-red-50 text-red-700"
+                                        : "border-[#dbe8d0] bg-[#f5fbf0] text-[#315f24]"
+                                }`}
+                                role="status"
+                            >
+                                {githubDialog.result}
+                            </p>
+                        )}
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setGithubDialog({ open: false, url: "", result: "", importing: false })}
+                                className="px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded"
+                                aria-label="关闭"
+                            >
+                                关闭
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleImportFromGitHub(githubDialog.url)}
+                                disabled={githubDialog.importing}
+                                className="rounded bg-[var(--mm-bg-active)] px-4 py-2 text-sm text-[var(--mm-text-on-active)] disabled:opacity-50"
+                            >
+                                {githubDialog.importing ? "导入中..." : "导入"}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -239,7 +308,7 @@ export function SkillsPanel(): React.JSX.Element {
                         <input
                             type="text"
                             value={writeDialog.name}
-                            onChange={(e) => setWriteDialog((d) => ({ ...d, name: e.target.value }))}
+                            onChange={(e) => setWriteDialog((d) => ({ ...d, name: e.target.value, error: null }))}
                             placeholder="my-skill"
                             className="w-full mb-3 px-3 py-2 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)]"
                         />
@@ -247,7 +316,7 @@ export function SkillsPanel(): React.JSX.Element {
                         <label className="block text-xs text-[var(--mm-text-secondary)] mb-1">何时使用 (description)</label>
                         <textarea
                             value={writeDialog.description}
-                            onChange={(e) => setWriteDialog((d) => ({ ...d, description: e.target.value }))}
+                            onChange={(e) => setWriteDialog((d) => ({ ...d, description: e.target.value, error: null }))}
                             placeholder="一句话说明 Pi 何时该调这个 skill"
                             rows={2}
                             className="w-full mb-3 px-3 py-2 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-sm font-mono text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)]"
@@ -256,16 +325,22 @@ export function SkillsPanel(): React.JSX.Element {
                         <label className="block text-xs text-[var(--mm-text-secondary)] mb-1">操作步骤 (body)</label>
                         <textarea
                             value={writeDialog.body}
-                            onChange={(e) => setWriteDialog((d) => ({ ...d, body: e.target.value }))}
+                            onChange={(e) => setWriteDialog((d) => ({ ...d, body: e.target.value, error: null }))}
                             placeholder="Pi 应该按什么步骤执行"
                             rows={6}
                             className="w-full flex-1 mb-4 px-3 py-2 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-sm font-mono text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)]"
                         />
 
+                        {writeDialog.error && (
+                            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                                {writeDialog.error}
+                            </div>
+                        )}
+
                         <div className="flex items-center justify-end gap-2">
                             <button
                                 type="button"
-                                onClick={() => setWriteDialog({ open: false, name: "", description: "", body: "", copied: false })}
+                                onClick={() => setWriteDialog({ open: false, name: "", description: "", body: "", copied: false, error: null })}
                                 className="px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded"
                             >
                                 取消

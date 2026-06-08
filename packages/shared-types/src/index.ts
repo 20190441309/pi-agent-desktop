@@ -3,6 +3,7 @@
 // 任何新 IPC 通道必须先在这里加类型, 再在 preload + main + renderer 里实现.
 
 export * from "./events";
+export * from "./command-risk";
 import type { ApprovalRequest, DeferredEdit, FileReview } from "./approval";
 export type { ApprovalRequest, DeferredEdit, FileReview };
 // 上面 re-export approval.ts 的具体类型 (解决: 后面 PiAPI 用到的 ApprovalRequest 等)
@@ -25,6 +26,18 @@ export interface Session {
     messages: Message[];
     createdAt: number;
     updatedAt: number;
+    archived?: boolean;
+    favorite?: boolean;
+    tags?: string[];
+    readOnly?: boolean;
+    lastOpenedAt?: number;
+    summary?: string;
+    lastOutputPaths?: string[];
+    usage?: SessionUsageSnapshot;
+    toolPermissions?: ToolPermissions;
+    parentSessionId?: string;
+    forkedFromMessageId?: string;
+    forkedAt?: number;
 }
 
 export interface Message {
@@ -34,6 +47,7 @@ export interface Message {
     timestamp: string | Date;
     thinking?: string;
     toolCalls?: ToolCall[];
+    customCard?: CustomMessageCard;
 }
 
 export interface ToolCall {
@@ -188,6 +202,57 @@ export interface AppSettings {
     piConfig?: PiConfig;
     /** 桌面权限模式: ask=主动询问, smart=智能授权, always=始终授权 */
     permissionLevel?: PermissionMode | "read" | "partial" | "full";
+    managedRuntimePath?: string;
+    runtimeChannel?: "stable" | "latest";
+    autoCompactionEnabled?: boolean;
+    workspaceToolDefaults?: Record<string, ToolPermissions>;
+}
+
+export type ToolPermissionKey =
+    | "fileRead"
+    | "fileWrite"
+    | "shell"
+    | "git"
+    | "network"
+    | "extensions";
+
+export type ToolPermissions = Record<ToolPermissionKey, boolean>;
+
+export type ToolPermissionPreset = "minimal" | "development" | "all";
+
+export interface SessionUsageSnapshot {
+    provider?: string;
+    model?: string;
+    contextWindow?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    estimatedCostUsd?: number;
+    compactionStatus?: "idle" | "running" | "completed" | "unsupported";
+    updatedAt: number;
+}
+
+export type CustomMessageCardKind =
+    | "status-list"
+    | "approval-actions"
+    | "task-progress"
+    | "result-summary"
+    | "file-actions";
+
+export interface CustomMessageCardAction {
+    id: string;
+    label: string;
+    kind: "slash-command" | "open-file" | "copy-text" | "switch-view" | "refresh";
+    value: string;
+}
+
+export interface CustomMessageCard {
+    id: string;
+    kind: CustomMessageCardKind | "markdown-fallback";
+    title?: string;
+    content?: string;
+    items?: Array<{ id: string; label: string; status?: string; description?: string; path?: string }>;
+    actions?: CustomMessageCardAction[];
 }
 
 // ── Extension UI: permissions + plan mode ─────────────────────────
@@ -264,6 +329,10 @@ export interface PiStatus {
     configExists: boolean;
     defaultProvider: string | null;
     defaultModel: string | null;
+    managedRuntimePath?: string | null;
+    runtimeSource?: "managed" | "global" | "none";
+    runtimeChannel?: "stable" | "latest";
+    lastCheckedAt?: number;
 }
 
 export interface PiInstallProgress {
@@ -361,6 +430,71 @@ export interface PluginInfo {
     type: "provider";
 }
 
+export interface ProjectInfo {
+    type: "node" | "python" | "rust" | "go" | "java" | "unknown";
+    name: string;
+    version?: string;
+    rootPath: string;
+    configFiles: string[];
+    packageManager?: "npm" | "yarn" | "pnpm" | "bun" | "pip" | "cargo" | "go";
+    hasGit: boolean;
+    scripts?: Record<string, string>;
+}
+
+export interface FileTreeNode {
+    name: string;
+    path: string;
+    type: "file" | "directory";
+    children?: FileTreeNode[];
+    extension?: string;
+    size?: number;
+    truncated?: boolean;
+}
+
+export interface TextFileContent {
+    path: string;
+    name: string;
+    content: string;
+    size: number;
+    mtimeMs?: number;
+    encoding: "utf-8";
+    truncated: boolean;
+    binary: boolean;
+}
+
+export interface WriteTextFileResult {
+    path: string;
+    size: number;
+    savedAt: number;
+    mtimeMs?: number;
+}
+
+export interface WriteTextFileOptions {
+    expectedMtimeMs?: number;
+}
+
+export interface PiPackageInfo {
+    name: string;
+    source: string;
+    description: string;
+    url: string;
+    installed: boolean;
+    updatedAt?: string;
+}
+
+export interface InstalledPiPackage {
+    source: string;
+    name: string;
+    enabled?: boolean;
+    scope: "global" | "local";
+}
+
+export interface PiPackageActionResult {
+    success: boolean;
+    message: string;
+    requiresRestart?: boolean;
+}
+
 export interface PiAgentFullConfig {
     configPath: string;
     defaultProvider: string;
@@ -402,23 +536,42 @@ export interface PiAPI {
     setAutoApprove(value: boolean): void;
 
     // Git + Pi stop
-    gitUndo(workspacePath: string, filePath: string): Promise<unknown>;
-    stop(): Promise<unknown>;
+    gitUndo(workspacePath: string, filePath: string): Promise<void | IpcError>;
+    stop(workspaceId: string): Promise<unknown>;
 
     // Workspace
-    listWorkspaces(): Promise<Workspace[]>;
-    createWorkspace(name: string, path: string): Promise<Workspace>;
+    listWorkspaces(): Promise<Workspace[] | IpcError>;
+    createWorkspace(name: string, path: string): Promise<Workspace | IpcError>;
     deleteWorkspace(id: string): Promise<void>;
-    selectWorkspace(path: string): Promise<unknown>;
-    selectDirectory(): Promise<string | null>;
+    selectWorkspace(path: string): Promise<void | IpcError>;
+    selectDirectory(): Promise<string | null | IpcError>;
     /** v1.0.13: 多选文件,ChatInput 附件按钮 */
-    selectFiles(opts?: { multiSelections?: boolean; filters?: { name: string; extensions: string[] }[] }): Promise<string[]>;
+    selectFiles(opts?: { multiSelections?: boolean; filters?: { name: string; extensions: string[] }[] }): Promise<string[] | IpcError>;
 
     // Session
     listSessions(): Promise<Session[]>;
     createSession(workspaceId: string, title?: string, id?: string): Promise<Session>;
     renameSession(id: string, title: string): Promise<Session>;
     deleteSession(id: string): Promise<void>;
+    archiveSession(id: string, archived: boolean): Promise<Session | IpcError>;
+    updateSessionMetadata(
+        id: string,
+        updates: Pick<
+            Partial<Session>,
+            | "summary"
+            | "lastOutputPaths"
+            | "favorite"
+            | "tags"
+            | "archived"
+            | "readOnly"
+            | "lastOpenedAt"
+            | "usage"
+            | "toolPermissions"
+            | "parentSessionId"
+            | "forkedFromMessageId"
+            | "forkedAt"
+        >,
+    ): Promise<Session | IpcError>;
     // 2026-06-06 hotfix: session messages 持久化
     //  - appendMessage: stream 起点(user msg / 首条 assistant msg)
     //  - updateMessage: 流式累积 content / thinking,turn_end 时 flush
@@ -466,17 +619,18 @@ export interface PiAPI {
     onPlanProgress(cb: (update: PlanProgressUpdate) => void): Unsubscribe;
 
     // Git
-    getGitStatus(workspacePath: string): Promise<GitStatus | null>;
-    gitDiff(workspacePath: string, filePath?: string): Promise<string>;
-    gitDiffStaged(workspacePath: string): Promise<string>;
-    gitAdd(workspacePath: string, files: string[]): Promise<void>;
-    gitCommit(workspacePath: string, message: string): Promise<string>;
-    gitLog(workspacePath: string, count?: number): Promise<GitLogEntry[]>;
-    gitBranches(workspacePath: string): Promise<GitBranch[]>;
+    getGitStatus(workspacePath: string): Promise<GitStatus | null | IpcError>;
+    gitDiff(workspacePath: string, filePath?: string): Promise<string | IpcError>;
+    gitDiffStaged(workspacePath: string): Promise<string | IpcError>;
+    gitAdd(workspacePath: string, files: string[]): Promise<void | IpcError>;
+    gitUnstage(workspacePath: string, files: string[]): Promise<void | IpcError>;
+    gitCommit(workspacePath: string, message: string): Promise<string | IpcError>;
+    gitLog(workspacePath: string, count?: number): Promise<GitLogEntry[] | IpcError>;
+    gitBranches(workspacePath: string): Promise<GitBranch[] | IpcError>;
 
     // Project detection & file tree
-    detectProject(workspacePath: string): Promise<unknown>;
-    getFileTree(workspacePath: string, maxDepth?: number): Promise<unknown>;
+    detectProject(workspacePath: string): Promise<ProjectInfo | IpcError>;
+    getFileTree(workspacePath: string, maxDepth?: number): Promise<FileTreeNode | IpcError>;
 
     // Settings
     getSettings(): Promise<AppSettings>;
@@ -511,7 +665,11 @@ export interface PiAPI {
     listSkills(): Promise<InstalledSkillInfo[]>;
 
     // File search (M2)
-    filesList(workspacePath: string, query?: string): Promise<FileEntry[]>;
+    filesList(workspacePath: string, query?: string): Promise<FileEntry[] | IpcError>;
+    filesGetTree(workspacePath: string, options?: { maxDepth?: number; maxEntries?: number }): Promise<FileTreeNode | IpcError>;
+    filesReadTextFile(path: string, workspacePath?: string): Promise<TextFileContent | IpcError>;
+    filesWriteTextFile(path: string, content: string, workspacePath?: string, options?: WriteTextFileOptions): Promise<WriteTextFileResult | IpcError>;
+    filesSearch(workspacePath: string, query: string, options?: { limit?: number }): Promise<FileEntry[] | IpcError>;
 
     // Skills panel (M3 / SkillHub)
     skillsCheck(): Promise<unknown>;
@@ -523,6 +681,17 @@ export interface PiAPI {
     skillsGithubImport(url: string): Promise<unknown>;
     skillsWriteSkill(name: string, content: string): Promise<unknown>;
 
+    // Pi packages (native pi.dev package catalog)
+    packagesSearch(query: string): Promise<PiPackageInfo[] | IpcError>;
+    packagesListInstalled(): Promise<InstalledPiPackage[] | IpcError>;
+    packagesInstall(source: string): Promise<PiPackageActionResult | IpcError>;
+    packagesRemove(source: string): Promise<PiPackageActionResult | IpcError>;
+    packagesUpdate(source: string): Promise<PiPackageActionResult | IpcError>;
+    packagesRefreshCatalog(): Promise<PiPackageInfo[] | IpcError>;
+
+    openPath(path: string): Promise<string | IpcError>;
+    revealPath(path: string): Promise<void | IpcError>;
+
     // Terminal (M4: node-pty)
     createTerminal(opts: {
         id?: string;
@@ -530,9 +699,9 @@ export interface PiAPI {
         agentId?: string;
         cols?: number;
         rows?: number;
-    }): Promise<TerminalInfo>;
-    terminalInput(terminalId: string, data: string): Promise<void>;
-    terminalResize(terminalId: string, cols: number, rows: number): Promise<void>;
+    }): Promise<TerminalInfo | IpcError>;
+    terminalInput(terminalId: string, data: string): Promise<void | IpcError>;
+    terminalResize(terminalId: string, cols: number, rows: number): Promise<void | IpcError>;
     closeTerminal(terminalId: string): Promise<void>;
     listTerminals(): Promise<TerminalInfo[]>;
     onTerminalOutput(terminalId: string, cb: (data: string) => void): Unsubscribe;

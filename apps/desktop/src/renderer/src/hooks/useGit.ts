@@ -4,7 +4,8 @@
 //
 // 用法: const git = useGit(workspacePath); 然后 git.refresh() 不需要参数
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { isIpcError } from "@shared";
 import type { BranchInfo, CommitInfo } from "../types";
 
 export interface GitStatus {
@@ -28,6 +29,7 @@ export interface UseGitReturn {
     /** 拿 diff */
     diff: (filePath?: string) => Promise<string>;
     add: (files: string[]) => Promise<void>;
+    unstage: (files: string[]) => Promise<void>;
     commit: (message: string) => Promise<string>;
     undo: (filePath: string) => Promise<void>;
     // compat aliases for old GitPanel
@@ -63,11 +65,12 @@ export function useGit(workspacePath?: string): UseGitReturn {
                 window.piAPI.gitBranches(path).catch(() => [] as BranchInfo[]),
                 window.piAPI.gitLog(path, 20).catch(() => [] as CommitInfo[]),
             ]);
-            setStatus(s);
-            setBranches(b);
-            setLog(l);
+            if (isIpcError(s)) throw new Error(s.fallback);
+            setStatus(s ?? null);
+            setBranches(isIpcError(b) ? [] : b);
+            setLog(isIpcError(l) ? [] : l);
         } catch (err) {
-            setError(String(err));
+            setError(err instanceof Error ? err.message : String(err));
             setStatus(null);
         } finally {
             setIsLoading(false);
@@ -76,25 +79,37 @@ export function useGit(workspacePath?: string): UseGitReturn {
 
     const diff = useCallback(async (filePath?: string) => {
         if (!window.piAPI || !path) return "";
-        return window.piAPI.gitDiff(path, filePath);
+        const result = await window.piAPI.gitDiff(path, filePath);
+        if (isIpcError(result)) throw new Error(result.fallback);
+        return result;
     }, [path]);
 
     const add = useCallback(async (files: string[]) => {
         if (!window.piAPI || !path) return;
-        await window.piAPI.gitAdd(path, files);
+        const result = await window.piAPI.gitAdd(path, files);
+        if (isIpcError(result)) throw new Error(result.fallback);
+        await refresh();
+    }, [path, refresh]);
+
+    const unstage = useCallback(async (files: string[]) => {
+        if (!window.piAPI?.gitUnstage || !path) return;
+        const result = await window.piAPI.gitUnstage(path, files);
+        if (isIpcError(result)) throw new Error(result.fallback);
         await refresh();
     }, [path, refresh]);
 
     const commit = useCallback(async (message: string) => {
         if (!window.piAPI || !path) throw new Error("无 workspacePath");
         const hash = await window.piAPI.gitCommit(path, message);
+        if (isIpcError(hash)) throw new Error(hash.fallback);
         await refresh();
         return hash;
     }, [path, refresh]);
 
     const undo = useCallback(async (filePath: string) => {
         if (!window.piAPI || !path) return;
-        await window.piAPI.gitUndo(path, filePath);
+        const result = await window.piAPI.gitUndo(path, filePath);
+        if (isIpcError(result)) throw new Error(result.fallback);
         await refresh();
     }, [path, refresh]);
 
@@ -109,24 +124,29 @@ export function useGit(workspacePath?: string): UseGitReturn {
     const refreshStatus = useCallback(async (): Promise<GitStatus | undefined> => {
         if (!window.piAPI || !path) return undefined;
         const s = await window.piAPI.getGitStatus(path);
+        if (isIpcError(s)) throw new Error(s.fallback);
         if (s) setStatus(s as GitStatus);
         return s as GitStatus | undefined;
     }, [path]);
     const loadDiff = diff;
     const loadStagedDiff = useCallback(async () => {
         if (!window.piAPI || !path) return "";
-        return window.piAPI.gitDiffStaged(path);
+        const result = await window.piAPI.gitDiffStaged(path);
+        if (isIpcError(result)) throw new Error(result.fallback);
+        return result;
     }, [path]);
     const stageFiles = add;
     const loadBranches = useCallback(async () => {
         if (!window.piAPI || !path) return [];
         const bs = await window.piAPI.gitBranches(path);
+        if (isIpcError(bs)) throw new Error(bs.fallback);
         setBranches(bs);
         return bs;
     }, [path]);
     const loadCommits = useCallback(async (count = 20) => {
         if (!window.piAPI || !path) return [];
         const cs = await window.piAPI.gitLog(path, count);
+        if (isIpcError(cs)) throw new Error(cs.fallback);
         setLog(cs);
         return cs;
     }, [path]);
@@ -137,9 +157,32 @@ export function useGit(workspacePath?: string): UseGitReturn {
     }, [status]);
     const getStatusColor = useCallback(() => "text-[#10b981]", []);
 
-    return {
-        status, branches, log, isLoading, error, refresh, diff, add, commit, undo,
+    return useMemo(() => ({
+        status, branches, log, isLoading, error, refresh, diff, add, unstage, commit, undo,
         commits, stagedDiff, refreshStatus, loadDiff, loadStagedDiff, stageFiles,
         loadBranches, loadCommits, getBranchDisplay, getChangeCount, getStatusColor,
-    };
+    }), [
+        add,
+        branches,
+        commit,
+        commits,
+        diff,
+        error,
+        getBranchDisplay,
+        getChangeCount,
+        getStatusColor,
+        isLoading,
+        loadBranches,
+        loadCommits,
+        loadDiff,
+        loadStagedDiff,
+        log,
+        refresh,
+        refreshStatus,
+        stagedDiff,
+        stageFiles,
+        status,
+        undo,
+        unstage,
+    ]);
 }

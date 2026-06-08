@@ -7,14 +7,17 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // mock window.piAPI 让 store loadWorkspaces() 不报 undefined
 const mockApi = {
     listWorkspaces: vi.fn().mockResolvedValue([]),
-    addWorkspace: vi.fn().mockResolvedValue({}),
+    createWorkspace: vi.fn().mockResolvedValue({}),
     deleteWorkspace: vi.fn().mockResolvedValue(undefined),
 };
 
 beforeEach(() => {
     (globalThis as { window: unknown }).window = { piAPI: mockApi };
     mockApi.listWorkspaces.mockClear();
-    mockApi.deleteWorkspace.mockClear();
+    mockApi.createWorkspace.mockReset();
+    mockApi.createWorkspace.mockResolvedValue({});
+    mockApi.deleteWorkspace.mockReset();
+    mockApi.deleteWorkspace.mockResolvedValue(undefined);
 });
 
 // 模块加载会触发 loadWorkspaces() — 那是一次性副作用, 拿不到状态.
@@ -46,6 +49,53 @@ describe("workspace-store: addWorkspace", () => {
         expect(useWorkspaceStore.getState().currentWorkspaceId).toBe(bId);
         expect(useWorkspaceStore.getState().workspaces).toHaveLength(2);
         expect(a.id).not.toBe(bId);
+    });
+});
+
+describe("workspace-store: createWorkspace", () => {
+    it("通过主进程创建后使用持久化 workspace 写入本地状态", async () => {
+        useWorkspaceStore.setState({ workspaces: [], currentWorkspaceId: null, lastError: null });
+        mockApi.createWorkspace.mockResolvedValueOnce({
+            id: "ws-main",
+            name: "repo",
+            path: "C:/repo",
+            createdAt: Date.now(),
+        });
+
+        const ws = await useWorkspaceStore.getState().createWorkspace("repo", "C:/repo");
+
+        expect(mockApi.createWorkspace).toHaveBeenCalledWith("repo", "C:/repo");
+        expect(ws?.id).toBe("ws-main");
+        expect(useWorkspaceStore.getState().workspaces.map((workspace) => workspace.id)).toEqual(["ws-main"]);
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("ws-main");
+        expect(useWorkspaceStore.getState().lastError).toBeNull();
+    });
+
+    it("创建返回 IpcError 时不污染本地状态并记录错误", async () => {
+        useWorkspaceStore.setState({ workspaces: [], currentWorkspaceId: null, lastError: null });
+        mockApi.createWorkspace.mockResolvedValueOnce({
+            code: "ipcErrors.workspace.createFailed",
+            fallback: "创建 workspace 失败: permission denied",
+        });
+
+        const ws = await useWorkspaceStore.getState().createWorkspace("repo", "C:/repo");
+
+        expect(ws).toBeNull();
+        expect(useWorkspaceStore.getState().workspaces).toEqual([]);
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBeNull();
+        expect(useWorkspaceStore.getState().lastError).toBe("创建 workspace 失败: permission denied");
+    });
+
+    it("创建 reject 时不污染本地状态并记录错误", async () => {
+        useWorkspaceStore.setState({ workspaces: [], currentWorkspaceId: null, lastError: null });
+        mockApi.createWorkspace.mockRejectedValueOnce(new Error("create transport failed"));
+
+        const ws = await useWorkspaceStore.getState().createWorkspace("repo", "C:/repo");
+
+        expect(ws).toBeNull();
+        expect(useWorkspaceStore.getState().workspaces).toEqual([]);
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBeNull();
+        expect(useWorkspaceStore.getState().lastError).toBe("create transport failed");
     });
 });
 
@@ -90,6 +140,40 @@ describe("workspace-store: removeWorkspace", () => {
         mockApi.deleteWorkspace.mockClear();
         useWorkspaceStore.getState().removeWorkspace("a");
         expect(mockApi.deleteWorkspace).toHaveBeenCalledWith("a");
+    });
+
+    it("删除同步返回 IpcError 时回滚本地状态并记录错误", async () => {
+        const a = { id: "a", name: "a", path: "/a", createdAt: new Date(), lastActiveAt: new Date() };
+        const b = { id: "b", name: "b", path: "/b", createdAt: new Date(), lastActiveAt: new Date() };
+        useWorkspaceStore.setState({ workspaces: [a, b], currentWorkspaceId: "b", lastError: null });
+        mockApi.deleteWorkspace.mockResolvedValueOnce({
+            code: "ipcErrors.workspace.deleteFailed",
+            fallback: "删除工作区失败: disk locked",
+        });
+
+        useWorkspaceStore.getState().removeWorkspace("b");
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("a");
+
+        await vi.waitFor(() => {
+            expect(useWorkspaceStore.getState().workspaces.map((workspace) => workspace.id)).toEqual(["a", "b"]);
+            expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("b");
+            expect(useWorkspaceStore.getState().lastError).toBe("删除工作区失败: disk locked");
+        });
+    });
+
+    it("删除同步 reject 时回滚本地状态并记录错误", async () => {
+        const a = { id: "a", name: "a", path: "/a", createdAt: new Date(), lastActiveAt: new Date() };
+        useWorkspaceStore.setState({ workspaces: [a], currentWorkspaceId: "a", lastError: null });
+        mockApi.deleteWorkspace.mockRejectedValueOnce(new Error("delete transport failed"));
+
+        useWorkspaceStore.getState().removeWorkspace("a");
+        expect(useWorkspaceStore.getState().workspaces).toHaveLength(0);
+
+        await vi.waitFor(() => {
+            expect(useWorkspaceStore.getState().workspaces).toEqual([a]);
+            expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("a");
+            expect(useWorkspaceStore.getState().lastError).toBe("delete transport failed");
+        });
     });
 });
 

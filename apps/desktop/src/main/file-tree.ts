@@ -1,7 +1,6 @@
-// File tree builder (M6-1 STUB)
-// 完整实现推迟到 v1.1+ (递归 + ignore 规则)
-//
-// v1.0: 返回空 FileTreeNode, 不阻塞上层.
+import { readdirSync, statSync } from "fs";
+import { extname, basename, join } from "path";
+import { getProtectedPathReason } from "./services/protected-paths";
 
 export interface FileTreeNode {
     name: string;
@@ -10,13 +9,94 @@ export interface FileTreeNode {
     children?: FileTreeNode[];
     extension?: string;
     size?: number;
+    truncated?: boolean;
 }
 
-export function buildFileTree(workspacePath: string, _maxDepth: number): FileTreeNode {
+const DEFAULT_IGNORES = new Set([
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "out",
+    ".cache",
+    ".next",
+    ".turbo",
+    "coverage",
+]);
+
+export interface FileTreeOptions {
+    maxDepth?: number;
+    maxEntries?: number;
+}
+
+function sortNodes(a: FileTreeNode, b: FileTreeNode): number {
+    if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
+export function buildFileTree(workspacePath: string, maxDepthOrOptions: number | FileTreeOptions = 4): FileTreeNode {
+    const options = typeof maxDepthOrOptions === "number"
+        ? { maxDepth: maxDepthOrOptions }
+        : maxDepthOrOptions;
+    const maxDepth = Math.max(1, Math.min(options.maxDepth ?? 4, 8));
+    const maxEntries = Math.max(50, Math.min(options.maxEntries ?? 1200, 5000));
+    let visited = 0;
+
+    const walk = (targetPath: string, depth: number): FileTreeNode => {
+        const stats = statSync(targetPath);
+        const name = basename(targetPath) || targetPath;
+        if (!stats.isDirectory()) {
+            return {
+                name,
+                path: targetPath,
+                type: "file",
+                extension: extname(name).replace(/^\./, ""),
+                size: stats.size,
+            };
+        }
+
+        const node: FileTreeNode = {
+            name,
+            path: targetPath,
+            type: "directory",
+            children: [],
+        };
+
+        if (depth >= maxDepth || visited >= maxEntries) {
+            node.truncated = true;
+            return node;
+        }
+
+        const children: FileTreeNode[] = [];
+        for (const entry of readdirSync(targetPath, { withFileTypes: true })) {
+            if (DEFAULT_IGNORES.has(entry.name)) continue;
+            if (visited >= maxEntries) {
+                node.truncated = true;
+                break;
+            }
+            visited += 1;
+            const childPath = join(targetPath, entry.name);
+            if (getProtectedPathReason(childPath, workspacePath)) continue;
+            try {
+                if (entry.isDirectory() || entry.isFile()) {
+                    children.push(walk(childPath, depth + 1));
+                }
+            } catch {
+                children.push({
+                    name: entry.name,
+                    path: childPath,
+                    type: entry.isDirectory() ? "directory" : "file",
+                    truncated: true,
+                });
+            }
+        }
+
+        node.children = children.sort(sortNodes);
+        return node;
+    };
+
     return {
-        name: workspacePath.split(/[\\/]/).pop() ?? "",
-        path: workspacePath,
-        type: "directory",
-        children: [],
+        ...walk(workspacePath, 0),
+        name: basename(workspacePath) || workspacePath,
     };
 }

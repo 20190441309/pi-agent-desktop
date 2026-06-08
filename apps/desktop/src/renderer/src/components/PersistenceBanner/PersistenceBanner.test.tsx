@@ -29,6 +29,7 @@ describe("PersistenceBanner", () => {
         useSessionStore.setState({ persistErrorCount: 3, lastPersistError: "disk full" });
         render(<PersistenceBanner />);
         const banner = screen.getByRole("alert");
+        expect(banner.textContent).toContain("会话数据持久化失败");
         expect(banner.textContent).toContain("3");
         expect(banner.textContent).toContain("disk full");
     });

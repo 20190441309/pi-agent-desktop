@@ -9,7 +9,7 @@
 // 注: "装" 按钮在 SkillCard.tsx,搜索 input 在 SkillsPanel.tsx(都不在本文件),
 //     按 button-style 任务 "只改 3 个文件" 严格规则,不动它们。
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useSkillsStore } from "../../stores/skills-store";
 import { SkillCard } from "./SkillCard";
 import { Button } from "../common/Button";
@@ -38,6 +38,8 @@ export function SkillsMarketplace(): React.JSX.Element {
     const [activeFilter, setActiveFilter] = useState<FilterId>("all");
     const [sort, setSort] = useState<"热门" | "最新">("热门");
     const [installingSlug, setInstallingSlug] = useState<string | null>(null);
+    const [installError, setInstallError] = useState<string | null>(null);
+    const skipInitialSearch = useRef(Boolean(marketQuery.trim() && marketResults.length > 0));
 
     useEffect(() => {
         checkAvailability();
@@ -45,6 +47,10 @@ export function SkillsMarketplace(): React.JSX.Element {
 
     useEffect(() => {
         if (marketQuery.trim()) {
+            if (skipInitialSearch.current) {
+                skipInitialSearch.current = false;
+                return undefined;
+            }
             const t = setTimeout(() => {
                 void searchMarket();
             }, 300);
@@ -63,14 +69,17 @@ export function SkillsMarketplace(): React.JSX.Element {
         .map((r) => ({ r, s: fuzzyScore(r.name + " " + r.description, marketQuery) }))
         .sort((a, b) => b.s - a.s)
         .map((x) => x.r);
+    const visibleError = installError ?? error;
 
     // 包装 installSkill — 把单卡 loading 状态绑在 slugs 上
     const handleInstall = async (slug: string) => {
+        setInstallError(null);
         setInstallingSlug(slug);
         try {
             await installSkill(slug);
-        } catch {
+        } catch (err) {
             // store 已记录 error，下面用 banner 渲染
+            setInstallError(err instanceof Error ? err.message : String(err));
         } finally {
             setInstallingSlug(null);
         }
@@ -97,14 +106,14 @@ export function SkillsMarketplace(): React.JSX.Element {
     return (
         <div className="p-4">
             {/* 搜索错误 banner — 重试按钮 */}
-            {error && !marketLoading && (
+            {visibleError && !marketLoading && (
                 <div
                     className="mb-4 p-3 bg-[#fef2f2] border border-[#fecaca] rounded-lg flex items-center justify-between gap-3"
                     role="alert"
                 >
                     <div className="min-w-0">
                         <p className="text-sm text-[#ef4444] font-medium">搜索失败</p>
-                        <p className="text-xs text-[#666] truncate font-mono">{error}</p>
+                        <p className="text-xs text-[#666] truncate font-mono">{visibleError}</p>
                     </div>
                     <Button
                         variant="danger"

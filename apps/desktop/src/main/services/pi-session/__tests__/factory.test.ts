@@ -4,9 +4,11 @@ import { createWorkspaceSession } from "../factory";
 vi.mock("@earendil-works/pi-coding-agent", () => ({
     createEventBus: vi.fn(() => ({})),
     getAgentDir: vi.fn(() => "C:/tmp/pi-agent"),
-    DefaultResourceLoader: vi.fn().mockImplementation(() => ({
-        reload: vi.fn().mockResolvedValue(undefined),
-    })),
+    DefaultResourceLoader: vi.fn(function DefaultResourceLoader() {
+        return {
+            reload: vi.fn().mockResolvedValue(undefined),
+        };
+    }),
     createAgentSession: vi.fn().mockResolvedValue({
         session: {
             prompt: vi.fn(),

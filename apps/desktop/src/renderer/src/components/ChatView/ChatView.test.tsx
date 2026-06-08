@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { useSessionStore } from "../../stores/session-store";
@@ -11,6 +11,7 @@ import { ChatView } from "./ChatView";
 const clearError = vi.fn();
 const startStreaming = vi.fn(async () => undefined);
 const stopStreaming = vi.fn();
+let mockedStreamError: string | null = "上一轮错误";
 
 vi.mock("../../hooks/usePiStream", () => ({
   usePiStream: () => ({
@@ -20,7 +21,7 @@ vi.mock("../../hooks/usePiStream", () => ({
     startStreaming,
     stopStreaming,
     clearError,
-    error: "上一轮错误",
+    error: mockedStreamError,
     currentThinking: "",
     currentText: "",
     toolCalls: new Map(),
@@ -28,12 +29,29 @@ vi.mock("../../hooks/usePiStream", () => ({
 }));
 
 vi.mock("./ChatInput", () => ({
-  ChatInput: () => <div data-testid="chat-input" />,
+  ChatInput: ({ onSend }: { onSend: (message: string) => Promise<void> }) => (
+    <button type="button" data-testid="chat-input" onClick={() => void onSend("draft hello")}>
+      send
+    </button>
+  ),
 }));
 
 vi.mock("./MessageBubble", () => ({
-  MessageBubble: ({ message }: { message: { content: string } }) => (
-    <div data-testid="message-bubble">{message.content}</div>
+  MessageBubble: ({
+    message,
+    onContinueFrom,
+  }: {
+    message: { id: string; content: string };
+    onContinueFrom?: (messageId: string) => void;
+  }) => (
+    <div data-testid="message-bubble">
+      {message.content}
+      {onContinueFrom && (
+        <button type="button" onClick={() => onContinueFrom(message.id)}>
+          continue-from-message
+        </button>
+      )}
+    </div>
   ),
 }));
 
@@ -46,6 +64,7 @@ describe("ChatView", () => {
     clearError.mockClear();
     startStreaming.mockClear();
     stopStreaming.mockClear();
+    mockedStreamError = "上一轮错误";
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
     Object.defineProperty(window, "piAPI", {
       value: {},
@@ -67,6 +86,20 @@ describe("ChatView", () => {
       install: vi.fn(),
       isOperating: false,
       progress: null,
+    });
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        createSession: vi.fn(async (workspaceId: string, title?: string, id?: string) => ({
+          id: id ?? "s_created",
+          title: title ?? "未命名会话",
+          workspaceId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          messages: [],
+        })),
+        renameSession: vi.fn(async () => undefined),
+      },
+      configurable: true,
     });
     useSessionStore.setState({
       currentSessionId: "s1",
@@ -120,5 +153,79 @@ describe("ChatView", () => {
     await waitFor(() => {
       expect(clearError.mock.calls.length).toBeGreaterThan(initialCalls);
     });
+  });
+
+  it("does not create a session just by opening an empty draft", async () => {
+    useSessionStore.setState({ sessions: [], currentSessionId: null });
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("chat-input")).toBeTruthy());
+    expect(useSessionStore.getState().sessions).toHaveLength(0);
+  });
+
+  it("creates the draft session only when the first message is sent", async () => {
+    useSessionStore.setState({ sessions: [], currentSessionId: null });
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId("chat-input"));
+
+    await waitFor(() => {
+      expect(useSessionStore.getState().sessions).toHaveLength(1);
+    });
+    expect(useSessionStore.getState().currentSessionId).toBeTruthy();
+    await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws1", "draft hello"));
+  });
+
+  it("shows an inline error when continuing a read-only session fails", async () => {
+    mockedStreamError = null;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1" ? { ...session, readOnly: true } : session
+      )),
+    }));
+    window.piAPI!.createSession = vi.fn(async () => ({
+      code: "ipcErrors.sessions.createFailed",
+      fallback: "创建会话失败: disk full",
+    })) as unknown as Window["piAPI"]["createSession"];
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "从此会话继续" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("继续会话失败: 创建会话失败: disk full");
+    expect(useSessionStore.getState().currentSessionId).toBe("s1");
+  });
+
+  it("shows an inline error when continuing from a message fails", async () => {
+    mockedStreamError = null;
+    window.piAPI!.createSession = vi.fn(async () => ({
+      code: "ipcErrors.sessions.createFailed",
+      fallback: "创建会话失败: permission denied",
+    })) as unknown as Window["piAPI"]["createSession"];
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByText("continue-from-message"));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("创建会话分支失败: 创建会话失败: permission denied");
+    expect(useSessionStore.getState().currentSessionId).toBe("s1");
   });
 });

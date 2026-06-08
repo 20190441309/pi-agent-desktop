@@ -124,13 +124,26 @@
     },
     "commands": {
       "new_chat": "新建对话",
+      "open_files": "打开 Files",
+      "open_git": "打开 Source Control",
+      "open_sessions": "打开 Sessions",
+      "git_open_change": "打开变更 {{file}}",
+      "git_open_diff": "查看 Diff {{file}}",
+      "git_stage_file": "暂存 {{file}}",
       "open_skills": "打开 Skills",
       "open_settings": "打开设置",
       "switch_workspace": "切换 workspace",
       "toggle_terminal": "切换终端"
     },
+    "projectScriptPrefix": "运行脚本",
     "states": {
       "fileSearchFailed": "文件搜索失败",
+      "projectCommandsUnavailable": "项目脚本暂不可用",
+      "projectScriptSent": "已发送脚本 {{name}} 到终端",
+      "projectScriptDrafted": "高风险脚本 {{name}} 已填入终端，请确认后手动执行",
+      "gitStageSuccess": "已暂存 {{file}}",
+      "gitDiffOpened": "已打开 {{file}} 的 diff",
+      "gitChangeOpened": "已打开变更文件 {{file}}",
       "noFileResults": "无匹配",
       "noHistory": "无历史对话 (开始一个新对话试试)",
       "noFileQuery": "输入文件名搜索",
@@ -281,13 +294,26 @@
     "title": "设置",
     "tabsAria": "设置分类",
     "tab": {
+      "appearance": "外观",
       "general": "通用",
       "model": "模型",
       "piagent": "Pi Agent",
       "about": "关于"
     },
+    "tabCaption": {
+      "appearance": "主题与字体",
+      "general": "语言与编辑",
+      "model": "模型参数",
+      "piagent": "CLI 与 Provider",
+      "about": "版本信息"
+    },
+    "appearance": {
+      "heading": "外观",
+      "description": "调整 Pi Agent 桌面的界面主题和文本密度。"
+    },
     "general": {
-      "heading": "通用设置"
+      "heading": "通用设置",
+      "description": "控制语言、保存行为和编辑器显示偏好。"
     },
     "language": {
       "label": "语言",
@@ -317,13 +343,17 @@
     },
     "modelTab": {
       "heading": "模型设置",
+      "description": "这些选项只影响桌面端发送给 Pi CLI 的默认请求参数。",
       "current": "当前模型",
+      "currentDescription": "来自 Pi CLI 配置，不展示未配置的占位模型。",
+      "empty": "暂未检测到模型配置 (Pi CLI 未配置)",
       "temperature": "温度: {{value}}",
       "temperatureAria": "温度",
       "maxTokens": "最大 Token"
     },
     "piagent": {
       "heading": "Pi Agent 配置",
+      "description": "查看本机 Pi CLI、默认模型和 Provider 配置。",
       "configPath": "配置目录",
       "defaultProvider": "默认 Provider",
       "defaultModel": "默认模型",
@@ -408,9 +438,9 @@
     "connected": "已连接",
     "disconnected": "未连接",
     "placeholder": {
-      "search": "🔍 全局搜索 (Ctrl+K)",
-      "automation": "🤖 自动化 (v1.1)",
-      "settings": "⚙️ 设置 (点右上角'设置'按钮)"
+      "search": "全局搜索 (Ctrl+K)",
+      "automation": "自动化",
+      "settings": "设置"
     }
   }
 }

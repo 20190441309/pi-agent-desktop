@@ -26,8 +26,9 @@ import { test, expect, _electron, type ElectronApplication, type Page } from '@p
 import { electronMainEntry } from '../playwright.config';
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
+    const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const app = await _electron.launch({
-        args: [electronMainEntry],
+        args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1' },
     });
     const page = await app.firstWindow();
@@ -97,7 +98,7 @@ test.describe('CommandPalette 3 callback (v1.0.16 fix)', () => {
         await cmdPalette.getByRole('option', { name: /打开 Skills/ }).click();
         await expect(cmdPalette).toBeHidden({ timeout: 3000 });
         // SkillsPanel 接管中栏
-        await expect(page.getByRole('region', { name: '技能面板' })).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
 
         // ── 3. open_settings — 打开 Settings dialog
         await openPalette(page);

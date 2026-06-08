@@ -11,8 +11,8 @@ import { Onboarding } from "./Onboarding";
 import { I18nProvider } from "../../i18n";
 
 // 共享测试用的最小 piAPI mock
-function installMockPiAPI(opts: { installed?: boolean; withWorkspaceDir?: boolean } = {}) {
-    const { installed = true, withWorkspaceDir = true } = opts;
+function installMockPiAPI(opts: { installed?: boolean; withWorkspaceDir?: boolean; selectDirectoryResult?: unknown } = {}) {
+    const { installed = true, withWorkspaceDir = true, selectDirectoryResult } = opts;
     const listeners: Array<(s: { installed: boolean; localVersion: string | null; latestVersion: string | null; updateAvailable: boolean; executablePath: string | null; installMethod: string; configExists: boolean; defaultProvider: string | null; defaultModel: string | null }) => void> = [];
 
     const piAPI = {
@@ -39,7 +39,7 @@ function installMockPiAPI(opts: { installed?: boolean; withWorkspaceDir?: boolea
             defaultModel: null,
         })),
         installPi: vi.fn(async () => ({ installed: true, localVersion: "0.75.5", latestVersion: null, updateAvailable: false, executablePath: null, installMethod: "npm", configExists: false, defaultProvider: null, defaultModel: null })),
-        selectDirectory: vi.fn(async () => withWorkspaceDir ? "/tmp/my-project" : null),
+        selectDirectory: vi.fn(async () => selectDirectoryResult ?? (withWorkspaceDir ? "/tmp/my-project" : null)),
         createWorkspace: vi.fn(async (name: string, path: string) => ({
             id: "ws-1",
             name,
@@ -120,6 +120,23 @@ describe("Onboarding", () => {
 
         expect(onComplete).toHaveBeenCalledTimes(1);
         expect(window.localStorage.getItem("pi-desktop:firstLaunchDone")).toBe("true");
+    });
+
+    it("shows workspace picker IPC errors inline", async () => {
+        installMockPiAPI({
+            installed: true,
+            selectDirectoryResult: {
+            code: "ipcErrors.workspace.selectDirectoryFailed",
+            fallback: "打开目录选择器失败: dialog unavailable",
+            },
+        });
+        renderWithI18n(<Onboarding onComplete={vi.fn()} />);
+
+        fireEvent.click(await screen.findByText("下一步"));
+        fireEvent.click(await screen.findByText("选择目录"));
+
+        expect(await screen.findByRole("alert")).toBeTruthy();
+        expect(screen.getByRole("alert").textContent).toContain("打开目录选择器失败: dialog unavailable");
     });
 
     it("'skip' button writes localStorage and fires onComplete", async () => {
