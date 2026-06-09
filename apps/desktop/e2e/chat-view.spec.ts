@@ -16,6 +16,74 @@ async function skipOnboarding(page: Page): Promise<void> {
     await expect(modal).toHaveCount(0, { timeout: 5000 });
 }
 
+async function expectChatInputAnchored(page: Page): Promise<void> {
+    const inputShell = page.locator('[data-testid="chat-input-shell"]').first();
+    await expect(inputShell).toBeVisible({ timeout: 5_000 });
+    const metrics = await inputShell.evaluate((el) => {
+        const rectFor = (node: Element | null) => {
+            if (!node) return null;
+            const rect = node.getBoundingClientRect();
+            return { top: rect.top, bottom: rect.bottom, height: rect.height };
+        };
+        const rect = el.getBoundingClientRect();
+        return {
+            distanceToBottom: window.innerHeight - rect.bottom,
+            windowHeight: window.innerHeight,
+            shell: rectFor(el),
+            inputOuter: rectFor(el.parentElement),
+            chatRoot: rectFor(document.querySelector('[data-testid="chat-view-root"]')),
+            scrollRegion: rectFor(document.querySelector('[data-testid="chat-scroll-region"]')),
+            main: rectFor(document.querySelector('[data-mmcode-region="center"]')),
+        };
+    });
+    expect(metrics.distanceToBottom, JSON.stringify(metrics)).toBeLessThan(32);
+}
+
+async function expectChatLayoutStable(page: Page): Promise<void> {
+    await expectChatInputAnchored(page);
+    const metrics = await page.evaluate(() => {
+        const root = document.querySelector('[data-testid="chat-view-root"]');
+        const scrollRegion = document.querySelector('[data-testid="chat-scroll-region"]');
+        const scrollingElement = document.scrollingElement ?? document.documentElement;
+        return {
+            documentOverflow: scrollingElement.scrollHeight - scrollingElement.clientHeight,
+            rootOverflowY: root ? getComputedStyle(root).overflowY : null,
+            scrollRegionOverflowY: scrollRegion ? getComputedStyle(scrollRegion).overflowY : null,
+            scrollRegionHasOverflow: scrollRegion
+                ? scrollRegion.scrollHeight > scrollRegion.clientHeight + 4
+                : false,
+        };
+    });
+    expect(metrics.documentOverflow, 'document/window should not be the chat scroller').toBeLessThanOrEqual(4);
+    expect(metrics.rootOverflowY).toBe('hidden');
+    expect(metrics.scrollRegionOverflowY).toBe('auto');
+    expect(metrics.scrollRegionHasOverflow, 'chat-scroll-region should own vertical overflow').toBe(true);
+}
+
+async function seedLongPlanConversation(page: Page, workspacePath: string): Promise<void> {
+    await page.evaluate(
+        async ({ workspacePath }) => {
+            window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
+            window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
+            const ws = await window.piAPI.createWorkspace("chat-layout-regression", workspacePath);
+            const session = await window.piAPI.createSession(ws.id, "计划模式布局回归", "chat-layout-regression-session");
+            await window.piAPI.appendMessage(session.id, {
+                id: "layout-user",
+                role: "user",
+                content: "/plan\n你好",
+                timestamp: new Date(Date.now() - 3_000).toISOString(),
+            });
+            await window.piAPI.appendMessage(session.id, {
+                id: "layout-assistant",
+                role: "assistant",
+                content: `<think>这里是应该折叠的思考内容</think>\n\n${Array.from({ length: 80 }, (_, index) => `第 ${index + 1} 行长回复内容，用来撑出消息区内部滚动。`).join("\n")}`,
+                timestamp: new Date(Date.now() - 2_000).toISOString(),
+            });
+        },
+        { workspacePath },
+    );
+}
+
 test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
     let app: ElectronApplication;
     let page: Page;
@@ -54,10 +122,10 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         const userArticle = page.getByRole('article', { name: /你说/ });
         await expect(userArticle).toBeVisible({ timeout: 10_000 });
         await expect(userArticle).toContainText('test ping from v1.0.12 verification');
+        await expectChatInputAnchored(page);
 
-        // Pi 正在 streaming 回复 — ChatInput 因 isProcessing 锁住(稳证据)
-        await expect(textarea).toBeDisabled({ timeout: 5_000 });
-
+        // 运行中允许继续输入追加指令；发布级 smoke 只验证消息入栈和进度区出现。
+        await expect(textarea).toBeEnabled({ timeout: 5_000 });
         await expect(page.getByRole('heading', { name: '进度' })).toBeVisible();
     });
 
@@ -147,5 +215,133 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         for (const r of liveButtons) {
             expect(r.hasOnClick, `button ${r.label} should have onClick handler`).toBe(true);
         }
+    });
+
+    test('计划模式发送后 ChatInput 仍固定在主区底部', async () => {
+        const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        app = await _electron.launch({
+            args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
+            env: { ...process.env, CI: '1' },
+        });
+        page = await app.firstWindow();
+        await page.waitForLoadState('domcontentloaded');
+
+        await skipOnboarding(page);
+        await expect(page.getByText('描述你想要构建或修改的内容')).toBeVisible({ timeout: 15_000 });
+
+        await page.getByRole('button', { name: '计划模式' }).click();
+        await expect(page.getByRole('button', { name: '计划模式' })).toHaveAttribute('aria-pressed', 'true');
+
+        const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="在此审查" i], textarea[placeholder*="描述" i]').first();
+        await textarea.fill('计划模式布局回归测试');
+        await textarea.press('Enter');
+
+        await expect(page.getByRole('article', { name: /你说/ })).toContainText('计划模式布局回归测试', { timeout: 10_000 });
+        await expectChatInputAnchored(page);
+    });
+
+    test('长回复和计划卡出现后只滚动消息区，ChatInput 不随内容上移', async () => {
+        const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        const workspacePath = test.info().outputPath('chat-layout-workspace');
+        app = await _electron.launch({
+            args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
+            env: { ...process.env, CI: '1' },
+        });
+        page = await app.firstWindow();
+        await page.waitForLoadState('domcontentloaded');
+
+        await seedLongPlanConversation(page, workspacePath);
+        await app.close();
+
+        app = await _electron.launch({
+            args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
+            env: { ...process.env, CI: '1' },
+        });
+        page = await app.firstWindow();
+        await page.waitForLoadState('domcontentloaded');
+        await skipOnboarding(page);
+
+        await expect(page.getByRole('article', { name: /你说/ })).toContainText('你好', { timeout: 15_000 });
+        await expect(page.getByRole('article', { name: /你说/ })).toContainText('计划模式');
+        await expect(page.getByRole('article', { name: /你说/ })).not.toContainText('/plan');
+        await expect(page.getByRole('article', { name: /Pi 说/ })).toContainText('第 80 行长回复内容');
+
+        await app.evaluate(({ BrowserWindow }) => {
+            BrowserWindow.getAllWindows()[0]?.webContents.send('plan:card', {
+                id: 'layout-plan-card',
+                title: '计划模式布局回归计划',
+                filename: 'layout-plan.md',
+                content: Array.from({ length: 40 }, (_, index) => `- 步骤 ${index + 1}: 验证计划卡不会把输入框顶上去`).join('\n'),
+            });
+        });
+
+        const planCard = page.getByRole('heading', { name: '计划模式布局回归计划' });
+        await expect(planCard).toBeVisible({ timeout: 10_000 });
+        const userMessage = page.getByRole('article', { name: /你说/ }).first();
+        const planFollowsUser = await userMessage.evaluate((userEl) => {
+            const planHeading = [...document.querySelectorAll('h3')]
+                .find((el) => el.textContent?.trim() === '计划模式布局回归计划');
+            return Boolean(planHeading && (userEl.compareDocumentPosition(planHeading) & Node.DOCUMENT_POSITION_FOLLOWING));
+        });
+        expect(planFollowsUser).toBe(true);
+        await expect(page.locator('article').filter({ hasText: '<think>' })).toHaveCount(0);
+        await expectChatLayoutStable(page);
+    });
+
+    test('计划模式真实 UI 路径只提交一次 /plan prompt', async () => {
+        const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        app = await _electron.launch({
+            args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
+            env: { ...process.env, CI: '1' },
+        });
+        page = await app.firstWindow();
+        await page.waitForLoadState('domcontentloaded');
+
+        await skipOnboarding(page);
+        await expect(page.getByText('描述你想要构建或修改的内容')).toBeVisible({ timeout: 15_000 });
+
+        await app.evaluate(({ ipcMain }) => {
+            const target = globalThis as typeof globalThis & {
+                __planPromptCalls?: Array<{ kind: string; payload: unknown }>;
+            };
+            target.__planPromptCalls = [];
+            ipcMain.removeHandler('agents:prompt');
+            ipcMain.removeHandler('pi:send');
+            ipcMain.handle('agents:prompt', async (_event, input) => {
+                target.__planPromptCalls?.push({ kind: 'agent', payload: input });
+                return undefined;
+            });
+            ipcMain.handle('pi:send', async (_event, workspaceId, message) => {
+                target.__planPromptCalls?.push({ kind: 'legacy', payload: { workspaceId, message } });
+                return undefined;
+            });
+        });
+
+        await page.getByRole('button', { name: '计划模式' }).click();
+        await expect(page.getByRole('button', { name: '计划模式' })).toHaveAttribute('aria-pressed', 'true');
+
+        const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="在此审查" i], textarea[placeholder*="描述" i]').first();
+        await textarea.fill('你好');
+        await textarea.press('Enter');
+        await textarea.press('Enter');
+
+        await expect.poll(async () => app.evaluate(() => {
+            const target = globalThis as typeof globalThis & {
+                __planPromptCalls?: Array<{ kind: string; payload: unknown }>;
+            };
+            return target.__planPromptCalls?.length ?? 0;
+        })).toBe(1);
+
+        const calls = await app.evaluate(() => {
+            const target = globalThis as typeof globalThis & {
+                __planPromptCalls?: Array<{ kind: string; payload: unknown }>;
+            };
+            const result = target.__planPromptCalls ?? [];
+            return result;
+        });
+        const payload = calls[0]?.payload as { message?: string };
+        const message = payload.message ?? (payload as { message?: string }).message;
+        expect(message).toMatch(/^\/plan\n/);
+        expect(message.match(/^\/plan/gm) ?? []).toHaveLength(1);
     });
 });

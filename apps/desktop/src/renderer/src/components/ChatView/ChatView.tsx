@@ -11,6 +11,7 @@ import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
 import { useI18n } from '../../i18n';
 import { PlanCardView } from './PlanCard';
+import { usePlanStore } from '../../stores/plan-store';
 
 interface ChatViewProps {
     /** v1.0.14: 外部注入的预填文本(由 App.tsx 监听 'chatpanel:prefill' 事件传来,用于跨组件切到 chat 时把 prompt 灌进 ChatInput) */
@@ -21,6 +22,7 @@ interface ChatViewProps {
 
 export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {}): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRegionRef = useRef<HTMLDivElement>(null);
   const agentId = useAgentStore((state) => state.currentAgentId);
   const {
     isStreaming,
@@ -41,6 +43,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const isPlanWaiting = usePlanStore((state) => Boolean(state.activeCard || state.decisionRequest));
 
   const currentSession = getCurrentSession();
   const currentWorkspace = getCurrentWorkspace();
@@ -72,7 +75,9 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   ];
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const scrollRegion = scrollRegionRef.current;
+    if (!scrollRegion) return;
+    scrollRegion.scrollTo({ top: scrollRegion.scrollHeight, behavior: 'smooth' });
   }, [agentMessages, currentSession?.messages]);
 
   useEffect(() => {
@@ -128,7 +133,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     }
   };
 
-  const messages = useMemo(() => hasAgent
+  const messages = useMemo(() => hasAgent && agentMessages.length > 0
     ? agentMessages.map((message) => ({
         id: message.id,
         role: message.role === "assistant" || message.role === "system" || message.role === "user"
@@ -166,11 +171,11 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   }, [prefillText, onPrefillConsumed]);
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div data-testid="chat-view-root" className="flex h-[calc(100vh-var(--mm-height-titlebar))] min-h-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)]">
       {messages.length > 0 && (
         <div className="flex h-14 shrink-0 items-center justify-between px-4">
-          <div className="mx-auto flex w-full max-w-[770px] items-center gap-2 text-sm text-[#333]">
-            <svg className="h-4 w-4 text-[#9a9a9a]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <div className="mx-auto flex w-full max-w-[770px] items-center gap-2 text-sm text-[var(--mm-text-primary)]">
+            <svg className="h-4 w-4 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
             </svg>
             {editingTitle ? (
@@ -183,7 +188,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                   if (event.key === "Escape") setEditingTitle(false);
                 }}
                 autoFocus
-                className="min-w-0 flex-1 rounded-md border border-[#ddd] bg-white px-2 py-1 text-sm font-medium outline-none focus:border-[#222]"
+                className="min-w-0 flex-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-2 py-1 text-sm font-medium text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)]"
                 aria-label="重命名当前任务"
               />
             ) : (
@@ -193,7 +198,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                   setTitleDraft(currentSession?.title || "未命名会话");
                   setEditingTitle(true);
                 }}
-                className="min-w-0 truncate rounded-md px-1 py-1 text-left font-medium hover:bg-[#f3f3f3]"
+                className="min-w-0 truncate rounded-md px-1 py-1 text-left font-medium hover:bg-[var(--mm-bg-hover)]"
                 title="重命名任务"
               >
                 {currentSession?.title || "未命名会话"}
@@ -204,7 +209,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
               onChange={(event) => {
                 if (event.target.value) setCurrentSession(event.target.value);
               }}
-              className="max-w-[220px] rounded-md border border-transparent bg-transparent px-1 py-1 text-xs text-[#777] hover:border-[#ddd] hover:bg-white"
+              className="max-w-[220px] rounded-md border border-transparent bg-transparent px-1 py-1 text-xs text-[var(--mm-text-secondary)] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)]"
               aria-label="切换任务"
             >
               {workspaceSessions.map((session) => (
@@ -217,37 +222,37 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         </div>
       )}
       {/* 消息区域 */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRegionRef} data-testid="chat-scroll-region" className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center px-8 py-12 text-center">
-            <div className="mb-5 flex items-center gap-3 rounded-full border border-[#ecece8] bg-white px-3 py-1.5 text-xs text-[#6f6f6a] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+            <div className="mb-5 flex items-center gap-3 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-1.5 text-xs text-[var(--mm-text-secondary)] shadow-[var(--mm-shadow-elevated)]">
               <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-[#16a34a]" : "bg-[#ef4444]"}`} aria-hidden />
               <span className="max-w-[560px] truncate" title={workspaceLabel}>
                 {isConnected ? "Pi 已连接" : "Pi 未连接"} · {workspaceLabel}
               </span>
             </div>
 
-            <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-[#1f1f1f]">
-              <span className="text-xl font-semibold text-white">π</span>
+            <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--mm-bg-active)]">
+              <span className="text-xl font-semibold text-[var(--mm-text-on-active)]">π</span>
             </div>
 
-            <h2 className="mb-2 text-[22px] font-semibold text-[#1a1a1a]">
+            <h2 className="mb-2 text-[22px] font-semibold text-[var(--mm-text-primary)]">
               {t('chatView.welcome.title')}
             </h2>
-            <p className="mb-6 max-w-xl text-sm leading-6 text-[#666]">
+            <p className="mb-6 max-w-xl text-sm leading-6 text-[var(--mm-text-secondary)]">
               {t('chatView.welcome.subtitle')}
             </p>
 
             <div className="mb-6 grid w-full max-w-[770px] grid-cols-2 gap-2 text-left">
               {starterCards.map((card) => (
-                <div key={card.title} className="rounded-lg border border-[#ededeb] bg-[#fbfbfa] px-3 py-3">
-                  <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-md border border-[#e5e5e1] bg-white text-[#4f4f4a]">
+                <div key={card.title} className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-3">
+                  <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] text-[var(--mm-text-secondary)]">
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={card.icon} />
                     </svg>
                   </div>
-                  <div className="text-sm font-medium text-[#242424]">{card.title}</div>
-                  <div className="mt-1 text-xs leading-5 text-[#777]">{card.desc}</div>
+                  <div className="text-sm font-medium text-[var(--mm-text-primary)]">{card.title}</div>
+                  <div className="mt-1 text-xs leading-5 text-[var(--mm-text-secondary)]">{card.desc}</div>
                 </div>
               ))}
             </div>
@@ -326,7 +331,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                     setSendError(null);
                     setSessionActionError(null);
                   }}
-                  className="px-4 py-2 bg-[#1a1a1a] text-white rounded-md hover:bg-[#333] transition-colors text-sm font-medium self-start"
+                    className="px-4 py-2 bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] rounded-md hover:opacity-90 transition-colors text-sm font-medium self-start"
                 >
                   {t('chatView.sendFailed.retry')}
                 </button>
@@ -336,22 +341,22 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         ) : (
           /* 消息列表 */
           <div
-            className="mx-auto max-w-[740px] space-y-5 px-0 py-5"
+            className="mx-auto flex max-w-[740px] flex-col space-y-5 px-0 py-5"
             role="log"
             aria-live="polite"
             aria-label={t('chatView.messagesAria')}
             aria-busy={isStreaming}
           >
-            <PlanCardView workspaceId={currentWorkspace?.id} onExecute={handleSend} />
-
             {messages.map((message) => (
               <MessageBubble
                 key={message.id}
                 message={message}
-                isStreaming={isStreaming && message.id === streamingMessageId}
+                isStreaming={!isPlanWaiting && isStreaming && message.id === streamingMessageId}
                 onContinueFrom={(messageId) => void handleContinueFromMessage(messageId)}
               />
             ))}
+
+            <PlanCardView workspaceId={currentWorkspace?.id} onExecute={handleSend} />
 
             {/* 流式处理中指示器（仅在没有 assistant 消息占位符时显示） */}
             {isStreaming && !streamingMessageId && (
@@ -362,7 +367,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                 aria-busy="true"
               >
                 <div className="flex items-start gap-3">
-                  <div className="rounded-xl border border-[#e5e5e5] bg-white px-4 py-3">
+                  <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-[#999] rounded-full animate-bounce" aria-hidden="true" />
                       <div className="w-2 h-2 bg-[#999] rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} aria-hidden="true" />
@@ -370,7 +375,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                       <button
                         type="button"
                         onClick={handleStop}
-                        className="ml-3 text-xs text-[#666] hover:text-[#1a1a1a] transition-colors"
+                        className="ml-3 text-xs text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-colors"
                         aria-label={t('chatView.stopGeneration')}
                       >
                         {t('chatView.stop')}
@@ -397,7 +402,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                     setSendError(null);
                     setSessionActionError(null);
                   }}
-                  className="mt-2 rounded-md bg-[#1a1a1a] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#333]"
+                  className="mt-2 rounded-md bg-[var(--mm-bg-active)] px-3 py-1.5 text-xs font-medium text-[var(--mm-text-on-active)] hover:opacity-90"
                 >
                   {t('chatView.sendFailed.retry')}
                 </button>
@@ -409,10 +414,9 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
               <button
                 type="button"
                 onClick={() => {
-                  const container = messagesEndRef.current?.parentElement;
-                  container?.scrollTo({ top: 0, behavior: 'smooth' });
+                  scrollRegionRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#e5e5e5] shadow-sm text-[#666] hover:text-[#1a1a1a] transition-all"
+                className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] shadow-sm text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-all"
                 aria-label="回到顶部"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -427,30 +431,32 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
 
       {messages.length > 0 && (
         currentSession?.readOnly ? (
-          <div className="border-t border-[#eeeeea] bg-white px-4 py-3">
-            <div className="mx-auto flex max-w-[770px] items-center justify-between gap-3 rounded-lg border border-[#e8e8e3] bg-[#fbfbfa] px-3 py-2 text-xs">
+          <div className="border-t border-[var(--mm-border-subtle)] bg-[var(--mm-bg-main)] px-4 py-3">
+            <div className="mx-auto flex max-w-[770px] items-center justify-between gap-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs">
               <span className="text-[var(--mm-text-secondary)]">当前为只读历史会话</span>
               <button
                 type="button"
                 onClick={() => void handleContinueReadOnly()}
-                className="rounded-md bg-[#1f1f1f] px-2.5 py-1.5 text-white"
+                className="rounded-md bg-[var(--mm-bg-active)] px-2.5 py-1.5 text-[var(--mm-text-on-active)]"
               >
                 从此会话继续
               </button>
             </div>
           </div>
         ) : (
-        <ChatInput
-          isConnected={isConnected}
-          isProcessing={isStreaming}
-          onSend={handleSend}
-          onStop={handleStop}
-          workspaceId={currentWorkspace?.id}
-          workspacePath={currentWorkspace?.path}
-          prefill={prefill.text}
-          prefillKey={prefill.nonce}
-          onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
-        />
+          <div className="shrink-0 bg-[var(--mm-bg-main)]">
+            <ChatInput
+              isConnected={isConnected}
+              isProcessing={isStreaming}
+              onSend={handleSend}
+              onStop={handleStop}
+              workspaceId={currentWorkspace?.id}
+              workspacePath={currentWorkspace?.path}
+              prefill={prefill.text}
+              prefillKey={prefill.nonce}
+              onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
+            />
+          </div>
         )
       )}
     </div>

@@ -56,6 +56,33 @@ function toolSummary(toolCalls: NonNullable<Message["toolCalls"]>): string {
   return parts.join("，") || `使用 ${toolCalls.length} 个工具`;
 }
 
+function splitInlineThinking(content: string): { thinking: string; content: string } {
+  const thinkingParts: string[] = [];
+  let visible = content.replace(/<think>([\s\S]*?)<\/think>/gi, (_match, thinking: string) => {
+    if (thinking.trim()) thinkingParts.push(thinking.trim());
+    return "";
+  });
+
+  visible = visible.replace(/<think>([\s\S]*)$/i, (_match, thinking: string) => {
+    if (thinking.trim()) thinkingParts.push(thinking.trim());
+    return "";
+  });
+
+  return {
+    thinking: thinkingParts.join("\n\n"),
+    content: visible.trim(),
+  };
+}
+
+function splitUserPlanCommand(content: string): { isPlanMode: boolean; content: string } {
+  const match = content.match(/^\/plan(?:\r?\n|\s+)?([\s\S]*)$/);
+  if (!match) return { isPlanMode: false, content };
+  return {
+    isPlanMode: true,
+    content: (match[1] ?? "").trim(),
+  };
+}
+
 function ToolActivity({
   toolCalls,
 }: {
@@ -104,13 +131,19 @@ export function MessageBubble({ message, isStreaming = false, onContinueFrom }: 
   const timeIso = formatIso(message.timestamp);
   const authorLabel = isUser ? t('messageBubble.userAuthor') : t('messageBubble.piAuthor');
   const articleLabel = `${authorLabel} · ${timeText}`;
+  const userPlanContent = isUser ? splitUserPlanCommand(message.content) : { isPlanMode: false, content: message.content };
+  const inlineThinking = !isUser ? splitInlineThinking(message.content) : { thinking: "", content: userPlanContent.content };
+  const thinkingContent = [message.thinking?.trim(), inlineThinking.thinking]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
+  const visibleContent = inlineThinking.content;
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
 
   const handleCopy = useCallback(async () => {
-    if (!message.content) return;
+    if (!visibleContent) return;
     try {
-      await navigator.clipboard.writeText(message.content);
+      await navigator.clipboard.writeText(visibleContent);
     } catch (err) {
       setCopied(false);
       setCopyError(`复制失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -119,7 +152,7 @@ export function MessageBubble({ message, isStreaming = false, onContinueFrom }: 
     setCopyError(null);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [message.content]);
+  }, [visibleContent]);
 
   return (
     <article
@@ -139,19 +172,36 @@ export function MessageBubble({ message, isStreaming = false, onContinueFrom }: 
               : 'rounded-xl border border-[#ececea] bg-white px-4 py-3 text-[#1f1f1f] shadow-[0_1px_2px_rgba(0,0,0,0.02)]'
           }`}>
             {isUser ? (
-              <div className="whitespace-pre-wrap text-sm leading-relaxed font-normal">{message.content}</div>
+              <div className="space-y-2">
+                {userPlanContent.isPlanMode && (
+                  <div className="flex justify-end">
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[#d8e7d9] bg-[#eef8ef] px-2.5 py-1 text-[11px] font-medium text-[#2f6b38]"
+                      aria-label="计划模式消息"
+                    >
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
+                      </svg>
+                      计划模式
+                    </span>
+                  </div>
+                )}
+                <div className="whitespace-pre-wrap text-sm leading-relaxed font-normal">
+                  {visibleContent || (userPlanContent.isPlanMode ? "已开启计划模式" : "")}
+                </div>
+              </div>
             ) : (
               <>
-                {message.thinking && (
+                {thinkingContent && (
                   <ThinkingBlock
-                    content={message.thinking}
-                    isStreaming={isStreaming && !message.content}
+                    content={thinkingContent}
+                    isStreaming={isStreaming && !visibleContent}
                   />
                 )}
 
-                {message.content && (
+                {visibleContent && (
                   <div className="text-sm leading-relaxed font-normal">
-                    <MarkdownRenderer content={message.content} />
+                    <MarkdownRenderer content={visibleContent} />
                   </div>
                 )}
 
@@ -161,7 +211,7 @@ export function MessageBubble({ message, isStreaming = false, onContinueFrom }: 
                   </div>
                 )}
 
-                {isStreaming && !message.content && !message.thinking && (
+                {isStreaming && !visibleContent && !thinkingContent && (
                   <div className="flex items-center gap-2 py-1" aria-hidden="true">
                     <span className="inline-block w-0.5 h-4 bg-[#1a1a1a] animate-pulse" />
                   </div>
@@ -186,7 +236,7 @@ export function MessageBubble({ message, isStreaming = false, onContinueFrom }: 
                   继续
                 </button>
               )}
-              {!isUser && message.content && (
+              {!isUser && visibleContent && (
                 <button
                   type="button"
                   onClick={() => void handleCopy()}

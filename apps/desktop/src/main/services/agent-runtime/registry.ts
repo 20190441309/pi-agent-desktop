@@ -86,7 +86,10 @@ export class AgentRuntimeRegistry {
         runtime.isStreaming = true;
         this.emitState();
         try {
-            await runtime.session.session.prompt(text);
+            await runtime.session.session.prompt(
+                text,
+                input.streamingBehavior ? { streamingBehavior: input.streamingBehavior } : undefined,
+            );
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             runtime.tab.status = "error";

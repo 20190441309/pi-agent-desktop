@@ -99,4 +99,45 @@ describe("PlanCardView", () => {
 
     expect(planRespond).toHaveBeenCalledWith("plan_q_2", "refine", "补充");
   });
+
+  it("does not render raw think tags from plan content", () => {
+    usePlanStore.getState().setCard({
+      id: "card_think",
+      title: "清理计划",
+      filename: "clean-plan.md",
+      content: "<think>内部推理</think>\n\n- 修复计划模式",
+      createdAt: 1,
+    });
+
+    render(<PlanCardView workspaceId="ws1" />);
+
+    expect(screen.getByText("修复计划模式")).toBeTruthy();
+    expect(screen.queryByText(/<think>/)).toBeNull();
+    expect(screen.queryByText("内部推理")).toBeNull();
+  });
+
+  it("does not show an execute confirmation for generic plan-mode guidance", () => {
+    usePlanStore.getState().setCard({
+      id: "card_guidance",
+      title: "计划模式说明",
+      filename: "guidance.md",
+      content: [
+        "你可以让我：",
+        "- 阅读、编辑、重构、调试代码",
+        "- 分解需求、制定执行计划",
+        "",
+        "**目标**：要解决什么问题或实现什么功能？",
+        "**范围**：涉及哪些文件或模块？",
+        "**约束**：时间、性能、兼容性、依赖等",
+        "**验收标准**：怎样算完成？",
+        "直接描述项目背景即可。",
+      ].join("\n"),
+      createdAt: 1,
+    });
+
+    render(<PlanCardView workspaceId="ws1" />);
+
+    expect(screen.queryByText("要执行这个计划吗？")).toBeNull();
+    expect(usePlanStore.getState().activeCard).toBeNull();
+  });
 });

@@ -30,9 +30,11 @@ vi.mock("../../hooks/usePiStream", () => ({
 
 vi.mock("./ChatInput", () => ({
   ChatInput: ({ onSend }: { onSend: (message: string) => Promise<void> }) => (
-    <button type="button" data-testid="chat-input" onClick={() => void onSend("draft hello")}>
-      send
-    </button>
+    <div data-testid="chat-input-shell">
+      <button type="button" data-testid="chat-input" onClick={() => void onSend("draft hello")}>
+        send
+      </button>
+    </div>
   ),
 }));
 
@@ -56,7 +58,7 @@ vi.mock("./MessageBubble", () => ({
 }));
 
 vi.mock("./PlanCard", () => ({
-  PlanCardView: () => null,
+  PlanCardView: () => <div data-testid="plan-card" style={{ height: 900 }}>plan card</div>,
 }));
 
 describe("ChatView", () => {
@@ -66,6 +68,7 @@ describe("ChatView", () => {
     stopStreaming.mockClear();
     mockedStreamError = "上一轮错误";
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    window.HTMLElement.prototype.scrollTo = vi.fn();
     Object.defineProperty(window, "piAPI", {
       value: {},
       configurable: true,
@@ -153,6 +156,78 @@ describe("ChatView", () => {
     await waitFor(() => {
       expect(clearError.mock.calls.length).toBeGreaterThan(initialCalls);
     });
+  });
+
+  it("renders the plan card after existing messages", () => {
+    mockedStreamError = null;
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    const message = screen.getByText("hello");
+    const planCard = screen.getByTestId("plan-card");
+    expect(message.compareDocumentPosition(planCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps the input outside the scroll region and the message region as the only scroller", () => {
+    mockedStreamError = null;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                ...session.messages,
+                ...Array.from({ length: 20 }, (_, index) => ({
+                  id: `a${index}`,
+                  role: "assistant" as const,
+                  content: `long assistant line ${index}\n${"body ".repeat(120)}`,
+                  timestamp: new Date(index + 1),
+                })),
+              ],
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    const root = screen.getByTestId("chat-view-root");
+    const scrollRegion = screen.getByTestId("chat-scroll-region");
+    const inputShell = screen.getByTestId("chat-input-shell");
+    const log = screen.getByRole("log");
+
+    expect(root.className).toContain("overflow-hidden");
+    expect(scrollRegion.className).toContain("flex-1");
+    expect(scrollRegion.className).toContain("min-h-0");
+    expect(scrollRegion.className).toContain("overflow-y-auto");
+    expect(log.className).not.toContain("justify-end");
+    expect(scrollRegion.contains(inputShell)).toBe(false);
+    expect(root.lastElementChild?.contains(inputShell)).toBe(true);
+  });
+
+  it("auto-scrolls only the chat scroll region instead of the outer document", () => {
+    mockedStreamError = null;
+    const scrollIntoView = vi.fn();
+    const scrollTo = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    window.HTMLElement.prototype.scrollTo = scrollTo;
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTo).toHaveBeenCalled();
   });
 
   it("does not create a session just by opening an empty draft", async () => {

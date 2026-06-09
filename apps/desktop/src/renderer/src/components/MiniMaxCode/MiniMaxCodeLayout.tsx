@@ -124,7 +124,7 @@ export function MiniMaxCodeLayout({
                 </aside>
 
                 <main
-                    className="min-w-0 min-h-0 flex-1 overflow-y-auto bg-[var(--mm-bg-main)]"
+                    className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)]"
                     data-mmcode-region="center"
                     aria-label="main content"
                 >

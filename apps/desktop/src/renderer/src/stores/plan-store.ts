@@ -31,6 +31,21 @@ function stepsFromMarkdown(content: string): PlanProgressItem[] {
   return matches.filter((item): item is PlanProgressItem => item !== null).slice(0, 12);
 }
 
+function stripInlineThinking(content: string): string {
+  return content
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think>[\s\S]*$/gi, "")
+    .trim();
+}
+
+function isGenericPlanGuidance(content: string): boolean {
+  const asksForGoal = /目标|范围|约束|验收标准|要解决什么问题|实现什么功能|直接描述项目背景|请告诉我你的目标/.test(content);
+  const describesCapabilities = /你可以让我|阅读、编辑|重构|调试代码|分解需求|制定执行计划|调用 pi 技能/i.test(content);
+  const hasConcretePlanTitle = /(^|\n)\s*#{1,6}\s*(实施计划|执行计划|实现计划|测试计划|迁移计划|修复计划|计划[：:])/.test(content);
+  const hasExecutionSteps = /(^|\n)\s*(?:[-*]|\d+\.)\s+(?:修改|实现|新增|删除|运行|验证|测试|构建|修复|重构|更新|提交|检查)/.test(content);
+  return (asksForGoal || describesCapabilities) && !hasConcretePlanTitle && !hasExecutionSteps;
+}
+
 export const usePlanStore = create<PlanState>((set, get) => ({
   enabled: false,
   activeCard: null,
@@ -46,15 +61,23 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   },
 
   setCard: (card) => {
+    const cleanCard = {
+      ...card,
+      content: stripInlineThinking(card.content),
+    };
+    if (isGenericPlanGuidance(cleanCard.content)) {
+      set({ activeCard: null, decisionRequest: null, steps: [], status: "idle" });
+      return;
+    }
     set((state) => ({
-      activeCard: card,
-      steps: stepsFromMarkdown(card.content),
+      activeCard: cleanCard,
+      steps: stepsFromMarkdown(cleanCard.content),
       status: "waiting_decision",
       decisionRequest: state.decisionRequest && !state.decisionRequest.card
         ? state.decisionRequest
         : {
-            requestId: `plan_decision_${card.id}`,
-            card,
+            requestId: `plan_decision_${cleanCard.id}`,
+            card: cleanCard,
             source: "plan",
             createdAt: Date.now(),
           },

@@ -5,10 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiEvent } from "@shared/events";
 import { usePiStream } from "./usePiStream";
 import { useSessionStore } from "../stores/session-store";
+import { usePlanStore } from "../stores/plan-store";
 
 let emitPiEvent: ((event: PiEvent) => void) | null = null;
 const sendPrompt = vi.fn(async () => undefined);
 const stopPrompt = vi.fn<(_workspaceId: string) => Promise<unknown>>(async () => undefined);
+const agentsPrompt = vi.fn(async () => undefined);
 
 function HookHost(): null {
     usePiStream();
@@ -30,9 +32,33 @@ function HookStateHost() {
     );
 }
 
+function AgentHookStateHost() {
+    const state = usePiStream("agent_1");
+    return (
+        <div>
+            <button type="button" onClick={() => void state.startStreaming("ws1", "agent follow up")}>
+                send-agent-follow-up
+            </button>
+        </div>
+    );
+}
+
+function PlanHookStateHost() {
+    const state = usePiStream();
+    return (
+        <div>
+            <div data-testid="streaming">{String(state.isStreaming)}</div>
+            <button type="button" onClick={() => void state.startStreaming("ws1", "你好")}>
+                send-plan
+            </button>
+        </div>
+    );
+}
+
 beforeEach(() => {
     emitPiEvent = null;
     sendPrompt.mockClear();
+    agentsPrompt.mockClear();
     stopPrompt.mockReset();
     stopPrompt.mockResolvedValue(undefined);
     (globalThis as { window: unknown }).window = {
@@ -59,8 +85,14 @@ beforeEach(() => {
                 emitPiEvent = cb;
                 return vi.fn();
             }),
+            onAgentEvent: vi.fn((cb: (payload: { agentId: string; event: PiEvent }) => void) => {
+                emitPiEvent = (event) => cb({ agentId: "agent_1", event });
+                return vi.fn();
+            }),
             sendPrompt,
+            agentsPrompt,
             stop: stopPrompt,
+            renameSession: vi.fn(async () => undefined),
         },
     };
     useSessionStore.setState({
@@ -75,6 +107,13 @@ beforeEach(() => {
                 messages: [],
             },
         ],
+    });
+    usePlanStore.setState({
+        enabled: false,
+        activeCard: null,
+        decisionRequest: null,
+        steps: [],
+        status: "idle",
     });
 });
 
@@ -308,5 +347,108 @@ describe("usePiStream", () => {
             const event = call[0] as Event;
             return event.type === "pi:stream-start";
         })).toHaveLength(0);
+    });
+
+    it("queues agent follow-ups with explicit streaming behavior while streaming", async () => {
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+        });
+
+        await act(async () => {
+            screen.getByText("send-agent-follow-up").click();
+        });
+
+        expect(agentsPrompt).toHaveBeenCalledWith({
+            agentId: "agent_1",
+            message: "agent follow up",
+            streamingBehavior: "followUp",
+        });
+    });
+
+    it("sends a plan-mode prompt once with exactly one /plan prefix", async () => {
+        usePlanStore.setState({ enabled: true });
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-plan").click();
+            screen.getByText("send-plan").click();
+        });
+
+        expect(sendPrompt).toHaveBeenCalledTimes(1);
+        const [, outbound] = sendPrompt.mock.calls[0] as unknown as [string, string];
+        expect(outbound).toMatch(/^\/plan\n/);
+        expect((outbound.match(/^\/plan/gm) ?? [])).toHaveLength(1);
+    });
+
+    it("stops showing the current turn as thinking once a plan card is waiting for a decision", async () => {
+        usePlanStore.setState({ enabled: true });
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-plan").click();
+        });
+        expect(screen.getByTestId("streaming").textContent).toBe("true");
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "thinking_delta",
+                    delta: "正在制定计划",
+                },
+            });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "toolcall_start",
+                    toolCallId: "plan_tool_1",
+                    toolName: "plan_write",
+                    args: { title: "测试计划", content: "- 检查\n- 修改" },
+                },
+            });
+        });
+
+        expect(usePlanStore.getState().activeCard?.title).toBe("测试计划");
+        expect(screen.getByTestId("streaming").textContent).toBe("false");
+    });
+
+    it("does not create an executable fallback plan card for a generic plan-mode greeting response", async () => {
+        usePlanStore.setState({ enabled: true });
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-plan").click();
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "text_delta",
+                    delta: [
+                        "<think>用户只是问候，不应创建计划卡</think>",
+                        "你好。关于 /plan，它通常用于规划任务。",
+                        "新功能设计 -> 拆解任务、识别依赖、制定里程碑。",
+                        "请告诉我你的目标。",
+                    ].join("\n"),
+                },
+            });
+            emitPiEvent?.({ type: "turn_end" });
+        });
+
+        expect(usePlanStore.getState().activeCard).toBeNull();
+        expect(usePlanStore.getState().decisionRequest).toBeNull();
     });
 });

@@ -130,6 +130,68 @@ describe("MessageBubble", () => {
     expect(screen.getByRole("button", { name: "复制内容" })).toBeTruthy();
   });
 
+  it("folds inline think tags instead of rendering them as assistant content", () => {
+    const message: Message = {
+      id: "m-think",
+      role: "assistant",
+      content: "<think>先分析一下</think>\n\n最终回答",
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("最终回答")).toBeTruthy();
+    expect(screen.getByText(/思考 1 次/)).toBeTruthy();
+    expect(screen.queryByText(/<think>/)).toBeNull();
+    expect(screen.queryByText("先分析一下")).toBeNull();
+  });
+
+  it("copies only visible assistant content when inline thinking is present", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    const message: Message = {
+      id: "m-copy-think",
+      role: "assistant",
+      content: "<think>隐藏推理</think>可复制正文",
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "复制内容" }));
+    expect(writeText).toHaveBeenCalledWith("可复制正文");
+  });
+
+  it("hides the internal /plan command from user messages and shows a plan badge", () => {
+    const message: Message = {
+      id: "m-user-plan",
+      role: "user",
+      content: "/plan\n你好",
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("你好")).toBeTruthy();
+    expect(screen.getByText("计划模式")).toBeTruthy();
+    expect(screen.queryByText(/\/plan/)).toBeNull();
+  });
+
   it("shows custom card open-file string failures from Electron shell", async () => {
     const openPath = vi.fn().mockResolvedValue("No application is associated with the specified file");
     Object.defineProperty(window, "piAPI", {

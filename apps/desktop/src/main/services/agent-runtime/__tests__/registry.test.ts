@@ -69,7 +69,7 @@ describe("AgentRuntimeRegistry", () => {
 
         await registry.prompt({ agentId: agent.id, message: "hello" });
 
-        expect(sessions[0].prompt).toHaveBeenCalledWith("hello");
+        expect(sessions[0].prompt).toHaveBeenCalledWith("hello", undefined);
         expect(registry.getMessages(agent.id)[0]).toMatchObject({
             agentId: agent.id,
             role: "user",
@@ -79,6 +79,14 @@ describe("AgentRuntimeRegistry", () => {
             status: "running",
             isStreaming: true,
         });
+    });
+
+    it("forwards streaming behavior for queued prompts", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+
+        await registry.prompt({ agentId: agent.id, message: "follow later", streamingBehavior: "followUp" });
+
+        expect(sessions[0].prompt).toHaveBeenCalledWith("follow later", { streamingBehavior: "followUp" });
     });
 
     it("restarts with the same session path and replaces runtime", async () => {

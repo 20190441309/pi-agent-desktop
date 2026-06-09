@@ -82,8 +82,12 @@ function getAssistantMessageEvent(event: PiEvent): AssistantMessageEvent | null 
 }
 
 function createFallbackPlanCard(content: string): PlanCard | null {
-    const text = content.trim();
+    const text = content
+        .replace(/<think>[\s\S]*?<\/think>/gi, "")
+        .replace(/<think>[\s\S]*$/gi, "")
+        .trim();
     if (!text) return null;
+    if (/关于\s*\/?plan|请告诉我你的目标|为了给出有价值的规划|常见用法包括/i.test(text)) return null;
 
     const hasPlanShape = /(^|\n)\s*(?:#+\s*)?计划[：:\s]/.test(text) ||
         /(^|\n)\s*(?:步骤|Step)\s*\d+\s*[：:.]/i.test(text) ||
@@ -95,6 +99,7 @@ function createFallbackPlanCard(content: string): PlanCard | null {
         .split(/\r?\n/)
         .map((line) => line.trim().replace(/^#+\s*/, ""))
         .find((line) => line.length > 0 && /计划|plan/i.test(line));
+    if (!titleLine || /关于\s*\/?plan/i.test(titleLine)) return null;
     const title = titleLine?.replace(/^计划[：:\s]*/, "").trim() || "计划";
 
     return {
@@ -237,6 +242,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
 
     // Refs 避免 stale closure
+    const isStreamingRef = useRef(false);
+    const promptInFlightRef = useRef(false);
     const textRef = useRef("");
     const thinkingRef = useRef("");
     const toolCallsRef = useRef(new Map<string, ToolCallState>());
@@ -332,6 +339,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const { getCurrentSession, addMessage, updateMessage, addToolCall, updateToolCall } = useSessionStore();
 
     useEffect(() => { agentIdRef.current = agentId ?? null; }, [agentId]);
+    useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
 
     const updateCurrentUsage = useCallback((updates: Partial<SessionUsageSnapshot>) => {
         const session = useSessionStore.getState().getCurrentSession();
@@ -372,6 +380,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             timestamp: new Date(),
         }, { persist: true });
     }, [addMessage]);
+
+    const pauseVisibleStreamingForPlanDecision = useCallback(() => {
+        setIsStreaming(false);
+        setStreamingMessageId(null);
+        window.dispatchEvent(new CustomEvent("pi:stream-end"));
+    }, []);
 
     // ── 连接状态 ────────────────────────────────────────────────────────────
     // v1.0.17: 初次检测 + 每 30 秒心跳重检，断了自动设为 false
@@ -422,6 +436,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         switch (event.type) {
             case "agent_start":
                 setIsStreaming(true);
+                isStreamingRef.current = true;
                 setError(null);
                 setCurrentText("");
                 setCurrentThinking("");
@@ -497,6 +512,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                             filename: typeof e.args.filename === "string" ? e.args.filename : undefined,
                             createdAt: Date.now(),
                         });
+                        pauseVisibleStreamingForPlanDecision();
                     }
                     const tc: ToolCallState = {
                         id: e.toolCallId,
@@ -566,6 +582,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         filename: typeof e.args?.filename === "string" ? e.args.filename : undefined,
                         createdAt: Date.now(),
                     });
+                    pauseVisibleStreamingForPlanDecision();
                 }
                 if (!toolCallsRef.current.has(e.toolCallId)) {
                     const tc: ToolCallState = {
@@ -632,6 +649,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 // 在 turn_end 这一刻把整个 assistant message 落盘一次
                 flushStreamPersist();
                 setIsStreaming(false);
+                isStreamingRef.current = false;
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
                 sessionIdRef.current = null;
@@ -680,6 +698,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 // 2026-06-06 hotfix (T6): 兜底 flush(防止 turn_end 没触发的情况)
                 flushStreamPersist();
                 setIsStreaming(false);
+                isStreamingRef.current = false;
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
                 sessionIdRef.current = null;
@@ -691,12 +710,13 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 setError(eventMessage(event, "Pi 扩展错误"));
                 flushStreamPersist();
                 setIsStreaming(false);
+                isStreamingRef.current = false;
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
         }
-    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist, updateCurrentUsage, addMessage]);
+    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist, updateCurrentUsage, addMessage, pauseVisibleStreamingForPlanDecision]);
 
     useEffect(() => {
         handleEventRef.current = handleEvent;
@@ -711,8 +731,10 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         if (!content.trim()) return;
         const aid = agentIdRef.current;
         const session = aid ? null : getCurrentSession();
-        const isFollowUpWhileStreaming = isStreaming;
+        const planEnabled = usePlanStore.getState().enabled;
+        const isFollowUpWhileStreaming = isStreamingRef.current || promptInFlightRef.current;
         if (isFollowUpWhileStreaming) {
+            if (planEnabled) return;
             if (!aid && session) {
                 addMessage(session.id, {
                     id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -723,7 +745,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
             try {
                 if (aid) {
-                    await window.piAPI.agentsPrompt({ agentId: aid, message: content });
+                    await window.piAPI.agentsPrompt({ agentId: aid, message: content, streamingBehavior: "followUp" });
                 } else {
                     const result = await window.piAPI.sendPrompt(workspaceId, content);
                     if (isIpcError(result)) {
@@ -735,7 +757,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
             return;
         }
+        promptInFlightRef.current = true;
         setIsStreaming(true);
+        isStreamingRef.current = true;
         setError(null);
         textRef.current = "";
         thinkingRef.current = "";
@@ -766,7 +790,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             const isSlashCommand = content.trimStart().startsWith("/");
             const permissionPrefix = aid || isSlashCommand ? "" : describePermissionsForPrompt(sessionIdRef.current, workspaceId);
             const guardedContent = `${permissionPrefix}${content}`;
-            const outbound = usePlanStore.getState().enabled && !isSlashCommand
+            const outbound = planEnabled && !isSlashCommand
                 ? `/plan\n${guardedContent}`
                 : guardedContent;
             if (aid) {
@@ -776,17 +800,21 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 if (isIpcError(result)) {
                     setError(result.fallback);
                     setIsStreaming(false);
+                    isStreamingRef.current = false;
                     setStreamingMessageId(null);
                     window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 }
             }
+            promptInFlightRef.current = false;
         } catch (err) {
             setError(String(err));
             setIsStreaming(false);
+            isStreamingRef.current = false;
+            promptInFlightRef.current = false;
             // v1.0.17: 通知 useTaskProgress 流式异常结束
             window.dispatchEvent(new CustomEvent("pi:stream-end"));
         }
-    }, [getCurrentSession, addMessage, isStreaming]);
+    }, [getCurrentSession, addMessage]);
 
     const stopStreaming = useCallback((workspaceId: string) => {
         if (!window.piAPI) return;
@@ -809,6 +837,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             setError(`停止失败: ${eventMessage(err, "未知错误")}`);
         }
         setIsStreaming(false);
+        isStreamingRef.current = false;
+        promptInFlightRef.current = false;
         setStreamingMessageId(null);
         // v1.0.17: 通知 useTaskProgress 流式结束
         window.dispatchEvent(new CustomEvent("pi:stream-end"));

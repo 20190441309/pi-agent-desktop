@@ -150,6 +150,37 @@ describe("ChatInput", () => {
     expect(useAttachmentsStore.getState().list("ws1")).toHaveLength(1);
   });
 
+  it("does not submit the same draft multiple times while a send is pending", async () => {
+    let resolveSend: (() => void) | undefined;
+    const onSend = vi.fn(
+      () => new Promise<void>((resolve) => {
+        resolveSend = resolve;
+      }),
+    );
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "开启计划模式后发送" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    resolveSend?.();
+    await waitFor(() => expect((textbox as HTMLTextAreaElement).value).toBe(""));
+  });
+
   it("shows files:select IPC errors inline", async () => {
     Object.defineProperty(window, "piAPI", {
       value: {
@@ -308,7 +339,7 @@ describe("ChatInput", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("创建 workspace 失败: dialog crashed");
   });
 
-  it("does not silently send unsupported image attachments", () => {
+  it("requires a configured vision model before sending image attachments", () => {
     const onSend = vi.fn(async () => undefined);
     useAttachmentsStore.getState().add("ws1", {
       id: "img1",
@@ -335,8 +366,71 @@ describe("ChatInput", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "看图" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(screen.getByRole("alert").textContent).toContain("图片附件暂未接入");
+    expect(screen.getByRole("alert").textContent).toContain("请先在设置中选择识图模型");
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("describes image attachments before injecting them into the main prompt", async () => {
+    const onSend = vi.fn(async () => undefined);
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        describeImages: vi.fn(async () => ({
+          text: "[图片 1: pasted.png]\n图片里有设置面板",
+        })),
+      },
+      configurable: true,
+    });
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        visionProvider: "minimax",
+        visionModel: "MiniMax-VL",
+      },
+    }));
+    useAttachmentsStore.getState().add("ws1", {
+      id: "img1",
+      kind: "image",
+      name: "pasted.png",
+      value: "data:image/png;base64,abc",
+      mimeType: "image/png",
+      size: 3,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "看图" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(window.piAPI.describeImages).toHaveBeenCalledWith([
+        {
+          name: "pasted.png",
+          dataUrl: "data:image/png;base64,abc",
+          mimeType: "image/png",
+        },
+      ]);
+    });
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith([
+        "图片识别结果:",
+        "[图片 1: pasted.png]",
+        "图片里有设置面板",
+        "",
+        "用户消息:",
+        "看图",
+      ].join("\n"));
+    });
   });
 
   it("allows sending a follow-up instruction while a task is running", async () => {
