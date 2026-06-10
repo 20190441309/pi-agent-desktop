@@ -284,7 +284,7 @@ describe("MessageBubble", () => {
     );
 
     expect(screen.getByRole("button", { name: "执行计划" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "补充要求" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "发送补充" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "取消" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "执行计划" }));

@@ -42,7 +42,7 @@ export function Popover({
 
     // 计算位置:trigger 下方,左/右对齐
     // v1.0.13:viewport 适配 — 优先下方,空间不够翻上方;content 自身 max-height 限
-    // 注: side prop 当前未使用(只支持 bottom),从 deps 删掉避免 exhaustive-deps warning
+    // v1.0.14-fix: 优先读取 content 真实高度,estimatedHeight 降到 140;保持同步+异步双算
     const updatePosition = useCallback(() => {
         const el = triggerRef.current;
         if (!el) return;
@@ -50,8 +50,9 @@ export function Popover({
         const vh = window.innerHeight;
         const vw = window.innerWidth;
         const margin = 8;
-        // 估算 content 高度(未知) — 用 240 上限,实际渲染后会用真高度做最终 clamp
-        const estimatedHeight = 240;
+        // 优先用已渲染 content 的真实高度,未渲染时用 140 保守估算(3 个菜单项约 100px)
+        const actualHeight = contentRef.current?.offsetHeight ?? 0;
+        const estimatedHeight = actualHeight > 0 ? actualHeight : 140;
         const preferBottom = rect.bottom + 4 + estimatedHeight + margin < vh;
         const top = preferBottom ? rect.bottom + 4 : Math.max(margin, rect.top - 4 - estimatedHeight);
         const left = align === "end" ? rect.right : rect.left;
@@ -65,12 +66,21 @@ export function Popover({
             if (open) {
                 setOpen(false);
             } else {
-                updatePosition();
+                updatePosition(); // 同步给初始位置(兼容 jsdom)
                 setOpen(true);
             }
         },
         [open, updatePosition],
     );
+
+    // 真实浏览器:content mount 后用真实高度精算;jsdom 里 rAF 不执行,依赖上面同步初始值
+    useEffect(() => {
+        if (!open) return;
+        const id = requestAnimationFrame(() => {
+            updatePosition();
+        });
+        return () => cancelAnimationFrame(id);
+    }, [open, updatePosition]);
 
     // 点 outside / ESC 关闭
     useEffect(() => {

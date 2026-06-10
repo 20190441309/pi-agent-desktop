@@ -8,7 +8,8 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { CommandCard } from './CommandCard';
 import { CustomMessageCard } from './CustomMessageCard';
 import { ThinkingBlock } from './ThinkingBlock';
-import { useI18n } from '../../i18n';
+import { PlanCard } from './PlanCard';
+import { usePlanStore } from '../../stores/plan-store';
 import { formatTime, formatIso } from '../../utils/format';
 
 type ChatMessage = Message & {
@@ -18,7 +19,7 @@ type ChatMessage = Message & {
 interface MessageBubbleProps {
   message: ChatMessage;
   isStreaming?: boolean;
-  onPlanAction?: (message: ChatMessage, action: "execute" | "refine" | "cancel" | "pause" | "resume") => Promise<void>;
+  onPlanAction?: (message: ChatMessage, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string) => Promise<void>;
 }
 
 function describeToolCall(name: unknown): "view" | "modify" | "command" | "tool" {
@@ -101,27 +102,6 @@ function splitUserInternalCommand(content: string): { badge: string | null; cont
   };
 }
 
-function planStatusLabel(status: NonNullable<ChatMessage["planAction"]>["status"]): string {
-  switch (status) {
-    case "executing":
-      return "执行中";
-    case "pausing":
-      return "正在暂停";
-    case "paused":
-      return "已暂停";
-    case "executed":
-      return "已完成";
-    case "cancelled":
-      return "已取消";
-    case "failed":
-      return "执行失败";
-    case "refining":
-      return "等待补充";
-    default:
-      return "等待确认";
-  }
-}
-
 function ToolActivity({
   toolCalls,
 }: {
@@ -164,12 +144,10 @@ function ToolActivity({
 }
 
 export function MessageBubble({ message, isStreaming = false, onPlanAction }: MessageBubbleProps): React.JSX.Element {
-  const { t } = useI18n();
   const isUser = message.role === 'user';
   const timeText = formatTime(message.timestamp);
   const timeIso = formatIso(message.timestamp);
-  const authorLabel = isUser ? t('messageBubble.userAuthor') : t('messageBubble.piAuthor');
-  const articleLabel = `${authorLabel} · ${timeText}`;
+  const articleLabel = `${isUser ? '你' : 'Pi'} · ${timeText}`;
   const userCommand = isUser ? splitUserInternalCommand(message.content) : { badge: null, content: message.content };
   const inlineThinking = !isUser ? splitInlineThinking(message.content) : { thinking: "", content: userCommand.content, count: 0 };
   const thinkingParts = [message.thinking?.trim(), inlineThinking.thinking]
@@ -206,7 +184,6 @@ export function MessageBubble({ message, isStreaming = false, onPlanAction }: Me
     >
       <div className={isUser ? 'max-w-[74%]' : 'w-full max-w-full'}>
         <div className={`mb-1 flex items-center gap-2 px-1 text-[11px] text-[#9a9a95] ${isUser ? 'justify-end' : 'justify-start'}`}>
-          <span>{authorLabel}</span>
           <time dateTime={timeIso}>{timeText}</time>
         </div>
           <div className={`${
@@ -256,74 +233,18 @@ export function MessageBubble({ message, isStreaming = false, onPlanAction }: Me
                 )}
 
                 {showPlanPanel && (
-                  <div className="mt-3 rounded-xl border border-[#eeeeea] bg-[#fbfbfa] p-3">
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="inline-flex h-5 items-center rounded-full bg-[#eef8ef] px-2 text-[11px] font-medium text-[#2f6b38]">
-                          {planStatusLabel(planStatus)}
-                        </span>
-                        <span className="truncate text-xs text-[#777]">{planAction?.filename ?? planAction?.title ?? "计划"}</span>
-                      </div>
-                    </div>
-                    {(planStatus === "pending" || planStatus === "refining") && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void onPlanAction?.(message, "execute")}
-                          className="h-8 rounded-full bg-[#242423] px-3 text-xs font-medium text-white hover:bg-[#111]"
-                        >
-                          执行计划
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void onPlanAction?.(message, "refine")}
-                          className="h-8 rounded-full border border-[#e2e2de] bg-white px-3 text-xs font-medium text-[#333] hover:bg-[#f7f7f7]"
-                        >
-                          补充要求
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void onPlanAction?.(message, "cancel")}
-                          className="h-8 rounded-full px-3 text-xs font-medium text-[#666] hover:bg-[#f3f3f3]"
-                        >
-                          取消
-                        </button>
-                        {planStatus === "refining" && (
-                          <span className="text-xs text-[#777]">请在下方输入框补充要求</span>
-                        )}
-                      </div>
-                    )}
-                    {(planStatus === "executing" || planStatus === "pausing") && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void onPlanAction?.(message, "pause")}
-                          disabled={planStatus === "pausing"}
-                          className="h-8 rounded-full border border-[#e2e2de] bg-white px-3 text-xs font-medium text-[#333] hover:bg-[#f7f7f7] disabled:opacity-60"
-                        >
-                          暂停执行
-                        </button>
-                      </div>
-                    )}
-                    {planStatus === "paused" && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void onPlanAction?.(message, "resume")}
-                          className="h-8 rounded-full bg-[#242423] px-3 text-xs font-medium text-white hover:bg-[#111]"
-                        >
-                          继续执行
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void onPlanAction?.(message, "cancel")}
-                          className="h-8 rounded-full px-3 text-xs font-medium text-[#666] hover:bg-[#f3f3f3]"
-                        >
-                          取消
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <PlanCard
+                    title={planAction?.title ?? "计划"}
+                    content={visibleContent}
+                    filename={planAction?.filename}
+                    status={planStatus}
+                    steps={usePlanStore.getState().steps}
+                    onExecute={() => void onPlanAction?.(message, "execute")}
+                    onRefine={() => void onPlanAction?.(message, "refine")}
+                    onCancel={() => void onPlanAction?.(message, "cancel")}
+                    onPause={() => void onPlanAction?.(message, "pause")}
+                    onResume={() => void onPlanAction?.(message, "resume")}
+                  />
                 )}
 
                 {isStreaming && !visibleContent && !thinkingContent && (

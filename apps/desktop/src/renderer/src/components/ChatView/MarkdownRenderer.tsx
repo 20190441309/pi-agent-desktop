@@ -5,6 +5,8 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
+import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
 
 interface MarkdownRendererProps {
     content: string;
@@ -13,7 +15,12 @@ interface MarkdownRendererProps {
 export function MarkdownRenderer({ content }: MarkdownRendererProps): React.ReactElement {
     return (
         <div className="markdown-body max-w-none">
-            <ReactMarkdown rehypePlugins={[rehypeHighlight]}>{content}</ReactMarkdown>
+            <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw, rehypeHighlight]}
+            >
+                {content}
+            </ReactMarkdown>
         </div>
     );
 }

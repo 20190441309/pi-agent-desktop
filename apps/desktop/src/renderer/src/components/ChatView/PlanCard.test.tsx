@@ -1,169 +1,230 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PlanCardView } from "./PlanCard";
-import { usePlanStore } from "../../stores/plan-store";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { PlanCard } from "./PlanCard";
 
-describe("PlanCardView", () => {
-  const planRespond = vi.fn();
-  const planSetEnabled = vi.fn(async () => undefined);
+describe("PlanCard", () => {
+  it("renders plan card with title, content, and status badge", () => {
+    render(
+      <PlanCard
+        title="测试计划"
+        content="第一步：调研\n第二步：实现"
+        status="pending"
+        onExecute={vi.fn()}
+      />,
+    );
 
-  beforeEach(() => {
-    planRespond.mockClear();
-    planSetEnabled.mockClear();
-    Object.defineProperty(window, "piAPI", {
-      value: {
-        planRespond,
-        planSetEnabled,
-      },
-      configurable: true,
-    });
-    usePlanStore.setState({
-      enabled: true,
-      activeCard: null,
-      decisionRequest: null,
-      steps: [],
-      status: "idle",
-    });
+    expect(screen.getByText("测试计划")).toBeTruthy();
+    expect(screen.getByTestId("plan-status").textContent).toContain("等待确认");
+    expect(screen.getByText(/第一步/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "执行计划" })).toBeTruthy();
   });
 
-  it("renders extension plan questions and responds with selected option", () => {
-    usePlanStore.getState().setDecisionRequest({
-      requestId: "plan_q_1",
-      workspaceId: "ws1",
-      kind: "select",
-      source: "plan",
-      title: "选择计划",
-      message: "下一步怎么做？",
-      options: ["执行", "修改"],
-      createdAt: 1,
-    });
+  it("renders steps list when steps provided", () => {
+    render(
+      <PlanCard
+        title="带步骤的计划"
+        content="内容"
+        status="pending"
+        steps={[
+          { id: "s1", text: "步骤一", status: "completed" },
+          { id: "s2", text: "步骤二", status: "running" },
+          { id: "s3", text: "步骤三", status: "pending" },
+        ]}
+        onExecute={vi.fn()}
+      />,
+    );
 
-    render(<PlanCardView workspaceId="ws1" />);
-
-    expect(screen.getByText("选择计划")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "修改" }));
-
-    expect(planRespond).toHaveBeenCalledWith("plan_q_1", "refine", "修改");
-    expect(usePlanStore.getState().decisionRequest).toBeNull();
+    expect(screen.getByText("计划步骤")).toBeTruthy();
+    expect(screen.getByText("1/3")).toBeTruthy();
+    expect(screen.getByText("步骤一")).toBeTruthy();
+    expect(screen.getByText("步骤二")).toBeTruthy();
+    expect(screen.getByText("步骤三")).toBeTruthy();
   });
 
-  it("submits local plan goal clarification through onExecute", async () => {
-    const onExecute = vi.fn(async () => undefined);
-    usePlanStore.getState().setDecisionRequest({
-      requestId: "local_plan_goal_1",
-      workspaceId: "ws1",
-      source: "plan",
-      title: "计划模式需要目标",
-      message: "请补充计划目标",
-      placeholder: "写下计划目标",
-      createdAt: 1,
-    });
+  it("renders choice options when A/B/C detected in content", () => {
+    render(
+      <PlanCard
+        title="选择题计划"
+        content={"A) 方案一\nB) 方案二\nC) 方案三"}
+        status="pending"
+        onExecute={vi.fn()}
+      />,
+    );
 
-    render(<PlanCardView workspaceId="ws1" onExecute={onExecute} />);
+    // 通过 data-testid 验证选项区存在
+    expect(screen.getByTestId("plan-options")).toBeTruthy();
+    const options = screen.getAllByTestId("plan-option");
+    expect(options.length).toBe(3);
+    // 主按钮因为未选所以 disabled
+    const executeBtn = screen.getByRole("button", { name: "请选择选项" });
+    expect((executeBtn as HTMLButtonElement).disabled).toBe(true);
+  });
 
-    fireEvent.change(screen.getByPlaceholderText("写下计划目标"), {
-      target: { value: "为聊天输入框制定改版计划" },
-    });
+  it("enables execute after selecting an option", () => {
+    render(
+      <PlanCard
+        title="选择题计划"
+        content={"A) 方案一\nB) 方案二"}
+        status="pending"
+        onExecute={vi.fn()}
+      />,
+    );
+
+    const options = screen.getAllByTestId("plan-option");
+    fireEvent.click(options[0]);
+
+    const executeBtn = screen.getByRole("button", { name: "确认并执行" });
+    expect((executeBtn as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("calls onRefine with selected option when execute clicked after selection", () => {
+    const onRefine = vi.fn();
+    render(
+      <PlanCard
+        title="选择题计划"
+        content={"A) 方案一\nB) 方案二"}
+        status="pending"
+        onRefine={onRefine}
+      />,
+    );
+
+    const options = screen.getAllByTestId("plan-option");
+    fireEvent.click(options[0]);
+    fireEvent.click(screen.getByRole("button", { name: "确认并执行" }));
+
+    expect(onRefine).toHaveBeenCalledWith("方案一");
+  });
+
+  it("renders executing state with progress", () => {
+    render(
+      <PlanCard
+        title="执行中计划"
+        content="内容"
+        status="executing"
+        steps={[
+          { id: "s1", text: "步骤一", status: "completed" },
+          { id: "s2", text: "步骤二", status: "running" },
+        ]}
+        onPause={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("plan-status").textContent).toContain("执行中");
+    expect(screen.getByRole("button", { name: "暂停执行" })).toBeTruthy();
+    expect(screen.getByText("进度 1/2")).toBeTruthy();
+  });
+
+  it("calls onPause when pause button clicked", () => {
+    const onPause = vi.fn();
+    render(
+      <PlanCard
+        title="执行中"
+        content="内容"
+        status="executing"
+        onPause={onPause}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "暂停执行" }));
+    expect(onPause).toHaveBeenCalled();
+  });
+
+  it("renders paused state with resume and cancel", () => {
+    const onResume = vi.fn();
+    const onCancel = vi.fn();
+    render(
+      <PlanCard
+        title="已暂停"
+        content="内容"
+        status="paused"
+        onResume={onResume}
+        onCancel={onCancel}
+      />,
+    );
+
+    expect(screen.getByTestId("plan-status").textContent).toContain("已暂停");
+    fireEvent.click(screen.getByRole("button", { name: "继续执行" }));
+    expect(onResume).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("renders completed state without action buttons", () => {
+    render(
+      <PlanCard
+        title="已完成"
+        content="内容"
+        status="executed"
+        steps={[
+          { id: "s1", text: "步骤一", status: "completed" },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("plan-status").textContent).toContain("已完成");
+    expect(screen.getByText("计划已执行完毕")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "执行计划" })).toBeNull();
+  });
+
+  it("renders failed state", () => {
+    render(
+      <PlanCard
+        title="失败计划"
+        content="内容"
+        status="failed"
+      />,
+    );
+
+    expect(screen.getByTestId("plan-status").textContent).toContain("执行失败");
+    expect(screen.getByText("计划执行失败")).toBeTruthy();
+  });
+
+  it("shows filename pill when filename provided", () => {
+    render(
+      <PlanCard
+        title="有文件的计划"
+        content="内容"
+        status="pending"
+        filename=".pi/plans/test.md"
+        onExecute={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("test.md")).toBeTruthy();
+  });
+
+  it("calls onRefine with input text when 发送补充 clicked", () => {
+    const onRefine = vi.fn();
+    render(
+      <PlanCard
+        title="计划"
+        content="内容"
+        status="pending"
+        onRefine={onRefine}
+      />,
+    );
+
+    const input = screen.getByPlaceholderText("有补充就写在这里");
+    fireEvent.change(input, { target: { value: "我要补充一点" } });
     fireEvent.click(screen.getByRole("button", { name: "发送补充" }));
 
-    await waitFor(() => {
-      expect(onExecute).toHaveBeenCalledWith("为聊天输入框制定改版计划");
-    });
-    expect(planRespond).not.toHaveBeenCalled();
-    expect(usePlanStore.getState().decisionRequest).toBeNull();
+    expect(onRefine).toHaveBeenCalledWith("我要补充一点");
   });
 
-  it("executes active plan through /execute_plan", async () => {
-    const onExecute = vi.fn(async () => undefined);
-    usePlanStore.getState().setCard({
-      id: "card_1",
-      title: "实现 UI",
-      filename: "ui-plan.md",
-      content: "- 调整布局",
-      createdAt: 1,
-    });
-    usePlanStore.getState().setDecisionRequest({
-      requestId: "decision_1",
-      card: usePlanStore.getState().activeCard ?? undefined,
-    });
+  it("expands content when 展开计划详情 clicked", () => {
+    render(
+      <PlanCard
+        title="长计划"
+        content={"行1\n行2\n行3\n行4\n行5"}
+        status="pending"
+        onExecute={vi.fn()}
+      />,
+    );
 
-    render(<PlanCardView workspaceId="ws1" onExecute={onExecute} />);
-    fireEvent.click(screen.getByRole("button", { name: "执行计划" }));
-
-    await waitFor(() => {
-      expect(onExecute).toHaveBeenCalledWith("/execute_plan ui-plan.md");
-    });
-  });
-
-  it("keeps extension plan questions visible when a plan card is already active", () => {
-    usePlanStore.getState().setCard({
-      id: "card_2",
-      title: "实现权限",
-      filename: "permission-plan.md",
-      content: "- 接入权限插件",
-      createdAt: 1,
-    });
-    usePlanStore.getState().setDecisionRequest({
-      requestId: "plan_q_2",
-      workspaceId: "ws1",
-      kind: "select",
-      source: "plan",
-      title: "需要补充吗？",
-      options: ["继续", "补充"],
-      createdAt: 2,
-    });
-
-    render(<PlanCardView workspaceId="ws1" />);
-
-    expect(screen.getByText("实现权限")).toBeTruthy();
-    expect(screen.getByText("需要补充吗？")).toBeTruthy();
-    expect(screen.queryByText("要执行这个计划吗？")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "补充" }));
-
-    expect(planRespond).toHaveBeenCalledWith("plan_q_2", "refine", "补充");
-  });
-
-  it("does not render raw think tags from plan content", () => {
-    usePlanStore.getState().setCard({
-      id: "card_think",
-      title: "清理计划",
-      filename: "clean-plan.md",
-      content: "<think>内部推理</think>\n\n- 修复计划模式",
-      createdAt: 1,
-    });
-
-    render(<PlanCardView workspaceId="ws1" />);
-
-    expect(screen.getByText("修复计划模式")).toBeTruthy();
-    expect(screen.queryByText(/<think>/)).toBeNull();
-    expect(screen.queryByText("内部推理")).toBeNull();
-  });
-
-  it("does not show an execute confirmation for generic plan-mode guidance", () => {
-    usePlanStore.getState().setCard({
-      id: "card_guidance",
-      title: "计划模式说明",
-      filename: "guidance.md",
-      content: [
-        "你可以让我：",
-        "- 阅读、编辑、重构、调试代码",
-        "- 分解需求、制定执行计划",
-        "",
-        "**目标**：要解决什么问题或实现什么功能？",
-        "**范围**：涉及哪些文件或模块？",
-        "**约束**：时间、性能、兼容性、依赖等",
-        "**验收标准**：怎样算完成？",
-        "直接描述项目背景即可。",
-      ].join("\n"),
-      createdAt: 1,
-    });
-
-    render(<PlanCardView workspaceId="ws1" />);
-
-    expect(screen.queryByText("要执行这个计划吗？")).toBeNull();
-    expect(usePlanStore.getState().activeCard).toBeNull();
+    expect(screen.getByText(/行1/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /展开计划详情/ }));
+    expect(screen.getByText(/行5/)).toBeTruthy();
   });
 });

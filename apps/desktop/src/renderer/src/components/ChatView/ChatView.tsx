@@ -312,7 +312,21 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         planAction: message.planAction,
       }))
     : currentSession?.messages || [], [agentMessages, currentSession?.messages, hasAgent]);
-  const messages = useMemo(() => mergeAdjacentThinkingMessages(rawMessages), [rawMessages]);
+  const messages = useMemo(() => {
+    const merged = mergeAdjacentThinkingMessages(rawMessages);
+    // v1.0.14-fix: 过滤后端偶发的完全空白 assistant 消息(有 content/thinking/card/tools/plan 至少一个才保留)
+    return merged.filter((message) => {
+      const hasVisible = visibleText(message).length > 0;
+      const hasThinking = Boolean(message.thinking?.trim());
+      const hasCard = Boolean(message.customCard);
+      const hasTools = Boolean(message.toolCalls && message.toolCalls.length > 0);
+      const hasPlan = Boolean(message.planAction);
+      const isEmpty = !hasVisible && !hasThinking && !hasCard && !hasTools && !hasPlan;
+      // 当前正在流式中的消息即使暂时为空也不删除,避免闪烁
+      if (isEmpty && isStreaming && message.id === streamingMessageId) return true;
+      return !isEmpty;
+    });
+  }, [rawMessages, isStreaming, streamingMessageId]);
   const workspaceSessions = sessions
     .filter((session) => !session.archived && session.workspaceId === currentWorkspace?.id)
     .slice()
@@ -373,7 +387,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     await handleSend(`/execute_plan ${name}`, { visibleContent });
   };
 
-  const handlePlanAction = async (message: Message, action: "execute" | "refine" | "cancel" | "pause" | "resume"): Promise<void> => {
+  const handlePlanAction = async (message: Message, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string): Promise<void> => {
     if (!message.planAction) return;
     if (action === "cancel") {
       updatePlanActionStatus(message, "cancelled");
@@ -383,6 +397,10 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     if (action === "refine") {
       updatePlanActionStatus(message, "refining");
       usePlanStore.getState().setDecisionRequest(null);
+      if (text?.trim()) {
+        // v2.0: 选项选择后自动发送补充文本
+        await handleSend(text.trim(), { visibleContent: `补充: ${text.trim()}` });
+      }
       setComposerFocusKey((value) => value + 1);
       return;
     }

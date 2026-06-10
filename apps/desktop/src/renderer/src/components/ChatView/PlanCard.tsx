@@ -1,163 +1,441 @@
-import React, { useState } from "react";
-import { MarkdownRenderer } from "./MarkdownRenderer";
-import { usePlanStore } from "../../stores/plan-store";
+// PlanCard — 消息气泡内使用的统一计划卡片 (v2.0)
+// 支持: 独立卡片样式 / 折叠正文 / 内联步骤列表 / 选项按钮 / 补充文本区 / 文件链接 / 进度指示
 
-interface PlanCardViewProps {
-  workspaceId?: string;
-  onExecute?: (message: string) => Promise<void>;
+import React, { useState, useCallback } from "react";
+import { MarkdownRenderer } from "./MarkdownRenderer";
+
+export interface PlanStepItem {
+  id: string;
+  text: string;
+  status: "pending" | "running" | "completed" | "failed" | "waiting";
 }
 
-export function PlanCardView({ workspaceId, onExecute }: PlanCardViewProps): React.JSX.Element | null {
-  const { activeCard, decisionRequest, setDecisionRequest, setEnabled } = usePlanStore();
-  const [feedback, setFeedback] = useState("");
-  const isExtensionQuestion = Boolean(decisionRequest && !decisionRequest.card);
+export interface PlanChoiceOption {
+  label: string;
+  value: string;
+}
 
-  if (!activeCard && !decisionRequest) return null;
+export type PlanCardStatus =
+  | "pending"
+  | "refining"
+  | "executing"
+  | "pausing"
+  | "paused"
+  | "executed"
+  | "cancelled"
+  | "failed";
 
-  const execute = async (): Promise<void> => {
-    if (!activeCard) return;
-    setDecisionRequest(null);
-    setEnabled(workspaceId, false);
-    const name = activeCard.filename ?? activeCard.title;
-    await onExecute?.(`/execute_plan ${name}`);
-  };
+export interface PlanCardProps {
+  title: string;
+  content: string;
+  filename?: string;
+  status: PlanCardStatus;
+  steps?: PlanStepItem[];
+  onExecute?: () => void;
+  onRefine?: (text: string) => void;
+  onCancel?: () => void;
+  onPause?: () => void;
+  onResume?: () => void;
+}
 
-  const refine = async (): Promise<void> => {
-    if (!feedback.trim()) return;
-    setDecisionRequest(null);
-    await onExecute?.(feedback.trim());
-    setFeedback("");
-  };
+function statusLabel(status: PlanCardStatus): string {
+  switch (status) {
+    case "executing":
+      return "执行中";
+    case "pausing":
+      return "正在暂停";
+    case "paused":
+      return "已暂停";
+    case "executed":
+      return "已完成";
+    case "cancelled":
+      return "已取消";
+    case "failed":
+      return "执行失败";
+    case "refining":
+      return "等待补充";
+    default:
+      return "等待确认";
+  }
+}
 
-  const respondToExtension = (value: string): void => {
-    if (!decisionRequest) return;
-    if (decisionRequest.requestId.startsWith("local_plan_goal_")) {
-      setDecisionRequest(null);
-      setFeedback("");
-      if (value.trim()) {
-        void onExecute?.(value.trim());
-      }
-      return;
+function statusBadgeClass(status: PlanCardStatus): string {
+  switch (status) {
+    case "executing":
+    case "pausing":
+      return "bg-[#fef3c7] text-[#92400e] border-[#fde68a]";
+    case "executed":
+      return "bg-[#dcfce7] text-[#166534] border-[#bbf7d0]";
+    case "failed":
+    case "cancelled":
+      return "bg-[#fee2e2] text-[#991b1b] border-[#fecaca]";
+    case "paused":
+    case "refining":
+      return "bg-[#f3f4f6] text-[#4b5563] border-[#e5e7eb]";
+    default:
+      return "bg-[#eef8ef] text-[#2f6b38] border-[#d8e7d9]";
+  }
+}
+
+function stepIcon(status: PlanStepItem["status"]): React.ReactNode {
+  switch (status) {
+    case "completed":
+      return (
+        <svg className="h-3.5 w-3.5 shrink-0 text-[#16a34a]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+        </svg>
+      );
+    case "running":
+      return (
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#1a1a1a]" aria-hidden />
+      );
+    case "failed":
+      return (
+        <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-[#dc2626] text-[10px] text-white leading-none" aria-hidden>
+          !
+        </span>
+      );
+    case "waiting":
+      return (
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-[#d6d6d6] bg-white" aria-hidden />
+      );
+    default:
+      return (
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-[#d6d6d6] bg-white" aria-hidden />
+      );
+  }
+}
+
+/** 从计划内容中提取选项（A/B/C 或列表项） */
+function extractChoiceOptions(content: string): PlanChoiceOption[] | null {
+  const lines = content.split(/\r?\n/);
+  const options: PlanChoiceOption[] = [];
+
+  // 模式1: A) / A. 开头的选项
+  for (const line of lines) {
+    const t = line.trim();
+    if (t.length < 3) continue;
+    const c0 = t.charCodeAt(0);
+    const c1 = t.charAt(1);
+    if (c0 >= 65 && c0 <= 90 && (c1 === ")" || c1 === ".")) {
+      const text = t.slice(2).trim();
+      if (text) options.push({ label: String.fromCharCode(c0) + c1, value: text });
     }
-    window.piAPI?.planRespond(decisionRequest.requestId, "refine", value);
-    setDecisionRequest(null);
-    setFeedback("");
+  }
+  if (options.length >= 2) return options;
+
+  // 模式2: - [ ] / * [ ] 开头的列表项（当成选项）
+  const listOptions: PlanChoiceOption[] = [];
+  for (const line of lines) {
+    const match = line.match(/^\s*(?:[-*])\s+(?:\[[ xX]\]\s*)?(.+)$/);
+    if (match) {
+      const text = match[1].trim();
+      // 排除普通计划步骤（含"修改/实现/新增/删除/运行/验证/测试/构建/修复/重构/更新/提交/检查"）
+      if (!/修改|实现|新增|删除|运行|验证|测试|构建|修复|重构|更新|提交|检查/.test(text)) {
+        listOptions.push({ label: String.fromCharCode(65 + listOptions.length) + ")", value: text });
+      }
+    }
+  }
+  if (listOptions.length >= 2) return listOptions;
+
+  // 模式3: 多个"是否"问句
+  const questions = lines.filter((l) => /是否/.test(l) && /\?/.test(l));
+  if (questions.length >= 2) {
+    return questions.map((q, i) => ({
+      label: String.fromCharCode(65 + i) + ")",
+      value: q.trim(),
+    }));
+  }
+
+  return null;
+}
+
+/** 生成计划摘要（前3行非空内容） */
+function planSummary(content: string): string {
+  const lines = content
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("---"));
+  return lines.slice(0, 3).join("\n");
+}
+
+export function PlanCard({
+  title,
+  content,
+  filename,
+  status,
+  steps,
+  onExecute,
+  onRefine,
+  onCancel,
+  onPause,
+  onResume,
+}: PlanCardProps): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+
+  const options = extractChoiceOptions(content);
+  const hasOptions = options && options.length >= 2;
+
+  const handleExecute = useCallback(() => {
+    if (selectedOption && onRefine) {
+      onRefine(selectedOption);
+    } else {
+      onExecute?.();
+    }
+  }, [selectedOption, onRefine, onExecute]);
+
+  const handleRefine = useCallback(() => {
+    if (feedback.trim()) {
+      onRefine?.(feedback.trim());
+      setFeedback("");
+    }
+  }, [feedback, onRefine]);
+
+  const isPending = status === "pending" || status === "refining";
+  const isExecuting = status === "executing" || status === "pausing";
+  const isPaused = status === "paused";
+  const isTerminal = status === "executed" || status === "cancelled" || status === "failed";
+
+  const completedCount = steps?.filter((s) => s.status === "completed").length ?? 0;
+  const totalCount = steps?.length ?? 0;
+  const progressText = totalCount > 0 ? ` (${completedCount}/${totalCount})` : "";
+
+  const openPlanFile = (): void => {
+    if (!filename) return;
+    window.dispatchEvent(new CustomEvent("workspace:open-file", { detail: { path: filename } }));
   };
 
-  const questionPanel = decisionRequest && isExtensionQuestion ? (
-    <div className="mt-4 rounded-[15px] border border-[#e8e8e4] bg-white p-3.5">
-      <div className="mb-2">
-        <div className="text-xs font-medium uppercase text-[#777]">Plan Question</div>
-        <div className="text-sm font-medium text-[#222]">{decisionRequest.title ?? "计划需要确认"}</div>
-        {decisionRequest.message && (
-          <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[#555]">{decisionRequest.message}</p>
+  return (
+    <div
+      className={`mt-3 rounded-xl border border-[#e8e8e4] bg-white overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
+        isExecuting ? "animate-pulse-subtle" : ""
+      }`}
+      data-testid="plan-card"
+    >
+      {/* 标题栏 */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#f0f0ee]">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            data-testid="plan-status"
+            className={`inline-flex h-5 items-center rounded-full border px-2 text-[11px] font-medium ${statusBadgeClass(status)}`}
+          >
+            {statusLabel(status)}{progressText}
+          </span>
+          <span className="truncate text-xs text-[#777]" title={title}>
+            {title}
+          </span>
+        </div>
+        {filename && (
+          <button
+            type="button"
+            onClick={openPlanFile}
+            className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[#e2e2de] bg-[#fafafa] px-2 py-0.5 text-[10px] text-[#666] hover:bg-[#f3f3f3] transition-colors"
+            title={filename}
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span className="truncate max-w-[120px]">{filename.replace(/^.*[\\/]/, "")}</span>
+          </button>
         )}
       </div>
 
-      {decisionRequest.options && decisionRequest.options.length > 0 ? (
-        <div className="flex flex-wrap justify-end gap-2">
-          {decisionRequest.options.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => respondToExtension(option)}
-              className="rounded-lg border border-[#d4d4d4] bg-white px-3 py-1.5 text-xs text-[#333] hover:bg-[#f7f7f7]"
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <>
-          <textarea
-            value={feedback}
-            onChange={(event) => setFeedback(event.target.value)}
-            placeholder={decisionRequest.placeholder ?? "输入你的补充"}
-            className="mb-3 min-h-[72px] w-full resize-none rounded-[10px] border border-[#e2e2de] bg-white px-3 py-2 text-sm focus:border-[#d6d6d1] focus:outline-none focus:ring-0 focus:shadow-[0_0_0_3px_rgba(36,36,35,0.045)] focus-visible:!outline-none focus-visible:!shadow-[0_0_0_3px_rgba(36,36,35,0.045)]"
-          />
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => respondToExtension("")}
-              className="rounded-lg px-3 py-1.5 text-xs text-[#666] hover:bg-[#f3f3f3]"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              onClick={() => respondToExtension(feedback.trim())}
-              disabled={!feedback.trim()}
-              className="rounded-lg bg-[#262626] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#111] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              发送补充
-            </button>
+      {/* 正文区 */}
+      <div className="px-4 py-3">
+        {expanded ? (
+          <div className="text-sm leading-relaxed">
+            <MarkdownRenderer content={content} />
           </div>
-        </>
-      )}
-    </div>
-  ) : null;
+        ) : (
+          <div className="text-sm leading-relaxed text-[#444]">
+            <div className="whitespace-pre-wrap">{planSummary(content)}</div>
+            {content.split(/\r?\n/).filter((l) => l.trim()).length > 3 && (
+              <button
+                type="button"
+                onClick={() => setExpanded(true)}
+                className="mt-1 text-xs text-[#999] hover:text-[#666] transition-colors"
+              >
+                展开计划详情 ↓
+              </button>
+            )}
+          </div>
+        )}
+        {expanded && content.split(/\r?\n/).filter((l) => l.trim()).length > 3 && (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="mt-1 text-xs text-[#999] hover:text-[#666] transition-colors"
+          >
+            收起 ↑
+          </button>
+        )}
+      </div>
 
-  if (!activeCard && questionPanel) {
-    return (
-      <section className="rounded-[16px] border border-[#e8e8e4] bg-white p-4 text-[#202020] shadow-[0_18px_44px_rgba(20,20,18,0.08),0_2px_10px_rgba(20,20,18,0.05)]">
-        {questionPanel}
-      </section>
-    );
-  }
-
-  if (!activeCard) return null;
-
-  return (
-    <section className="rounded-[16px] border border-[#e8e8e4] bg-white p-5 text-[#202020] shadow-[0_18px_44px_rgba(20,20,18,0.08),0_2px_10px_rgba(20,20,18,0.05)]">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <div className="text-xs font-medium text-[#777]">Plan Mode</div>
-          <h3 className="text-lg font-bold">{activeCard.title}</h3>
+      {/* 步骤列表 */}
+      {steps && steps.length > 0 && (
+        <div className="px-4 pb-2">
+          <div className="rounded-lg border border-[#f0f0ee] bg-[#fafaf8] p-2.5">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-[#aaa]">计划步骤</span>
+              {totalCount > 0 && (
+                <span className="text-[10px] text-[#aaa]">
+                  {completedCount}/{totalCount}
+                </span>
+              )}
+            </div>
+            <ol className="m-0 list-none space-y-1.5 p-0">
+              {steps.map((step) => (
+                <li key={step.id} className="flex min-w-0 items-start gap-2 text-xs">
+                  {stepIcon(step.status)}
+                  <span
+                    className={`min-w-0 flex-1 truncate ${
+                      step.status === "completed"
+                        ? "text-[#999] line-through"
+                        : step.status === "running"
+                          ? "text-[#1a1a1a] font-medium"
+                          : "text-[#666]"
+                    }`}
+                    title={step.text}
+                  >
+                    {step.text}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
         </div>
-        <span className="inline-flex h-7 items-center rounded-full border border-[#dce9dd] bg-[#f4fbf5] px-2.5 text-xs font-semibold text-[#3c7b46]">已整理</span>
-      </div>
-      <div className="markdown-body max-w-none text-sm">
-        <MarkdownRenderer content={activeCard.content} />
-      </div>
+      )}
 
-      {questionPanel}
+      {/* 选项按钮区 */}
+      {isPending && hasOptions && (
+        <div className="px-4 pb-2" data-testid="plan-options">
+          <div className="flex flex-wrap gap-1.5">
+            {options.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                data-testid="plan-option"
+                aria-label={`选项 ${opt.label} ${opt.value}`}
+                onClick={() => setSelectedOption(opt.value)}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
+                  selectedOption === opt.value
+                    ? "border-[#1a1a1a] bg-[#1a1a1a] text-white"
+                    : "border-[#e2e2de] bg-white text-[#444] hover:bg-[#f7f7f7]"
+                }`}
+              >
+                <span className="font-medium">{opt.label}</span>
+                <span className="truncate max-w-[180px]">{opt.value}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
-      {decisionRequest && !isExtensionQuestion && (
-        <div className="mt-4 rounded-[15px] border border-[#e8e8e4] bg-white p-3.5">
-          <div className="mb-2 text-sm font-medium text-[#222]">要执行这个计划吗？</div>
-          <textarea
-            value={feedback}
-            onChange={(event) => setFeedback(event.target.value)}
-            placeholder="有补充就写在这里"
-            className="mb-3 min-h-[64px] w-full resize-none rounded-[10px] border border-[#e2e2de] px-3 py-2 text-sm focus:border-[#d6d6d1] focus:outline-none focus:ring-0 focus:shadow-[0_0_0_3px_rgba(36,36,35,0.045)] focus-visible:!outline-none focus-visible:!shadow-[0_0_0_3px_rgba(36,36,35,0.045)]"
-          />
-          <div className="flex flex-wrap justify-end gap-2">
+      {/* 操作区 */}
+      <div className="px-4 py-3 border-t border-[#f0f0ee] bg-[#fafaf8]">
+        {isPending && (
+          <div className="flex flex-col gap-2">
+            {/* 补充文本区 */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder={hasOptions ? "选好后可补充说明（可选）" : "有补充就写在这里"}
+                className="flex-1 rounded-lg border border-[#e2e2de] bg-white px-3 py-1.5 text-xs focus:border-[#d6d6d1] focus:outline-none focus:ring-0"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (feedback.trim()) {
+                      handleRefine();
+                    }
+                  }
+                }}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExecute}
+                className="h-8 rounded-full bg-[#242423] px-3 text-xs font-medium text-white hover:bg-[#111] disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={Boolean(hasOptions && !selectedOption)}
+              >
+                {hasOptions ? (selectedOption ? "确认并执行" : "请选择选项") : "执行计划"}
+              </button>
+              <button
+                type="button"
+                onClick={handleRefine}
+                disabled={!feedback.trim()}
+                className="h-8 rounded-full border border-[#e2e2de] bg-white px-3 text-xs font-medium text-[#333] hover:bg-[#f7f7f7] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                发送补充
+              </button>
+              <button
+                type="button"
+                onClick={onCancel}
+                className="h-8 rounded-full px-3 text-xs font-medium text-[#666] hover:bg-[#f3f3f3]"
+              >
+                取消
+              </button>
+              {hasOptions && !selectedOption && status !== "refining" && (
+                <span className="text-xs text-[#999]">先选一个选项再执行</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isExecuting && (
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setDecisionRequest(null)}
-              className="h-8 rounded-full px-3 text-xs font-medium text-[#555550] hover:bg-[#f3f3f3]"
+              onClick={onPause}
+              disabled={status === "pausing"}
+              className="h-8 rounded-full border border-[#e2e2de] bg-white px-3 text-xs font-medium text-[#333] hover:bg-[#f7f7f7] disabled:opacity-60"
             >
-              取消
+              {status === "pausing" ? "正在暂停..." : "暂停执行"}
             </button>
+            {totalCount > 0 && (
+              <span className="text-xs text-[#999]">
+                进度 {completedCount}/{totalCount}
+              </span>
+            )}
+          </div>
+        )}
+
+        {isPaused && (
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => void refine()}
-              className="h-8 rounded-full border border-[#e2e2de] bg-white px-3 text-xs font-medium text-[#333] hover:bg-[#f7f7f7]"
-            >
-              我有补充
-            </button>
-            <button
-              type="button"
-              onClick={() => void execute()}
+              onClick={onResume}
               className="h-8 rounded-full bg-[#242423] px-3 text-xs font-medium text-white hover:bg-[#111]"
             >
-              执行计划
+              继续执行
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="h-8 rounded-full px-3 text-xs font-medium text-[#666] hover:bg-[#f3f3f3]"
+            >
+              取消
             </button>
           </div>
-        </div>
-      )}
-    </section>
+        )}
+
+        {isTerminal && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[#999]">
+              {status === "executed" ? "计划已执行完毕" : status === "cancelled" ? "计划已取消" : "计划执行失败"}
+            </span>
+            {totalCount > 0 && (
+              <span className="text-xs text-[#999]">
+                完成 {completedCount}/{totalCount}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
-
-
