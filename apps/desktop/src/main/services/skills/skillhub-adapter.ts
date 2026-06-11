@@ -1,23 +1,16 @@
-// SkillHub adapter (M3 Task M3-1)
-// 包装 skillhub CLI, 给 Skills 面板用
-// 关键发现: `skillhub search <q> --json` 输出结构化 JSON
-// `skillhub list` 输出 plain text (一行一个 slug)
-// `skillhub install <slug>` 装到 ./skills/
-
+import {
+    searchSkills as builtinSearch,
+    listInstalled as builtinListInstalled,
+    installSkill as builtinInstall,
+    uninstallSkill as builtinUninstall,
+    checkSkillhubApi,
+    parseSearchOutput as builtinParseSearchOutput,
+    type SkillInfo,
+    type InstalledSkill,
+} from "./builtin-skillhub";
 import { execFile } from "child_process";
 
-export interface SkillInfo {
-    slug: string;
-    name: string;
-    description: string;
-    version: string;
-    source?: string;
-}
-
-export interface InstalledSkill {
-    slug: string;
-    enabled: boolean;
-}
+export type { SkillInfo, InstalledSkill };
 
 function skillhubEnv(): NodeJS.ProcessEnv {
     return {
@@ -28,92 +21,87 @@ function skillhubEnv(): NodeJS.ProcessEnv {
     };
 }
 
-interface SkillhubSearchPayload {
-    results?: Array<{
-        slug?: string;
-        name?: string;
-        description?: string;
-        version?: string;
-        source?: string;
-    }>;
-}
+export { builtinParseSearchOutput as parseSearchOutput };
 
-export function parseSearchOutput(stdout: string): SkillInfo[] {
-    let parsed: SkillhubSearchPayload;
+async function isCliAvailable(): Promise<boolean> {
     try {
-        parsed = JSON.parse(stdout) as SkillhubSearchPayload;
-    } catch (err) {
-        throw new Error(`skillhub search output is not valid JSON: ${(err as Error).message}`);
-    }
-    if (!parsed.results || !Array.isArray(parsed.results)) {
-        return [];
-    }
-    return parsed.results.map((r) => ({
-        slug: r.slug ?? "",
-        name: r.name ?? "",
-        description: r.description ?? "",
-        version: r.version ?? "0.0.0",
-        source: r.source,
-    }));
-}
-
-export async function searchSkills(query: string, limit = 20): Promise<SkillInfo[]> {
-    const args = ["search", query, "--json", "--search-limit", String(limit)];
-    try {
-        const { stdout } = await execFile("skillhub", args, {
-            timeout: 30_000,
-            env: skillhubEnv(),
-            windowsHide: true,
-        });
-        return parseSearchOutput(String(stdout ?? ""));
-    } catch (err) {
-        throw new Error(`skillhub search failed: ${(err as Error).message}`);
-    }
-}
-
-export async function listInstalled(): Promise<string[]> {
-    try {
-        const { stdout } = await execFile("skillhub", ["list"], {
-            timeout: 10_000,
-            env: skillhubEnv(),
-            windowsHide: true,
-        });
-        const trimmed = String(stdout ?? "").trim();
-        if (!trimmed || trimmed.startsWith("No installed")) return [];
-        return trimmed.split("\n").map((s: string) => s.trim()).filter(Boolean);
-    } catch (err) {
-        throw new Error(`skillhub list failed: ${(err as Error).message}`);
-    }
-}
-
-export async function installSkill(slug: string, cwd: string = process.cwd()): Promise<void> {
-    try {
-        await execFile("skillhub", ["install", slug, "--dir", "skills"], {
-            timeout: 60_000,
-            cwd,
-            env: skillhubEnv(),
-            windowsHide: true,
-        });
-    } catch (err) {
-        throw new Error(`skillhub install failed for "${slug}": ${(err as Error).message}`);
-    }
-}
-
-export async function uninstallSkill(slug: string, cwd: string = process.cwd()): Promise<void> {
-    const { rm } = await import("fs/promises");
-    const { join } = await import("path");
-    await rm(join(cwd, "skills", slug), { recursive: true, force: true });
-}
-
-export async function checkSkillhubInstalled(): Promise<boolean> {
-    try {
-        await execFile("skillhub", ["--version"], {
-            timeout: 5000,
-            env: skillhubEnv(),
-            windowsHide: true,
+        await new Promise<void>((resolve, reject) => {
+            execFile("skillhub", ["--version"], { timeout: 5000, env: skillhubEnv() }, (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
         });
         return true;
     } catch {
         return false;
     }
+}
+
+let useCli: boolean | null = null;
+
+async function shouldUseCli(): Promise<boolean> {
+    if (useCli !== null) return useCli;
+    useCli = await isCliAvailable();
+    return useCli;
+}
+
+export async function searchSkills(query: string, limit = 20): Promise<SkillInfo[]> {
+    if (await shouldUseCli()) {
+        return new Promise((resolve, reject) => {
+            execFile("skillhub", ["search", query, "--json", "--search-limit", String(limit)], {
+                timeout: 30_000,
+                env: skillhubEnv(),
+                windowsHide: true,
+            }, (err, stdout) => {
+                if (err) reject(new Error(`skillhub search failed: ${err.message}`));
+                else resolve(builtinParseSearchOutput(String(stdout ?? "")));
+            });
+        });
+    }
+    return builtinSearch(query, limit);
+}
+
+export async function listInstalled(workspacePath?: string): Promise<string[]> {
+    if (await shouldUseCli()) {
+        return new Promise((resolve, reject) => {
+            execFile("skillhub", ["list"], {
+                timeout: 10_000,
+                env: skillhubEnv(),
+                windowsHide: true,
+            }, (err, stdout) => {
+                if (err) reject(new Error(`skillhub list failed: ${err.message}`));
+                else {
+                    const trimmed = String(stdout ?? "").trim();
+                    resolve(!trimmed || trimmed.startsWith("No installed") ? [] : trimmed.split("\n").map((s) => s.trim()).filter(Boolean));
+                }
+            });
+        });
+    }
+    return builtinListInstalled(workspacePath ?? process.cwd());
+}
+
+export async function installSkill(slug: string, cwd: string = process.cwd()): Promise<void> {
+    if (await shouldUseCli()) {
+        return new Promise((resolve, reject) => {
+            execFile("skillhub", ["install", slug, "--dir", "skills"], {
+                timeout: 60_000,
+                cwd,
+                env: skillhubEnv(),
+                windowsHide: true,
+            }, (err) => {
+                if (err) reject(new Error(`skillhub install failed for "${slug}": ${err.message}`));
+                else resolve();
+            });
+        });
+    }
+    return builtinInstall(slug, cwd);
+}
+
+export async function uninstallSkill(slug: string, cwd: string = process.cwd()): Promise<void> {
+    return builtinUninstall(slug, cwd);
+}
+
+export async function checkSkillhubInstalled(): Promise<boolean> {
+    if (await shouldUseCli()) return true;
+    return checkSkillhubApi();
 }
