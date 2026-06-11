@@ -1,7 +1,7 @@
-// Terminal IPC (M4 Task M4-1)
-// 包装 PtyManager, 暴露给 renderer
-// 重构老的 terminal:* IPC, 用 node-pty 替代 child_process.spawn
-// v1.0.6.1: 错误返 IpcError (code/params/fallback)
+// Terminal IPC
+// Wraps PtyManager, exposed to renderer
+// Uses node-pty instead of child_process.spawn
+// Errors return IpcError (code/params/fallback)
 
 import { ipcMain, BrowserWindow } from "electron";
 import log from "electron-log/main";

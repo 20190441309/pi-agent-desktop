@@ -1,7 +1,6 @@
-// PtyManager (M4 Task M4-1)
-// node-pty 真 PTY 管理, 替代老的 child_process.spawn 模式
-// 修复: resize / TUI 应用支持
-// v1.0.6: console 换 electron-log
+// PtyManager
+// Real PTY management via node-pty (replaces child_process.spawn)
+// Supports resize, TUI apps, and ANSI colors
 
 import { IPty } from "node-pty";
 import { homedir, platform } from "os";
@@ -81,12 +80,14 @@ export class PtyManager {
         const cols = opts.cols ?? 80;
         const rows = opts.rows ?? 24;
 
+        // 过滤敏感环境变量，防止泄露到子进程
+        const { ELECTRON_RUN_AS_NODE, ELECTRON_NO_ASAR, NODE_OPTIONS, ...safeEnv } = process.env;
         const pty = ptyModule.spawn(name, args, {
             name: "xterm-256color",
             cols,
             rows,
             cwd,
-            env: { ...process.env, ...(opts.env ?? {}) } as Record<string, string>,
+            env: { ...safeEnv, ...(opts.env ?? {}) } as Record<string, string>,
         });
 
         const entry: PtyEntry = {

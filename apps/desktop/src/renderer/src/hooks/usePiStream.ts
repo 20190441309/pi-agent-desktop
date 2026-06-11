@@ -8,7 +8,7 @@
 // 4. tool_execution_start 转发给 approval-store (M1 高危拦截)
 // 5. 暴露 startStreaming / stopStreaming 给 UI
 //
-// 2026-06-06 hotfix (T6): 流式消息持久化走 debounce + flush
+// Persistence: debounce + flush
 //  - text_delta / thinking_delta / toolcall_* 事件不再每次都 fire-and-forget IPC
 //  - 累积到一个 ref, 500ms debounce, 调 window.piAPI.updateMessage 一次
 //  - turn_end / agent_end 强制 flush
@@ -277,7 +277,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const agentIdRef = useRef<string | null>(null);
     const isTurnActiveRef = useRef(false);
 
-    // 2026-06-06 hotfix (T6): debounce + flush 机制
+    // Debounce + flush mechanism
     //   - streamPersistRef 累积待 flush 的内容
     //   - flushTimerRef 持有 setTimeout id
     //   - 任何流式事件(text_delta/thinking_delta/toolcall_*)更新 ref + 重置 timer
@@ -291,7 +291,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     };
     const streamPersistRef = useRef<StreamPersistAccum | null>(null);
     const flushTimerRef = useRef<number | null>(null);
-    // 2026-06-06 hotfix (T6): 5s hard timeout 防 debounce 卡住
+    // 5s hard timeout safety net for debounce
     const STREAM_FLUSH_DEBOUNCE_MS = 500;
     const STREAM_FLUSH_HARD_TIMEOUT_MS = 5000;
     const lastStreamEventAtRef = useRef<number | null>(null);
@@ -352,7 +352,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         }, STREAM_FLUSH_DEBOUNCE_MS);
     }, [flushStreamPersist]);
 
-    // 2026-06-06 hotfix (T6): hard timeout — 5s 内没新事件就强制 flush,防止 debounce 卡住
+    // Force flush if no event for 5s (prevents debounce stall)
     useEffect(() => {
         const id = window.setInterval(() => {
             const last = lastStreamEventAtRef.current;
@@ -399,7 +399,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         const newId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         messageIdRef.current = newId;
         setStreamingMessageId(newId);
-        // 2026-06-06 hotfix (T6): 持久化空 assistant message(只在创建时一次,低频)
+        // Persist empty assistant message (once on creation, low frequency)
         addMessage(session.id, {
             id: newId,
             role: "assistant",
@@ -469,14 +469,14 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     }, []);
 
     // ── 连接状态 ────────────────────────────────────────────────────────────
-    // v1.0.17: 初次检测 + 每 30 秒心跳重检，断了自动设为 false
+    // Connection status: initial check + 30s heartbeat, auto-disconnect on error
     useEffect(() => {
         if (!window.piAPI) return;
 
         const check = (): void => {
             void window.piAPI.getStatus()
                 .then((s) => {
-                    // v1.0.8: getStatus 可能返 IpcError, 此时 Pi 未就绪 → not connected
+                    // getStatus may return IpcError when Pi is not ready
                     if (isIpcError(s)) setIsConnected(false);
                     else setIsConnected(s.installed);
                 })
@@ -555,7 +555,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                             content: textRef.current,
                         });
                     } else if (sessionIdRef.current && messageIdRef.current) {
-                        // 2026-06-06 hotfix (T6): 内存立即更新(给 UI 看到), 持久化走 debounce
+                        // In-memory update (for UI), persistence via debounce
                         updateMessage(sessionIdRef.current, messageIdRef.current, { content: textRef.current }, { persist: false });
                         if (!streamPersistRef.current ||
                             streamPersistRef.current.sessionId !== sessionIdRef.current ||
@@ -773,7 +773,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     }
                     usePlanStore.getState().applyDoneMarkers(textRef.current);
                 }
-                // 2026-06-06 hotfix (T6): 强制 flush 累积的 content/thinking/toolCalls
+                // Force flush accumulated content/thinking/toolCalls
                 // 在 turn_end 这一刻把整个 assistant message 落盘一次
                 flushStreamPersist();
                 isTurnActiveRef.current = false;
@@ -828,7 +828,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 ) {
                     setError("Pi 本轮没有返回内容，请检查模型/API Key 配置后重试。");
                 }
-                // 2026-06-06 hotfix (T6): 兜底 flush(防止 turn_end 没触发的情况)
+                // Safety flush (in case turn_end doesn't fire)
                 flushStreamPersist();
                 setIsStreaming(false);
                 isStreamingRef.current = false;
@@ -839,7 +839,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 if (usePlanStore.getState().activeExecution?.phase === "executing") {
                     usePlanStore.getState().markCompleted();
                 }
-                // v1.0.17: 通知 useTaskProgress agent 结束
+                // Notify useTaskProgress: agent ended
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 // 声音和系统通知
                 playCompleteSound();
@@ -933,7 +933,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         setCurrentThinking("");
         setToolCalls(new Map());
 
-        // v1.0.17: 通知 useTaskProgress 流式开始
+        // Notify useTaskProgress: streaming started
         window.dispatchEvent(new CustomEvent("pi:stream-start"));
 
         // Agent workbench messages are owned by AgentRuntimeRegistry; legacy chats
@@ -1049,7 +1049,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             if (isExecutePlanCommand(content)) {
                 usePlanStore.getState().markFailed();
             }
-            // v1.0.17: 通知 useTaskProgress 流式异常结束
+            // Notify useTaskProgress: streaming error
             window.dispatchEvent(new CustomEvent("pi:stream-end"));
         }
     }, [getCurrentSession, addMessage, appendAgentMessage, pauseVisibleStreamingForPlanDecision]);
@@ -1082,7 +1082,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         if (usePlanStore.getState().activeExecution?.phase === "pausing" || usePlanStore.getState().activeExecution?.phase === "executing") {
             usePlanStore.getState().markPaused();
         }
-        // v1.0.17: 通知 useTaskProgress 流式结束
+        // Notify useTaskProgress: streaming ended
         window.dispatchEvent(new CustomEvent("pi:stream-end"));
     }, []);
 

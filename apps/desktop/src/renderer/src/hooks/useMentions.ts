@@ -1,6 +1,4 @@
-// useMentions — 检测 @ 文件引用并模糊匹配文件列表
-// v1.0: 只跟踪 activeMention 状态
-// v1.1: 接入 filesList IPC 搜索 + 候选列表 + 高亮键盘导航
+// useMentions: detect @ file references and fuzzy-match file list
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { findActiveMention, resolveMention, type MentionMatch } from "../utils/mention-parser";

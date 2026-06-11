@@ -1,7 +1,6 @@
-// 主进程侧 session 持久化模块
-// 2026-06-06 hotfix: 把 sessions 数组的所有读写操作集中,加入 async mutex
-// 串行化避免 text_delta 高频 + turn_end 收尾并发的 race,加 messages 字段
-// 持久化支持
+// Session persistence module (main process)
+// Centralizes all session read/write with async mutex
+// Prevents race conditions from high-frequency text_delta + turn_end concurrency
 //
 // 设计:
 //  - 所有写操作走 withLock 串行化(electron-store 全量写不是原子的)

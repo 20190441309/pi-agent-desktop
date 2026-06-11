@@ -110,9 +110,9 @@ export const terminalResizeSchema = z.tuple([
     z.number().int().min(4).max(200),
 ]);
 
-// ── 2026-06-06 hotfix: session messages persistence ──────────────────
-// 4 个原有 session handler 的 schema 已经在上面 gitAddSchema 等里隐式覆盖
-// (只是 string[] / string),不重复定义。下面是 3 个新增的 messages 持久化 schema。
+// ── Session messages persistence schemas ──────────────────
+// Session CRUD schemas are defined above (string[]/string).
+// Below are the 3 message persistence schemas.
 
 // session:append-message — (sessionId: string, message: object)
 export const appendMessageSchema = z.tuple([

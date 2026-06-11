@@ -1,7 +1,6 @@
-// Files IPC (M2 Task M2-1)
-// 文件搜索 IPC, 给 @ 引用和 CommandPalette 用
-// v1.0.6: console 换 electron-log
-// v1.0.6.1: 错误返 IpcError (code/params/fallback), 渲染层 t() 翻译
+// Files IPC
+// File search for @ references and CommandPalette
+// Errors return IpcError (code/params/fallback)
 
 import { ipcMain } from "electron";
 import log from "electron-log/main";
@@ -155,7 +154,8 @@ export function setupFilesIpc(): void {
             }
             const q = query.toLowerCase();
             const limit = Math.max(1, Math.min(options?.limit ?? 80, 200));
-            return scanFiles(workspacePath)
+            const files = await scanFiles(workspacePath);
+            return files
                 .filter((f) => f.toLowerCase().includes(q))
                 .slice(0, limit)
                 .map(toFileEntry);
@@ -185,7 +185,7 @@ export function setupFilesIpc(): void {
             if (reason) {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: workspacePath });
             }
-            const files = scanFiles(workspacePath);
+            const files = await scanFiles(workspacePath);
             if (!query) return files.slice(0, 100).map(toFileEntry);
             const q = query.toLowerCase();
             return files.filter((f) => f.toLowerCase().includes(q)).slice(0, 50).map(toFileEntry);

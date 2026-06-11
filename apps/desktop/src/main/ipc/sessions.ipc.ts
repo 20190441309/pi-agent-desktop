@@ -1,6 +1,6 @@
-// 2026-06-06 hotfix: session messages persistence IPC
-// 4 个原有 session handler (list/create/rename/delete) + 3 个新增 (append/update/update-tool-call)
-// 全部走 zod 校验,失败返 IpcError;写入走 services/session-store 提供的 async-mutex 串行化
+// Session messages persistence IPC
+// 4 session handlers (list/create/rename/delete) + 3 message handlers (append/update/update-tool-call)
+// All args zod-validated, errors return IpcError; writes serialized via async mutex in session-store
 //
 // 设计:
 //  - 把现有 index.ts 里 4 个 session handler 重构过来,保持 channel 名不变(向后兼容)

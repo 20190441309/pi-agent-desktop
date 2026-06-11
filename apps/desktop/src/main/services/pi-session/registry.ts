@@ -1,8 +1,7 @@
-// WorkspaceRegistry (M1 Task 6, v1.0.1 refactor)
-// 多 workspace 编排: workspaceId -> AgentSession 映射
-// 每次 get() 复用 session; 首次创建时 lazy-init bridge + interceptor + 订阅一次
-// (修复 v1.0 之前的订阅泄漏: 每次 pi:send 都新建 + 订阅, 永不取消)
-// v1.0.5: event 类型用 @shared/events PiEvent, 去掉 as any
+// WorkspaceRegistry
+// Multi-workspace orchestration: workspaceId -> AgentSession mapping
+// get() reuses sessions; lazy-inits bridge + interceptor + subscriptions on first call
+// Event types use @shared/events PiEvent (no 'as any')
 
 import { createWorkspaceSession, type WorkspaceSession } from "./factory";
 import { createEventBridge, type IpcSender } from "./event-bridge";

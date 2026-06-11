@@ -1,7 +1,7 @@
-// Approval Interceptor (M1 Task 7)
-// 拦截 session 事件, 决定要不要发审批, 拒绝时调 session.abort()
-// 已知限制: abort 杀整个 turn, 不能单工具. M3+ 可升级为真 Pi 扩展.
-// v1.0.5: event 类型用 @shared/events PiEvent (之前是 :any)
+// Approval Interceptor
+// Intercepts session events, decides whether to show approval, calls session.abort() on reject
+// Known limitation: abort kills entire turn (not single tool). Future: Pi extension for per-tool control
+// Event types use @shared/events PiEvent
 
 import { classifyToolCall } from "./classifier";
 import { readFile } from "fs/promises";

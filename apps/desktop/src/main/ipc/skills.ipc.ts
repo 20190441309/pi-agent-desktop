@@ -1,6 +1,6 @@
-// Skills IPC (M3 Task M3-2)
-// 包装 SkillHub adapter, 暴露给 renderer
-// v1.0.6.1: 错误返 IpcError (code/params/fallback)
+// Skills IPC
+// Wraps SkillHub adapter, exposed to renderer
+// Errors return IpcError (code/params/fallback)
 
 import { ipcMain } from "electron";
 import log from "electron-log/main";
@@ -67,7 +67,8 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
 
     ipcMain.handle("skills:installed", async () => {
         try {
-            const slugs = await listInstalled();
+            const workspacePath = deps.getWorkspacePath();
+            const slugs = await listInstalled(workspacePath);
             const state = loadState(deps.getStateFile());
             return slugs.map((slug) => ({
                 slug,
@@ -111,6 +112,14 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
                 "请先选择工作区再卸载技能",
             );
         }
+        // 安全校验: slug 只允许字母、数字、连字符和下划线，防止路径遍历
+        if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
+            return ipcError(
+                "ipcErrors.skills.invalidSlug",
+                `技能标识无效: ${slug}，只允许字母、数字、连字符和下划线`,
+                { slug },
+            );
+        }
         try {
             await uninstallSkill(slug, cwd);
             return { success: true };
@@ -151,6 +160,17 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
             return ipcError(
                 "ipcErrors.skills.noWorkspace",
                 "请先选择工作区再导入技能",
+            );
+        }
+
+        // 安全校验: repoUrl 必须是合法的 https:// 或 git@ 地址，防止 git 参数注入
+        const isValidUrl = /^https:\/\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=-]+$/.test(repoUrl) ||
+            /^git@[a-zA-Z0-9._-]+:[a-zA-Z0-9._~/-]+\.git$/.test(repoUrl);
+        if (!isValidUrl) {
+            return ipcError(
+                "ipcErrors.skills.invalidUrl",
+                `无效的仓库地址: ${repoUrl}，只支持 https:// 或 git@ 格式`,
+                { url: repoUrl },
             );
         }
 

@@ -1,7 +1,6 @@
-// Chat IPC Handler (M1 Task 9)
-// 替换老的 pi:prompt / pi:stop 一次性 spawn 模式
-// 走 AgentSession 长连接 + ApprovalInterceptor + EventBridge
-// v1.0.6.1: 错误返 IpcError (code/params/fallback), 不再 throw 中文
+// Chat IPC Handler
+// AgentSession long-lived connection + ApprovalInterceptor + EventBridge
+// Errors return IpcError (code/params/fallback), no thrown exceptions
 
 import { ipcMain, BrowserWindow, type BrowserWindow as BrowserWindowType } from "electron";
 import { execFileSync } from "child_process";

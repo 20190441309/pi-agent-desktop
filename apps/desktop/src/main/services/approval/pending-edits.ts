@@ -1,7 +1,7 @@
-// PendingEdits (M1 Task 4)
-// 跟踪 file_edit 类工具的改动, 工具执行完后给用户看 diff
-// 用于 ApprovalPanel 的 EditReviewList
-// v1.1: 加 autoApprove 标志, interceptor 检查此标志决定是否跳过审批弹窗
+// PendingEdits
+// Tracks file_edit tool changes, shows diff to user after execution
+// Used by ApprovalPanel's EditReviewList
+// Supports autoApprove flag (interceptor skips approval dialog when set)
 
 export interface TrackedEdit {
     id: string;
