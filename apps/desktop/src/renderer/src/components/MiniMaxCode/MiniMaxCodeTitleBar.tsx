@@ -65,11 +65,11 @@ export function MiniMaxCodeTitleBar({
     const leftPad = isMac ? MAC_TRAFFIC_LIGHT_RESERVE : 10;
     const statusColor =
         statusTone === "ready"
-            ? "bg-[#16a34a]"
+            ? "bg-[var(--color-success)]"
             : statusTone === "busy"
                 ? "bg-[#f59e0b]"
                 : statusTone === "error"
-                    ? "bg-[#dc2626]"
+                    ? "bg-[var(--color-error)]"
                     : "bg-[var(--mm-text-tertiary)]";
 
     return (

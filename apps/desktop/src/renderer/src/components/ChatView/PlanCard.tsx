@@ -65,15 +65,15 @@ function statusBadgeClass(status: PlanCardStatus): string {
     case "pausing":
       return "bg-[#fef3c7] text-[#92400e] border-[#fde68a]";
     case "executed":
-      return "bg-[#dcfce7] text-[#166534] border-[#bbf7d0]";
+      return "bg-[#dcfce7] text-[var(--color-success)] border-[#bbf7d0]";
     case "failed":
     case "cancelled":
-      return "bg-[#fee2e2] text-[#991b1b] border-[#fecaca]";
+      return "bg-[#fee2e2] text-[var(--color-error)] border-[#fecaca]";
     case "paused":
     case "refining":
-      return "bg-[#f3f4f6] text-[#4b5563] border-[#e5e7eb]";
+      return "bg-[#f3f4f6] text-[var(--mm-text-secondary)] border-[#e5e7eb]";
     default:
-      return "bg-[#eef8ef] text-[#2f6b38] border-[#d8e7d9]";
+      return "bg-[#eef8ef] text-[var(--color-success)] border-[#d8e7d9]";
   }
 }
 
@@ -81,7 +81,7 @@ function stepIcon(status: PlanStepItem["status"]): React.ReactNode {
   switch (status) {
     case "completed":
       return (
-        <svg className="h-3.5 w-3.5 shrink-0 text-[#16a34a]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+        <svg className="h-3.5 w-3.5 shrink-0 text-[var(--color-success)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
         </svg>
       );
@@ -91,17 +91,17 @@ function stepIcon(status: PlanStepItem["status"]): React.ReactNode {
       );
     case "failed":
       return (
-        <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-[#dc2626] text-[10px] text-white leading-none" aria-hidden>
+        <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-[var(--color-error)] text-[10px] text-white leading-none" aria-hidden>
           !
         </span>
       );
     case "waiting":
       return (
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-[#d6d6d6] bg-white" aria-hidden />
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)]" aria-hidden />
       );
     default:
       return (
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-[#d6d6d6] bg-white" aria-hidden />
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)]" aria-hidden />
       );
   }
 }
@@ -209,7 +209,7 @@ export function PlanCard({
 
   return (
     <div
-      className={`mt-3 rounded-xl border border-[#e8e8e4] bg-white overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
+      className={`mt-3 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
         isExecuting ? "animate-pulse-subtle" : ""
       }`}
       data-testid="plan-card"
@@ -223,7 +223,7 @@ export function PlanCard({
           >
             {statusLabel(status)}{progressText}
           </span>
-          <span className="truncate text-xs text-[#777]" title={title}>
+          <span className="truncate text-xs text-[var(--mm-text-tertiary)]" title={title}>
             {title}
           </span>
         </div>
@@ -231,7 +231,7 @@ export function PlanCard({
           <button
             type="button"
             onClick={openPlanFile}
-            className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[#e2e2de] bg-[#fafafa] px-2 py-0.5 text-[10px] text-[#666] hover:bg-[#f3f3f3] transition-colors"
+            className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-0.5 text-[10px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] transition-colors"
             title={filename}
           >
             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
@@ -249,13 +249,13 @@ export function PlanCard({
             <MarkdownRenderer content={content} />
           </div>
         ) : (
-          <div className="text-sm leading-relaxed text-[#444]">
+          <div className="text-sm leading-relaxed text-[var(--mm-text-secondary)]">
             <div className="whitespace-pre-wrap">{planSummary(content)}</div>
             {content.split(/\r?\n/).filter((l) => l.trim()).length > 3 && (
               <button
                 type="button"
                 onClick={() => setExpanded(true)}
-                className="mt-1 text-xs text-[#999] hover:text-[#666] transition-colors"
+                className="mt-1 text-xs text-[var(--mm-text-tertiary)] hover:text-[var(--mm-text-secondary)] transition-colors"
               >
                 展开计划详情 ↓
               </button>
@@ -266,7 +266,7 @@ export function PlanCard({
           <button
             type="button"
             onClick={() => setExpanded(false)}
-            className="mt-1 text-xs text-[#999] hover:text-[#666] transition-colors"
+            className="mt-1 text-xs text-[var(--mm-text-tertiary)] hover:text-[var(--mm-text-secondary)] transition-colors"
           >
             收起 ↑
           </button>
@@ -276,7 +276,7 @@ export function PlanCard({
       {/* 步骤列表 */}
       {steps && steps.length > 0 && (
         <div className="px-4 pb-2">
-          <div className="rounded-lg border border-[#f0f0ee] bg-[#fafaf8] p-2.5">
+          <div className="rounded-lg border border-[#f0f0ee] bg-[var(--mm-bg-panel)] p-2.5">
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[10px] font-medium uppercase tracking-wider text-[#aaa]">计划步骤</span>
               {totalCount > 0 && (
@@ -292,10 +292,10 @@ export function PlanCard({
                   <span
                     className={`min-w-0 flex-1 truncate ${
                       step.status === "completed"
-                        ? "text-[#999] line-through"
+                        ? "text-[var(--mm-text-tertiary)] line-through"
                         : step.status === "running"
-                          ? "text-[#1a1a1a] font-medium"
-                          : "text-[#666]"
+                          ? "text-[var(--mm-text-primary)] font-medium"
+                          : "text-[var(--mm-text-secondary)]"
                     }`}
                     title={step.text}
                   >
@@ -322,7 +322,7 @@ export function PlanCard({
                 className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
                   selectedOption === opt.value
                     ? "border-[#1a1a1a] bg-[#1a1a1a] text-white"
-                    : "border-[#e2e2de] bg-white text-[#444] hover:bg-[#f7f7f7]"
+                    : "border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                 }`}
               >
                 <span className="font-medium">{opt.label}</span>
@@ -334,7 +334,7 @@ export function PlanCard({
       )}
 
       {/* 操作区 */}
-      <div className="px-4 py-3 border-t border-[#f0f0ee] bg-[#fafaf8]">
+      <div className="px-4 py-3 border-t border-[#f0f0ee] bg-[var(--mm-bg-panel)]">
         {isPending && (
           <div className="flex flex-col gap-2">
             {/* 补充文本区 */}
@@ -344,7 +344,7 @@ export function PlanCard({
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 placeholder={hasOptions ? "选好后可补充说明（可选）" : "有补充就写在这里"}
-                className="flex-1 rounded-lg border border-[#e2e2de] bg-white px-3 py-1.5 text-xs focus:border-[#d6d6d1] focus:outline-none focus:ring-0"
+                className="flex-1 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-1.5 text-xs focus:border-[#d6d6d1] focus:outline-none focus:ring-0"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -368,19 +368,19 @@ export function PlanCard({
                 type="button"
                 onClick={handleRefine}
                 disabled={!feedback.trim()}
-                className="h-8 rounded-full border border-[#e2e2de] bg-white px-3 text-xs font-medium text-[#333] hover:bg-[#f7f7f7] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-8 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 发送补充
               </button>
               <button
                 type="button"
                 onClick={onCancel}
-                className="h-8 rounded-full px-3 text-xs font-medium text-[#666] hover:bg-[#f3f3f3]"
+                className="h-8 rounded-full px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
               >
                 取消
               </button>
               {hasOptions && !selectedOption && status !== "refining" && (
-                <span className="text-xs text-[#999]">先选一个选项再执行</span>
+                <span className="text-xs text-[var(--mm-text-tertiary)]">先选一个选项再执行</span>
               )}
             </div>
           </div>
@@ -392,12 +392,12 @@ export function PlanCard({
               type="button"
               onClick={onPause}
               disabled={status === "pausing"}
-              className="h-8 rounded-full border border-[#e2e2de] bg-white px-3 text-xs font-medium text-[#333] hover:bg-[#f7f7f7] disabled:opacity-60"
+              className="h-8 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-60"
             >
               {status === "pausing" ? "正在暂停..." : "暂停执行"}
             </button>
             {totalCount > 0 && (
-              <span className="text-xs text-[#999]">
+              <span className="text-xs text-[var(--mm-text-tertiary)]">
                 进度 {completedCount}/{totalCount}
               </span>
             )}
@@ -416,7 +416,7 @@ export function PlanCard({
             <button
               type="button"
               onClick={onCancel}
-              className="h-8 rounded-full px-3 text-xs font-medium text-[#666] hover:bg-[#f3f3f3]"
+              className="h-8 rounded-full px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
             >
               取消
             </button>
@@ -425,11 +425,11 @@ export function PlanCard({
 
         {isTerminal && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-[#999]">
+            <span className="text-xs text-[var(--mm-text-tertiary)]">
               {status === "executed" ? "计划已执行完毕" : status === "cancelled" ? "计划已取消" : "计划执行失败"}
             </span>
             {totalCount > 0 && (
-              <span className="text-xs text-[#999]">
+              <span className="text-xs text-[var(--mm-text-tertiary)]">
                 完成 {completedCount}/{totalCount}
               </span>
             )}

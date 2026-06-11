@@ -75,14 +75,14 @@ export function PiPackagesMarketplace(): React.JSX.Element {
   return (
     <div className="p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="min-w-0 text-xs text-[#777]">
+        <div className="min-w-0 text-xs text-[var(--mm-text-tertiary)]">
           Pi 插件目录
         </div>
         <button
           type="button"
           onClick={() => void refreshCatalog()}
           disabled={loading || Boolean(actionSource)}
-          className="rounded-md border border-[#e5e5e5] px-2 py-1 text-xs text-[#666] hover:bg-[#f5f5f5] disabled:opacity-50"
+          className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50"
         >
           {loading ? "刷新中..." : "刷新目录"}
         </button>
@@ -118,15 +118,15 @@ export function PiPackagesMarketplace(): React.JSX.Element {
         </div>
       )}
       {lastAction && (
-        <div className="mb-4 rounded-lg border border-[#dbe8d0] bg-[#f5fbf0] px-3 py-2 text-sm text-[#315f24]" role="status">
+        <div className="mb-4 rounded-lg border border-[#dbe8d0] bg-[#f5fbf0] px-3 py-2 text-sm text-[var(--color-success)]" role="status">
           {lastAction.message}{lastAction.requiresRestart ? "。新 Pi 会话或重启当前会话后生效。" : ""}
         </div>
       )}
 
       {loading ? (
-        <div className="py-8 text-center text-sm text-[#999]" role="status">加载 Pi 插件市场...</div>
+        <div className="py-8 text-center text-sm text-[var(--mm-text-tertiary)]" role="status">加载 Pi 插件市场...</div>
       ) : visible.length === 0 ? (
-        <div className="py-10 text-center text-sm text-[#999]" role="status">
+        <div className="py-10 text-center text-sm text-[var(--mm-text-tertiary)]" role="status">
           {query ? "没有找到匹配的 Pi 插件" : "Pi 插件市场暂时不可用，可打开 pi.dev/packages 查看"}
         </div>
       ) : (
@@ -135,17 +135,17 @@ export function PiPackagesMarketplace(): React.JSX.Element {
             const installedNow = pkg.installed || installedSources.has(pkg.source);
             const busy = actionSource === pkg.source;
             return (
-              <article key={pkg.source} className="flex min-h-[168px] flex-col rounded-lg border border-[#e5e5e5] bg-white p-3">
+              <article key={pkg.source} className="flex min-h-[168px] flex-col rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3">
                 <div className="mb-2 flex items-start justify-between gap-2">
-                  <h3 className="min-w-0 truncate text-sm font-medium text-[#1a1a1a]" title={pkg.name}>{pkg.name}</h3>
-                  <span className="shrink-0 rounded bg-[#f5f5f5] px-1.5 py-0.5 text-[10px] text-[#777]">Pi</span>
+                  <h3 className="min-w-0 truncate text-sm font-medium text-[var(--mm-text-primary)]" title={pkg.name}>{pkg.name}</h3>
+                  <span className="shrink-0 rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">Pi</span>
                 </div>
-                <p className="line-clamp-3 flex-1 text-xs leading-5 text-[#666]">{pkg.description || "暂无描述"}</p>
+                <p className="line-clamp-3 flex-1 text-xs leading-5 text-[var(--mm-text-secondary)]">{pkg.description || "暂无描述"}</p>
                 <div className="mt-3 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => window.open(pkg.url, "_blank")}
-                    className="rounded px-2 py-1 text-xs text-[#666] hover:bg-[#f5f5f5]"
+                    className="rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
                     详情
                   </button>
@@ -180,27 +180,27 @@ export function PiPackagesMarketplace(): React.JSX.Element {
 
       {pendingInstall && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-[440px] rounded-2xl border border-[#e5e5e5] bg-white p-5 shadow-2xl" role="dialog" aria-modal="true" aria-label="确认安装 Pi 插件">
-            <h3 className="text-base font-semibold text-[#1a1a1a]">安装 Pi 插件</h3>
-            <p className="mt-2 text-sm leading-6 text-[#666]">
-              将全局安装 <span className="font-mono text-[#1a1a1a]">{pendingInstall.source}</span>。插件可能提供 extension、skill、prompt template 或 theme，并影响 Pi agent 的行为。
+          <div className="w-[440px] rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-5 shadow-2xl" role="dialog" aria-modal="true" aria-label="确认安装 Pi 插件">
+            <h3 className="text-base font-semibold text-[var(--mm-text-primary)]">安装 Pi 插件</h3>
+            <p className="mt-2 text-sm leading-6 text-[var(--mm-text-secondary)]">
+              将全局安装 <span className="font-mono text-[var(--mm-text-primary)]">{pendingInstall.source}</span>。插件可能提供 extension、skill、prompt template 或 theme，并影响 Pi agent 的行为。
             </p>
             {pendingTrust && (
-              <dl className="mt-3 grid grid-cols-[88px_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-lg border border-[#eeeeea] bg-[#fbfbfa] px-3 py-3 text-xs">
-                <dt className="text-[#999]">协议</dt>
-                <dd className="m-0 font-mono text-[#333]">{pendingTrust.protocol}</dd>
-                <dt className="text-[#999]">目标</dt>
-                <dd className="m-0 min-w-0 truncate font-mono text-[#333]" title={pendingTrust.target}>{pendingTrust.target}</dd>
-                <dt className="text-[#999]">信任提示</dt>
+              <dl className="mt-3 grid grid-cols-[88px_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-3 text-xs">
+                <dt className="text-[var(--mm-text-tertiary)]">协议</dt>
+                <dd className="m-0 font-mono text-[var(--mm-text-secondary)]">{pendingTrust.protocol}</dd>
+                <dt className="text-[var(--mm-text-tertiary)]">目标</dt>
+                <dd className="m-0 min-w-0 truncate font-mono text-[var(--mm-text-secondary)]" title={pendingTrust.target}>{pendingTrust.target}</dd>
+                <dt className="text-[var(--mm-text-tertiary)]">信任提示</dt>
                 <dd className="m-0 leading-5 text-[#7c2d12]">{pendingTrust.risk}</dd>
               </dl>
             )}
-            <p className="mt-2 text-xs leading-5 text-[#999]">安装后需要新 Pi 会话或重启当前会话才会生效。</p>
+            <p className="mt-2 text-xs leading-5 text-[var(--mm-text-tertiary)]">安装后需要新 Pi 会话或重启当前会话才会生效。</p>
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setPendingInstall(null)}
-                className="rounded-lg px-3 py-1.5 text-sm text-[#666] hover:bg-[#f5f5f5]"
+                className="rounded-lg px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
               >
                 取消
               </button>

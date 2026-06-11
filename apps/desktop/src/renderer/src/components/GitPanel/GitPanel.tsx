@@ -25,10 +25,10 @@ interface CommitSummary {
 
 function badge(kind: ChangeKind): { label: string; className: string } {
     return {
-        modified: { label: "M", className: "bg-[#dbeafe] text-[#1d4ed8]" },
-        added: { label: "A", className: "bg-[#dcfce7] text-[#166534]" },
-        deleted: { label: "D", className: "bg-[#fee2e2] text-[#991b1b]" },
-        untracked: { label: "?", className: "bg-[#f4f4f1] text-[#666]" },
+        modified: { label: "M", className: "bg-[#dbeafe] text-[var(--color-info)]" },
+        added: { label: "A", className: "bg-[#dcfce7] text-[var(--color-success)]" },
+        deleted: { label: "D", className: "bg-[#fee2e2] text-[var(--color-error)]" },
+        untracked: { label: "?", className: "bg-[var(--mm-bg-sidebar)] text-[var(--mm-text-secondary)]" },
     }[kind];
 }
 
@@ -50,7 +50,7 @@ function ChangeRow({
     const b = badge(item.kind);
     return (
         <li
-            className={`group flex h-9 min-w-0 items-center gap-1 px-2 transition-colors hover:bg-[#f7f7f4] ${
+            className={`group flex h-9 min-w-0 items-center gap-1 px-2 transition-colors hover:bg-[var(--mm-bg-sidebar)] ${
                 active ? "bg-[#eef3ff]" : ""
             } ${disabled ? "opacity-55" : ""}`}
         >
@@ -71,7 +71,7 @@ function ChangeRow({
                 type="button"
                 disabled={disabled}
                 onClick={() => onPrimary(item)}
-                className="hidden h-7 shrink-0 rounded px-1.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[#ecece7] focus:inline-flex group-hover:inline-flex disabled:cursor-not-allowed"
+                className="hidden h-7 shrink-0 rounded px-1.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:inline-flex group-hover:inline-flex disabled:cursor-not-allowed"
                 aria-label={`${item.group === "staged" ? "取消暂存" : "暂存"} ${item.file}`}
             >
                 {item.group === "staged" ? "取消暂存" : "暂存"}
@@ -81,7 +81,7 @@ function ChangeRow({
                     type="button"
                     disabled={disabled}
                     onClick={() => onDiscard(item)}
-                    className="hidden h-7 shrink-0 rounded px-1.5 text-[11px] text-[#b91c1c] hover:bg-[#fef2f2] focus:inline-flex group-hover:inline-flex disabled:cursor-not-allowed"
+                    className="hidden h-7 shrink-0 rounded px-1.5 text-[11px] text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)] focus:inline-flex group-hover:inline-flex disabled:cursor-not-allowed"
                     aria-label={`丢弃 ${item.file}`}
                 >
                     丢弃
@@ -443,13 +443,13 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
 
     return (
         <div className="flex h-full min-h-0 bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)]" role="region" aria-label="Git 面板">
-            <aside className="flex h-full w-[330px] shrink-0 flex-col border-r border-[#e5e5df] bg-white">
-                <div className="border-b border-[#ecece7] px-4 py-3">
+            <aside className="flex h-full w-[330px] shrink-0 flex-col border-r border-[var(--mm-border)] bg-[var(--mm-bg-panel)]">
+                <div className="border-b border-[var(--mm-border)] px-4 py-3">
                     <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
                                 <h1 className="m-0 text-sm font-semibold">Source Control</h1>
-                                <span className="rounded-md bg-[#f4f4f1] px-2 py-0.5 font-mono text-[11px] text-[var(--mm-text-secondary)]">{status.branch}</span>
+                                <span className="rounded-md bg-[var(--mm-bg-sidebar)] px-2 py-0.5 font-mono text-[11px] text-[var(--mm-text-secondary)]">{status.branch}</span>
                             </div>
                             <p className="m-0 mt-1 text-[11px] text-[var(--mm-text-tertiary)]">
                                 {stagedChanges.length} staged / {unstagedChanges.length} changes · ahead {status.ahead} / behind {status.behind}
@@ -459,7 +459,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                             type="button"
                             disabled={busy}
                             onClick={() => void runOperation("refresh", refreshAll)}
-                            className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-[#f4f4f1] disabled:cursor-not-allowed disabled:opacity-45"
+                            className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-[var(--mm-bg-sidebar)] disabled:cursor-not-allowed disabled:opacity-45"
                             title="刷新"
                             aria-label="刷新 Git 状态"
                         >
@@ -467,12 +467,12 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                         </button>
                     </div>
                     {notice && (
-                        <p className={`m-0 mt-2 rounded-md px-2 py-1.5 text-[11px] ${noticeIsError ? "bg-[#fef2f2] text-[#b91c1c]" : "bg-[#f7f7f4] text-[var(--mm-text-secondary)]"}`} role={noticeIsError ? "alert" : "status"}>
+                        <p className={`m-0 mt-2 rounded-md px-2 py-1.5 text-[11px] ${noticeIsError ? "bg-[#fef2f2] text-[var(--color-error)]" : "bg-[var(--mm-bg-sidebar)] text-[var(--mm-text-secondary)]"}`} role={noticeIsError ? "alert" : "status"}>
                             {notice}
                         </p>
                     )}
                     {stagedDiffError && (
-                        <div className="mt-2 rounded-md border border-[#fecaca] bg-[#fef2f2] px-2 py-2 text-[11px] text-[#b91c1c]" role="alert">
+                        <div className="mt-2 rounded-md border border-[#fecaca] bg-[#fef2f2] px-2 py-2 text-[11px] text-[var(--color-error)]" role="alert">
                             <div className="font-medium">读取 staged diff 失败</div>
                             <div className="mt-1 break-all font-mono">{stagedDiffError}</div>
                             <button
@@ -485,13 +485,13 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                         </div>
                     )}
                     {commitSummary && (
-                        <div className="mt-2 rounded-md border border-[#dcfce7] bg-[#f0fdf4] px-2 py-2 text-[11px] text-[#166534]">
+                        <div className="mt-2 rounded-md border border-[#dcfce7] bg-[#f0fdf4] px-2 py-2 text-[11px] text-[var(--color-success)]">
                             <div className="flex items-center justify-between gap-2">
                                 <span className="min-w-0 truncate">已提交 {commitSummary.files.length} 个文件</span>
                                 <button
                                     type="button"
                                     onClick={() => void copyCommitSummary()}
-                                    className="shrink-0 rounded px-1.5 py-0.5 text-[#166534] hover:bg-[#dcfce7]"
+                                    className="shrink-0 rounded px-1.5 py-0.5 text-[var(--color-success)] hover:bg-[#dcfce7]"
                                 >
                                     {copiedSummary ? "已复制" : "复制摘要"}
                                 </button>
@@ -505,7 +505,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
 
                 <div className="min-h-0 flex-1 overflow-auto">
                     {!hasChanges ? (
-                        <div className="m-4 rounded-lg border border-dashed border-[#deded8] bg-[#fbfbfa] px-4 py-8 text-center text-sm text-[var(--mm-text-secondary)]">
+                        <div className="m-4 rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-8 text-center text-sm text-[var(--mm-text-secondary)]">
                             工作区干净
                         </div>
                     ) : (
@@ -515,7 +515,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                     <h2 className="m-0 font-medium">Staged</h2>
                                     <span className="text-[var(--mm-text-tertiary)]">{stagedChanges.length}</span>
                                 </div>
-                                <ul className="m-0 overflow-hidden rounded-lg border border-[#ecece7] p-0">
+                                <ul className="m-0 overflow-hidden rounded-lg border border-[var(--mm-border)] p-0">
                                     {stagedChanges.length === 0 ? (
                                         <li className="px-3 py-3 text-xs text-[var(--mm-text-tertiary)]">暂无暂存变更</li>
                                     ) : stagedChanges.map((item) => (
@@ -530,12 +530,12 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                         type="button"
                                         disabled={busy || unstagedChanges.length === 0}
                                         onClick={() => void stageAll()}
-                                        className="rounded px-1.5 py-1 text-[11px] hover:bg-[#f4f4f1] disabled:cursor-not-allowed disabled:opacity-40"
+                                        className="rounded px-1.5 py-1 text-[11px] hover:bg-[var(--mm-bg-sidebar)] disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                         {operation === "stage" ? "暂存中" : "全部暂存"}
                                     </button>
                                 </div>
-                                <ul className="m-0 overflow-hidden rounded-lg border border-[#ecece7] p-0">
+                                <ul className="m-0 overflow-hidden rounded-lg border border-[var(--mm-border)] p-0">
                                     {unstagedChanges.map((item) => (
                                         <ChangeRow key={`unstaged:${item.file}`} item={item} active={selected?.file === item.file && selected.group === item.group} disabled={busy} onOpen={openChange} onPrimary={stage} onDiscard={requestDiscard} />
                                     ))}
@@ -545,13 +545,13 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                     )}
                 </div>
 
-                <div className="border-t border-[#ecece7] p-3">
+                <div className="border-t border-[var(--mm-border)] p-3">
                     <textarea
                         value={commitMessage}
                         onChange={(event) => setCommitMessage(event.target.value)}
                         placeholder="提交信息"
                         aria-label="提交信息"
-                        className="h-20 w-full resize-none rounded-md border border-[#deded8] bg-[#fbfbfa] px-3 py-2 text-sm outline-none focus:border-[#999]"
+                        className="h-20 w-full resize-none rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm outline-none focus:border-[#999]"
                     />
                     <button
                         type="button"
@@ -562,14 +562,14 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                     >
                         {operation === "commit" ? "提交中..." : stagedChanges.length > 0 ? `提交 ${stagedChanges.length} 个暂存文件` : "提交暂存文件"}
                     </button>
-                    <p className={`m-0 mt-2 rounded-md px-2 py-1.5 text-[11px] leading-4 ${stagedChanges.length > 0 ? "bg-[#eef3ff] text-[#1d4ed8]" : "bg-[#f7f7f4] text-[var(--mm-text-tertiary)]"}`}>
+                    <p className={`m-0 mt-2 rounded-md px-2 py-1.5 text-[11px] leading-4 ${stagedChanges.length > 0 ? "bg-[#eef3ff] text-[var(--color-info)]" : "bg-[var(--mm-bg-sidebar)] text-[var(--mm-text-tertiary)]"}`}>
                         {commitScopeText}
                     </p>
                 </div>
             </aside>
 
             <main className="flex min-w-0 flex-1 flex-col">
-                <div className="flex h-12 items-center justify-between border-b border-[#e5e5df] bg-white px-4">
+                <div className="flex h-12 items-center justify-between border-b border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
                     <div className="min-w-0">
                         <div className="truncate font-mono text-sm">{discardCandidate?.file ?? selected?.file ?? "选择变更查看 diff"}</div>
                         <div className="text-[11px] text-[var(--mm-text-tertiary)]">{discardCandidate ? "discard preview" : selected?.group === "staged" ? "staged diff" : selected ? "working tree diff" : `${unstagedChanges.length + stagedChanges.length} 项变更`}</div>
@@ -580,7 +580,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                 type="button"
                                 onClick={cancelDiscard}
                                 disabled={busy}
-                                className="rounded-md border border-[#e8e8e3] px-2 py-1 text-xs hover:bg-[#f4f4f1] disabled:opacity-40"
+                                className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-40"
                             >
                                 取消
                             </button>
@@ -598,15 +598,15 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                 <div className="min-h-0 flex-1 overflow-auto p-4">
                     {discardCandidate ? (
                         <div className="flex min-h-full flex-col">
-                            <div className="mb-3 rounded-md border border-[#fecaca] bg-[#fef2f2] px-3 py-2 text-xs leading-5 text-[#991b1b]" role="alert">
+                            <div className="mb-3 rounded-md border border-[#fecaca] bg-[#fef2f2] px-3 py-2 text-xs leading-5 text-[var(--color-error)]" role="alert">
                                 即将丢弃 {discardCandidate.file} 的本地变更。请先检查下面的 diff；确认后文件会还原，未提交内容不可恢复。
                             </div>
                             {diffState === "loading" ? (
-                                <div className="rounded-lg border border-dashed border-[#deded8] bg-white px-4 py-8 text-center text-sm text-[var(--mm-text-secondary)]" role="status">
+                                <div className="rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-8 text-center text-sm text-[var(--mm-text-secondary)]" role="status">
                                     正在读取 diff...
                                 </div>
                             ) : diffState === "error" ? (
-                                <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-4 text-sm text-[#b91c1c]" role="alert">
+                                <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-4 text-sm text-[var(--color-error)]" role="alert">
                                     <div className="font-medium">读取 diff 失败</div>
                                     <div className="mt-1 break-all font-mono text-xs">{diffError}</div>
                                     <button
@@ -620,7 +620,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                             ) : diffContent ? (
                                 <DiffViewer diff={diffContent} maxHeight="calc(100vh - 230px)" />
                             ) : (
-                                <div className="rounded-lg border border-dashed border-[#deded8] bg-white px-4 py-8 text-center text-sm text-[var(--mm-text-secondary)]">
+                                <div className="rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-8 text-center text-sm text-[var(--mm-text-secondary)]">
                                     没有可显示的 diff。
                                 </div>
                             )}
@@ -631,7 +631,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                         </div>
                     ) : diffState === "error" ? (
                         <div className="flex h-full items-center justify-center p-6">
-                            <div className="max-w-md rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-4 text-center text-sm text-[#b91c1c]" role="alert">
+                            <div className="max-w-md rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-4 text-center text-sm text-[var(--color-error)]" role="alert">
                                 <div className="font-medium">读取 diff 失败</div>
                                 <div className="mt-1 break-all font-mono text-xs">{diffError}</div>
                                 {selected && (

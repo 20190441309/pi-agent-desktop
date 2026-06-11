@@ -22,8 +22,8 @@ function CloseIcon(): React.JSX.Element {
 function SectionTitle({ title, description }: { title: string; description?: string }): React.JSX.Element {
     return (
         <div className="mb-5">
-            <h3 className="m-0 text-[15px] font-semibold text-[#1f1f1f]">{title}</h3>
-            {description && <p className="m-0 mt-1 text-xs leading-5 text-[#777]">{description}</p>}
+            <h3 className="m-0 text-[15px] font-semibold text-[var(--mm-text-primary)]">{title}</h3>
+            {description && <p className="m-0 mt-1 text-xs leading-5 text-[var(--mm-text-tertiary)]">{description}</p>}
         </div>
     );
 }
@@ -38,10 +38,10 @@ function FieldRow({
     children: React.ReactNode;
 }): React.JSX.Element {
     return (
-        <div className="grid grid-cols-[minmax(160px,220px)_1fr] items-center gap-6 border-b border-[#f0f0ed] py-4 last:border-b-0">
+        <div className="grid grid-cols-[minmax(160px,220px)_1fr] items-center gap-6 border-b border-[var(--mm-border)] py-4 last:border-b-0">
             <div>
-                <label className="block text-sm font-medium text-[#262626]">{label}</label>
-                {description && <p className="m-0 mt-1 text-xs leading-5 text-[#777]">{description}</p>}
+                <label className="block text-sm font-medium text-[var(--mm-text-primary)]">{label}</label>
+                {description && <p className="m-0 mt-1 text-xs leading-5 text-[var(--mm-text-tertiary)]">{description}</p>}
             </div>
             <div className="min-w-0">{children}</div>
         </div>
@@ -68,7 +68,7 @@ function SwitchControl({
         >
             <span
                 aria-hidden="true"
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`}
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-[var(--mm-bg-panel)] shadow-sm transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`}
             />
         </button>
     );
@@ -130,14 +130,14 @@ export function SettingsPanel(): React.JSX.Element {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6 backdrop-blur-[1px]">
             <div
-                className="flex h-[min(760px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-[#e8e8e4] bg-[#f7f7f4] shadow-[0_24px_80px_rgba(0,0,0,0.22)]"
+                className="flex h-[min(760px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_24px_80px_rgba(0,0,0,0.22)]"
                 role="dialog"
                 aria-modal="true"
                 aria-label={t('settings.title')}
             >
-                <aside className="flex w-[250px] shrink-0 flex-col border-r border-[#e2e2de] bg-[#f1f1ee]">
+                <aside className="flex w-[250px] shrink-0 flex-col border-r border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)]">
                     <div className="px-5 pb-4 pt-5">
-                        <h2 className="m-0 text-[17px] font-semibold text-[#1f1f1f]">{t('settings.title')}</h2>
+                        <h2 className="m-0 text-[17px] font-semibold text-[var(--mm-text-primary)]">{t('settings.title')}</h2>
                     </div>
                     <nav className="flex-1 px-3" role="tablist" aria-label={t('settings.tabsAria')}>
                         {tabs.map((tab) => {
@@ -154,21 +154,21 @@ export function SettingsPanel(): React.JSX.Element {
                                     onClick={() => setActiveTab(tab.id)}
                                     className={`mb-1 w-full rounded-lg px-3 py-2.5 text-left transition-colors ${
                                         isActive
-                                            ? 'bg-white text-[#1f1f1f] shadow-sm'
-                                            : 'text-[#666] hover:bg-white/60 hover:text-[#262626]'
+                                            ? 'bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] shadow-sm'
+                                            : 'text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]'
                                     }`}
                                 >
                                     <span className="block text-sm font-medium">{tab.label}</span>
-                                    <span className="mt-0.5 block truncate text-[11px] text-[#8a8a84]">{tab.caption}</span>
+                                    <span className="mt-0.5 block truncate text-[11px] text-[var(--mm-text-tertiary)]">{tab.caption}</span>
                                 </button>
                             );
                         })}
                     </nav>
-                    <div className="border-t border-[#e2e2de] p-3">
+                    <div className="border-t border-[var(--mm-border)] p-3">
                         <button
                             type="button"
                             onClick={resetSettings}
-                            className="w-full rounded-lg px-3 py-2 text-left text-sm text-[#666] transition-colors hover:bg-white hover:text-[#1f1f1f]"
+                            className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
                             aria-label={t('settings.resetAria')}
                         >
                             {t('settings.reset')}
@@ -176,11 +176,11 @@ export function SettingsPanel(): React.JSX.Element {
                     </div>
                 </aside>
 
-                <main className="flex min-w-0 flex-1 flex-col bg-white">
-                    <div className="flex items-center justify-between border-b border-[#ededeb] px-7 py-4">
+                <main className="flex min-w-0 flex-1 flex-col bg-[var(--mm-bg-panel)]">
+                    <div className="flex items-center justify-between border-b border-[var(--mm-border)] px-7 py-4">
                         <div className="min-w-0">
-                            <div className="text-[13px] text-[#8a8a84]">{t('settings.title')}</div>
-                            <div className="truncate text-[18px] font-semibold text-[#1f1f1f]">
+                            <div className="text-[13px] text-[var(--mm-text-tertiary)]">{t('settings.title')}</div>
+                            <div className="truncate text-[18px] font-semibold text-[var(--mm-text-primary)]">
                                 {tabs.find((tab) => tab.id === activeTab)?.label}
                             </div>
                         </div>
@@ -195,7 +195,7 @@ export function SettingsPanel(): React.JSX.Element {
                         <button
                             type="button"
                             onClick={closeSettings}
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#777] transition-colors hover:bg-[#f0f0ed] hover:text-[#1f1f1f]"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
                             aria-label={t('common.close')}
                             title={t('common.close')}
                         >
@@ -216,18 +216,18 @@ export function SettingsPanel(): React.JSX.Element {
                                                 type="button"
                                                 onClick={() => useSettingsStore.getState().setTheme(theme)}
                                                 className={`rounded-xl border p-3 text-left transition-colors ${
-                                                    active ? 'border-[#1f1f1f] bg-[#fafafa]' : 'border-[#e4e4e0] bg-white hover:border-[#cfcfca]'
+                                                    active ? 'border-[#1f1f1f] bg-[var(--mm-bg-panel)]' : 'border-[var(--mm-border)] bg-[var(--mm-bg-panel)] hover:border-[#cfcfca]'
                                                 }`}
                                             >
-                                                <span className="block text-sm font-medium text-[#1f1f1f]">{t(`settings.theme.${theme}`)}</span>
-                                                <span className="mt-3 block h-24 rounded-lg border border-[#e4e4e0] bg-[#f8f8f6] p-2">
-                                                    <span className={`block h-full rounded-md ${theme === 'dark' ? 'bg-[#1f1f1f]' : theme === 'system' ? 'bg-gradient-to-r from-white to-[#1f1f1f]' : 'bg-white'} border border-[#dededb]`} />
+                                                <span className="block text-sm font-medium text-[var(--mm-text-primary)]">{t(`settings.theme.${theme}`)}</span>
+                                                <span className="mt-3 block h-24 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] p-2">
+                                                    <span className={`block h-full rounded-md ${theme === 'dark' ? 'bg-[#1f1f1f]' : theme === 'system' ? 'bg-gradient-to-r from-white to-[#1f1f1f]' : 'bg-[var(--mm-bg-panel)]'} border border-[var(--mm-border)]`} />
                                                 </span>
                                             </button>
                                         );
                                     })}
                                 </div>
-                                <div className="mt-6 rounded-xl border border-[#ececea] bg-[#fbfbfa] px-4">
+                                <div className="mt-6 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
                                     <FieldRow label={t('settings.fontSize.label', { value: settings.fontSize })}>
                                         <input
                                             id="settings-font-size"
@@ -247,14 +247,14 @@ export function SettingsPanel(): React.JSX.Element {
                         {activeTab === 'model' && (
                             <div role="tabpanel" id="settings-tabpanel-model" aria-labelledby="settings-tab-model">
                                 <SectionTitle title={t('settings.modelTab.heading')} description={t('settings.modelTab.description')} />
-                                <div className="rounded-xl border border-[#ececea] bg-[#fbfbfa] px-4">
+                                <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
                                     <FieldRow label={t('settings.modelTab.current')} description={t('settings.modelTab.currentDescription')}>
                                         {piModels && piModels.length > 0 ? (
                                             <select
                                                 id="settings-model"
                                                 value={selectedModelKey}
                                                 onChange={(e) => updateModelFromKey(e.target.value)}
-                                                className="w-full rounded-lg border border-[#dcdcd8] bg-white px-3 py-2.5 text-sm text-[#1f1f1f] focus:border-[#1f1f1f] focus:outline-none"
+                                                className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2.5 text-sm text-[var(--mm-text-primary)] focus:border-[#1f1f1f] focus:outline-none"
                                             >
                                                 {piModels.map((model) => (
                                                     <option key={`${model.provider}:${model.id}`} value={`${model.provider}:${model.id}`}>
@@ -263,7 +263,7 @@ export function SettingsPanel(): React.JSX.Element {
                                                 ))}
                                             </select>
                                         ) : (
-                                            <div className="rounded-lg border border-dashed border-[#d8d8d3] bg-white px-3 py-2.5 text-sm text-[#888]">
+                                            <div className="rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2.5 text-sm text-[var(--mm-text-tertiary)]">
                                                 {t('settings.modelTab.empty')}
                                             </div>
                                         )}
@@ -287,7 +287,7 @@ export function SettingsPanel(): React.JSX.Element {
                                             type="number"
                                             value={settings.maxTokens}
                                             onChange={(e) => updateNumberSetting('maxTokens', e.target.value)}
-                                            className="w-full rounded-lg border border-[#dcdcd8] bg-white px-3 py-2.5 text-sm text-[#1f1f1f] focus:border-[#1f1f1f] focus:outline-none"
+                                            className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2.5 text-sm text-[var(--mm-text-primary)] focus:border-[#1f1f1f] focus:outline-none"
                                         />
                                     </FieldRow>
                                 </div>
@@ -302,38 +302,38 @@ export function SettingsPanel(): React.JSX.Element {
                                 {piFullConfig ? (
                                     <div className="mt-4 space-y-4">
                                         <div>
-                                            <div className="mb-2 text-sm font-medium text-[#262626]">{t('settings.piagent.configPath')}</div>
-                                            <div className="rounded-lg border border-[#ececea] bg-[#fbfbfa] p-3 font-mono text-xs text-[#444] break-all">
+                                            <div className="mb-2 text-sm font-medium text-[var(--mm-text-primary)]">{t('settings.piagent.configPath')}</div>
+                                            <div className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 font-mono text-xs text-[var(--mm-text-secondary)] break-all">
                                                 {piFullConfig.configPath}
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
-                                            <div className="rounded-lg border border-[#ececea] bg-[#fbfbfa] p-3">
-                                                <div className="text-xs text-[#777]">{t('settings.piagent.defaultProvider')}</div>
-                                                <div className="mt-1 text-sm font-medium text-[#1f1f1f]">{piFullConfig.defaultProvider || t('settings.piagent.notSet')}</div>
+                                            <div className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3">
+                                                <div className="text-xs text-[var(--mm-text-tertiary)]">{t('settings.piagent.defaultProvider')}</div>
+                                                <div className="mt-1 text-sm font-medium text-[var(--mm-text-primary)]">{piFullConfig.defaultProvider || t('settings.piagent.notSet')}</div>
                                             </div>
-                                            <div className="rounded-lg border border-[#ececea] bg-[#fbfbfa] p-3">
-                                                <div className="text-xs text-[#777]">{t('settings.piagent.defaultModel')}</div>
-                                                <div className="mt-1 text-sm font-medium text-[#1f1f1f]">{piFullConfig.defaultModel || t('settings.piagent.notSet')}</div>
+                                            <div className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3">
+                                                <div className="text-xs text-[var(--mm-text-tertiary)]">{t('settings.piagent.defaultModel')}</div>
+                                                <div className="mt-1 text-sm font-medium text-[var(--mm-text-primary)]">{piFullConfig.defaultModel || t('settings.piagent.notSet')}</div>
                                             </div>
                                         </div>
                                         <div>
-                                            <div className="mb-2 text-sm font-medium text-[#262626]">{t('settings.piagent.providers', { count: piFullConfig.providers.length })}</div>
+                                            <div className="mb-2 text-sm font-medium text-[var(--mm-text-primary)]">{t('settings.piagent.providers', { count: piFullConfig.providers.length })}</div>
                                             <div className="grid gap-2">
                                                 {piFullConfig.providers.map((provider) => (
-                                                    <div key={provider.id} className="rounded-lg border border-[#ececea] bg-[#fbfbfa] p-3">
+                                                    <div key={provider.id} className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3">
                                                         <div className="flex items-center justify-between gap-3">
-                                                            <span className="truncate text-sm font-medium text-[#1f1f1f]">{provider.name}</span>
-                                                            <span className="shrink-0 text-xs text-[#777]">{t('settings.piagent.modelCount', { count: provider.modelCount })}</span>
+                                                            <span className="truncate text-sm font-medium text-[var(--mm-text-primary)]">{provider.name}</span>
+                                                            <span className="shrink-0 text-xs text-[var(--mm-text-tertiary)]">{t('settings.piagent.modelCount', { count: provider.modelCount })}</span>
                                                         </div>
-                                                        {provider.baseUrl && <div className="mt-1 truncate font-mono text-xs text-[#777]">{provider.baseUrl}</div>}
+                                                        {provider.baseUrl && <div className="mt-1 truncate font-mono text-xs text-[var(--mm-text-tertiary)]">{provider.baseUrl}</div>}
                                                     </div>
                                                 ))}
                                             </div>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="mt-4 rounded-lg border border-dashed border-[#d8d8d3] bg-[#fbfbfa] p-3 text-sm text-[#888]">
+                                    <div className="mt-4 rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 text-sm text-[var(--mm-text-tertiary)]">
                                         {t('settings.piagent.loading')}
                                     </div>
                                 )}
@@ -343,13 +343,13 @@ export function SettingsPanel(): React.JSX.Element {
                         {activeTab === 'general' && (
                             <div role="tabpanel" id="settings-tabpanel-general" aria-labelledby="settings-tab-general">
                                 <SectionTitle title={t('settings.general.heading')} description={t('settings.general.description')} />
-                                <div className="rounded-xl border border-[#ececea] bg-[#fbfbfa] px-4">
+                                <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
                                     <FieldRow label={t('settings.language.label')} description={t('settings.language.description')}>
                                         <select
                                             id="settings-language"
                                             value={locale}
                                             onChange={(e) => setLocale(e.target.value as Locale)}
-                                            className="w-full rounded-lg border border-[#dcdcd8] bg-white px-3 py-2.5 text-sm text-[#1f1f1f] focus:border-[#1f1f1f] focus:outline-none"
+                                            className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2.5 text-sm text-[var(--mm-text-primary)] focus:border-[#1f1f1f] focus:outline-none"
                                         >
                                             {SUPPORTED_LOCALES.map((l) => (
                                                 <option key={l} value={l}>
@@ -370,7 +370,7 @@ export function SettingsPanel(): React.JSX.Element {
                                 </div>
 
                                 <SectionTitle title="通知" description="控制系统通知和声音提示" />
-                                <div className="rounded-xl border border-[#ececea] bg-[#fbfbfa] px-4">
+                                <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
                                     <FieldRow label="系统通知" description="任务完成和错误时发送系统通知">
                                         <SwitchControl
                                             checked={notificationsEnabled}
@@ -430,8 +430,8 @@ export function SettingsPanel(): React.JSX.Element {
                         {activeTab === 'about' && (
                             <div role="tabpanel" id="settings-tabpanel-about" aria-labelledby="settings-tab-about">
                                 <SectionTitle title={t('settings.about.heading')} />
-                                <div className="rounded-xl border border-[#ececea] bg-[#fbfbfa] p-4 text-sm leading-6 text-[#666]">
-                                    <p className="m-0 text-[#1f1f1f]">{t('settings.about.version', { version: '0.2.0' })}</p>
+                                <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4 text-sm leading-6 text-[var(--mm-text-secondary)]">
+                                    <p className="m-0 text-[var(--mm-text-primary)]">{t('settings.about.version', { version: '0.2.0' })}</p>
                                     <p className="m-0 mt-2">{t('settings.about.description')}</p>
                                     <p className="m-0 mt-2">{t('settings.about.stack')}</p>
                                 </div>
@@ -439,7 +439,7 @@ export function SettingsPanel(): React.JSX.Element {
                         )}
                     </div>
 
-                    <div className="flex justify-end border-t border-[#ededeb] px-7 py-4">
+                    <div className="flex justify-end border-t border-[var(--mm-border)] px-7 py-4">
                         <button
                             type="button"
                             onClick={closeSettings}
@@ -555,7 +555,7 @@ function PiConfigEditor(): React.JSX.Element {
                         type="button"
                         onClick={() => setFileName(name)}
                         className={`rounded-md px-3 py-1.5 text-sm ${
-                            fileName === name ? 'bg-[#1f1f1f] text-white' : 'bg-[#ececea] text-[#333] hover:bg-[#e2e2de]'
+                            fileName === name ? 'bg-[#1f1f1f] text-white' : 'bg-[#ececea] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]'
                         }`}
                     >
                         {name}
@@ -566,18 +566,18 @@ function PiConfigEditor(): React.JSX.Element {
                 value={raw}
                 onChange={(event) => setRaw(event.target.value)}
                 spellCheck={false}
-                className="min-h-[300px] w-full rounded-lg border border-[#dcdcd8] bg-white p-3 font-mono text-xs text-[#1f1f1f] outline-none focus:border-[#1f1f1f]"
+                className="min-h-[300px] w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 font-mono text-xs text-[var(--mm-text-primary)] outline-none focus:border-[#1f1f1f]"
                 aria-label="Pi 配置 JSON"
             />
             {[message, fetchStatus, testStatus].filter(Boolean).map((status) => (
-                <div key={status} className="rounded-md border border-[#e2e2de] bg-[#fbfbfa] px-3 py-2 text-xs text-[#555]">
+                <div key={status} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs text-[var(--mm-text-secondary)]">
                     {status}
                 </div>
             ))}
             <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={save} className="rounded-md bg-[#1f1f1f] px-3 py-2 text-sm text-white hover:bg-[#333]">保存当前文件</button>
-                <button type="button" onClick={exportConfig} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[#333] hover:bg-[#e2e2de]">导出配置包</button>
-                <button type="button" onClick={importConfig} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[#333] hover:bg-[#e2e2de]">从编辑区导入配置包</button>
+                <button type="button" onClick={exportConfig} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]">导出配置包</button>
+                <button type="button" onClick={importConfig} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]">从编辑区导入配置包</button>
                 <button type="button" onClick={async () => {
                     setFetchStatus("拉取中...");
                     try {
@@ -588,7 +588,7 @@ function PiConfigEditor(): React.JSX.Element {
                     } catch (e) {
                         setFetchStatus(`拉取失败: ${e instanceof Error ? e.message : String(e)}`);
                     }
-                }} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[#333] hover:bg-[#e2e2de]">拉取模型列表</button>
+                }} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]">拉取模型列表</button>
                 <button type="button" onClick={async () => {
                     setTestStatus("测试中...");
                     try {
@@ -599,7 +599,7 @@ function PiConfigEditor(): React.JSX.Element {
                     } catch (e) {
                         setTestStatus(`测试失败: ${e instanceof Error ? e.message : String(e)}`);
                     }
-                }} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[#333] hover:bg-[#e2e2de]">测试 Provider</button>
+                }} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]">测试 Provider</button>
             </div>
         </div>
     );

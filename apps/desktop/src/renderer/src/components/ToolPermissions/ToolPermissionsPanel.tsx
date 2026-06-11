@@ -91,7 +91,7 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
   };
 
   return (
-    <section className="rounded-[14px] border border-[#e9e9e6] bg-white p-3.5">
+    <section className="rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="m-0 text-[13px] font-medium">工具权限</h2>
         <span className="text-[10px] text-[var(--mm-text-tertiary)]">
@@ -105,7 +105,7 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
             type="button"
             disabled={!canApply}
             onClick={() => applyPermissions(TOOL_PERMISSION_PRESETS[preset.id])}
-            className="rounded-md border border-[#e5e5e0] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[#f5f5f2] disabled:cursor-not-allowed disabled:opacity-45"
+            className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
           >
             {preset.label}
           </button>
@@ -126,7 +126,7 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
         ))}
       </div>
       {!canApply && !status ? (
-        <div className="mt-3 rounded-md border border-[#f0f0ed] bg-[#fafaf8] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--mm-text-tertiary)]" role="status">
+        <div className="mt-3 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--mm-text-tertiary)]" role="status">
           选择工作区后可配置默认工具权限。
         </div>
       ) : null}
@@ -136,7 +136,7 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
           className={`mt-3 rounded-md border px-2.5 py-2 text-[11px] leading-relaxed ${
             status.type === "error"
               ? "border-red-200 bg-red-50 text-red-700"
-              : "border-[#e5e5e0] bg-[#f7f7f4] text-[var(--mm-text-secondary)]"
+              : "border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] text-[var(--mm-text-secondary)]"
           }`}
         >
           {status.message}

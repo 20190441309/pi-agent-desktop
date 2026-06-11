@@ -28,7 +28,7 @@ export function SkillCreateDropdown({
         return () => document.removeEventListener("mousedown", onClick);
     }, [open]);
 
-    const optionIconClasses = "flex h-5 w-5 shrink-0 items-center justify-center text-[#666]";
+    const optionIconClasses = "flex h-5 w-5 shrink-0 items-center justify-center text-[var(--mm-text-secondary)]";
 
     return (
         <div ref={ref} className="relative">
@@ -39,13 +39,13 @@ export function SkillCreateDropdown({
                 <span>+ 创建</span>
             </button>
             {open && (
-                <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-[#e5e5e5] rounded-lg shadow-lg z-10 py-1">
+                <div className="absolute right-0 top-full mt-1 w-72 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-lg shadow-lg z-10 py-1">
                     <button
                         onClick={() => {
                             setOpen(false);
                             onBuildWithPi?.();
                         }}
-                        className="w-full text-left px-3 py-2.5 hover:bg-[#f5f5f5] transition-colors flex items-start gap-2"
+                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--mm-bg-sidebar)] transition-colors flex items-start gap-2"
                     >
                         <span className={optionIconClasses} aria-hidden="true">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -53,8 +53,8 @@ export function SkillCreateDropdown({
                             </svg>
                         </span>
                         <div>
-                            <div className="text-sm font-medium text-[#1a1a1a]">用 Pi 构建</div>
-                            <div className="text-xs text-[#666]">通过对话构建出色的技能</div>
+                            <div className="text-sm font-medium text-[var(--mm-text-primary)]">用 Pi 构建</div>
+                            <div className="text-xs text-[var(--mm-text-secondary)]">通过对话构建出色的技能</div>
                         </div>
                     </button>
                     <button
@@ -62,7 +62,7 @@ export function SkillCreateDropdown({
                             setOpen(false);
                             onWriteDirect?.();
                         }}
-                        className="w-full text-left px-3 py-2.5 hover:bg-[#f5f5f5] transition-colors flex items-start gap-2"
+                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--mm-bg-sidebar)] transition-colors flex items-start gap-2"
                     >
                         <span className={optionIconClasses} aria-hidden="true">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -70,8 +70,8 @@ export function SkillCreateDropdown({
                             </svg>
                         </span>
                         <div>
-                            <div className="text-sm font-medium text-[#1a1a1a]">编写技能</div>
-                            <div className="text-xs text-[#666]">直接编写你的指令</div>
+                            <div className="text-sm font-medium text-[var(--mm-text-primary)]">编写技能</div>
+                            <div className="text-xs text-[var(--mm-text-secondary)]">直接编写你的指令</div>
                         </div>
                     </button>
                     <button
@@ -79,7 +79,7 @@ export function SkillCreateDropdown({
                             setOpen(false);
                             onImportFromGitHub?.();
                         }}
-                        className="w-full text-left px-3 py-2.5 hover:bg-[#f5f5f5] transition-colors flex items-start gap-2"
+                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--mm-bg-sidebar)] transition-colors flex items-start gap-2"
                     >
                         <span className={optionIconClasses} aria-hidden="true">
                             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -87,8 +87,8 @@ export function SkillCreateDropdown({
                             </svg>
                         </span>
                         <div>
-                            <div className="text-sm font-medium text-[#1a1a1a]">从 Github 导入</div>
-                            <div className="text-xs text-[#666]">粘贴仓库链接以开始</div>
+                            <div className="text-sm font-medium text-[var(--mm-text-primary)]">从 Github 导入</div>
+                            <div className="text-xs text-[var(--mm-text-secondary)]">粘贴仓库链接以开始</div>
                         </div>
                     </button>
                 </div>

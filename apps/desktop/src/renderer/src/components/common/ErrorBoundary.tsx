@@ -61,16 +61,16 @@ export class ErrorBoundary extends React.Component<Props, State> {
 function DefaultErrorFallback({ error, onReset }: { error: Error; onReset: () => void }): React.JSX.Element {
     const { t } = useI18n();
     return (
-        <div className="flex items-center justify-center h-screen bg-[#f5f5f5] p-4">
-            <div className="bg-white rounded-2xl p-8 max-w-md shadow-lg">
+        <div className="flex items-center justify-center h-screen bg-[var(--mm-bg-sidebar)] p-4">
+            <div className="bg-[var(--mm-bg-panel)] rounded-2xl p-8 max-w-md shadow-lg">
                 <div className="text-4xl mb-3">😵</div>
-                <h1 className="text-lg font-semibold text-[#1a1a1a] mb-2">
+                <h1 className="text-lg font-semibold text-[var(--mm-text-primary)] mb-2">
                     {t("errorBoundary.title")}
                 </h1>
-                <p className="text-sm text-[#666] mb-4">
+                <p className="text-sm text-[var(--mm-text-secondary)] mb-4">
                     {t("errorBoundary.description")}
                 </p>
-                <pre className="text-xs text-[#ef4444] bg-red-50 border border-red-200 rounded p-3 overflow-auto max-h-40 mb-4 font-mono whitespace-pre-wrap break-all">
+                <pre className="text-xs text-[var(--color-error)] bg-red-50 border border-red-200 rounded p-3 overflow-auto max-h-40 mb-4 font-mono whitespace-pre-wrap break-all">
                     {error.message}
                 </pre>
                 <div className="flex gap-2">
@@ -82,7 +82,7 @@ function DefaultErrorFallback({ error, onReset }: { error: Error; onReset: () =>
                     </button>
                     <button
                         onClick={() => location.reload()}
-                        className="px-4 py-2 border border-[#e5e5e5] text-[#666] rounded text-sm hover:bg-[#f5f5f5] transition-colors"
+                        className="px-4 py-2 border border-[var(--mm-border)] text-[var(--mm-text-secondary)] rounded text-sm hover:bg-[var(--mm-bg-sidebar)] transition-colors"
                     >
                         {t("errorBoundary.reload")}
                     </button>

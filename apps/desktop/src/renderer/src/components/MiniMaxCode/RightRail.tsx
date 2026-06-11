@@ -56,9 +56,9 @@ function countDiffStats(diff: string): DiffStats {
 function statusDot(status: string): string {
   if (status === "completed") return "bg-[#666] text-white";
   if (status === "running") return "bg-[#1f1f1f] text-white";
-  if (status === "failed" || status === "error") return "bg-[#dc2626] text-white";
+  if (status === "failed" || status === "error") return "bg-[var(--color-error)] text-white";
   if (status === "waiting") return "bg-[#f59e0b] text-white";
-  return "border border-[#d6d6d6] bg-white text-transparent";
+  return "border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-transparent";
 }
 
 function PanelChevron(): React.JSX.Element {
@@ -71,7 +71,7 @@ function PanelChevron(): React.JSX.Element {
 
 function RowIcon({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
-    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#777]" aria-hidden="true">
+    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--mm-text-tertiary)]" aria-hidden="true">
       {children}
     </span>
   );
@@ -242,10 +242,10 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
   const changedFiles = useMemo(() => {
     if (!git) return [];
     return [
-      ...git.modified.map((path) => ({ path, mark: "M", className: "text-[#2563eb]" })),
-      ...git.added.map((path) => ({ path, mark: "A", className: "text-[#16a34a]" })),
+      ...git.modified.map((path) => ({ path, mark: "M", className: "text-[var(--color-info)]" })),
+      ...git.added.map((path) => ({ path, mark: "A", className: "text-[var(--color-success)]" })),
       ...git.deleted.map((path) => ({ path, mark: "D", className: "text-[#dc2626]" })),
-      ...git.untracked.map((path) => ({ path, mark: "?", className: "text-[#777]" })),
+      ...git.untracked.map((path) => ({ path, mark: "?", className: "text-[var(--mm-text-tertiary)]" })),
     ];
   }, [git]);
   const visibleChangedFiles = filesExpanded ? changedFiles : changedFiles.slice(0, 3);
@@ -434,7 +434,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
           className={`rounded-[14px] border px-3 py-2 text-xs ${
             railActionStatus.tone === "error"
               ? "border-red-200 bg-red-50 text-red-700"
-              : "border-[#dbe8d0] bg-[#f5fbf0] text-[#315f24]"
+              : "border-[#dbe8d0] bg-[#f5fbf0] text-[var(--color-success)]"
           }`}
           role={railActionStatus.tone === "error" ? "alert" : "status"}
         >
@@ -442,10 +442,10 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         </div>
       )}
       <UsageStatsPanel />
-      <section className="rounded-[14px] border border-[#e9e9e6] bg-white p-3.5">
+      <section className="rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">运行状态</h2>
-          <span className="rounded-full bg-[#f4f4f1] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
+          <span className="rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
             {usage?.compactionStatus === "running" ? "压缩中" : usage?.compactionStatus ?? "idle"}
           </span>
         </div>
@@ -462,9 +462,9 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
             <span className="text-[var(--mm-text-secondary)]">Context</span>
             <span className="font-mono">{formatToken(usedTokens)} / {formatToken(usage?.contextWindow)}</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-[#eeeeea]">
+          <div className="h-1.5 overflow-hidden rounded-full bg-[var(--mm-bg-hover)]">
             <div
-              className={`h-full rounded-full ${usagePercent !== undefined && usagePercent >= 80 ? "bg-[#dc2626]" : "bg-[#1f1f1f]"}`}
+              className={`h-full rounded-full ${usagePercent !== undefined && usagePercent >= 80 ? "bg-[var(--color-error)]" : "bg-[#1f1f1f]"}`}
               style={{ width: `${usagePercent ?? 0}%` }}
             />
           </div>
@@ -478,7 +478,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
             <span>费用 {usage?.estimatedCostUsd === undefined ? "unknown" : `$${usage.estimatedCostUsd.toFixed(4)}`}</span>
           </div>
           <p
-            className="mt-1 rounded-md border border-[#f0f0ed] bg-[#fafaf8] px-2 py-1.5 text-[11px] leading-4 text-[var(--mm-text-tertiary)]"
+            className="mt-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1.5 text-[11px] leading-4 text-[var(--mm-text-tertiary)]"
             title="当前 Pi runtime 未暴露手动压缩 API"
           >
             手动压缩将在 runtime 支持后启用
@@ -488,7 +488,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
 
       <ToolPermissionsPanel workspaceId={workspaceId} />
 
-      <section className="rounded-[14px] border border-[#e9e9e6] bg-white p-3.5">
+      <section className="rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">环境信息</h2>
           <PanelChevron />
@@ -497,17 +497,17 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
           {git?.branch ?? "无 Git"}
         </p>
         <div className="space-y-3 text-xs">
-          <div className="rounded-lg border border-[#f0f0ed] bg-[#fbfbfa] px-2.5 py-2">
+          <div className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-2">
             <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
               <span className="min-w-0 truncate font-medium" title={project?.name ?? workspacePath}>
                 {project?.name ?? "未知项目"}
               </span>
-              <span className="shrink-0 rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-[var(--mm-text-secondary)]">
+              <span className="shrink-0 rounded bg-[var(--mm-bg-panel)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--mm-text-secondary)]">
                 {project?.type ?? "unknown"}
               </span>
             </div>
             {projectError ? (
-              <p className="m-0 text-[11px] leading-4 text-[#b91c1c]">{projectError}</p>
+              <p className="m-0 text-[11px] leading-4 text-[var(--color-error)]">{projectError}</p>
             ) : (
               <div className="space-y-1.5 text-[11px] text-[var(--mm-text-secondary)]">
                 <div className="flex justify-between gap-3">
@@ -534,7 +534,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                           key={script.name}
                           type="button"
                           onClick={() => runCommandInTerminal(script.command)}
-                          className="rounded border border-[#e8e8e3] bg-white px-1.5 py-0.5 font-mono text-[10px] text-[var(--mm-text-secondary)] hover:bg-[#f4f4f1] hover:text-[var(--mm-text-primary)]"
+                          className="rounded border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
                           title={`在终端运行 ${script.command}`}
                         >
                           {script.name}
@@ -556,7 +556,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
               <span>变更</span>
             </div>
             <div className="flex shrink-0 items-center gap-2 font-mono text-[11px]">
-              <span className="text-[#16a34a]">+{diffStats.additions}</span>
+              <span className="text-[var(--color-success)]">+{diffStats.additions}</span>
               <span className="text-[#dc2626]">-{diffStats.deletions}</span>
             </div>
           </div>
@@ -590,7 +590,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                   <button
                     type="button"
                     onClick={() => openWorkspaceFile(item.path)}
-                    className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left font-mono text-[var(--mm-text-secondary)] hover:bg-[#f4f4f1] hover:text-[var(--mm-text-primary)]"
+                    className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left font-mono text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
                     title={`在文件工作区打开 ${item.path}`}
                   >
                     {item.path}
@@ -598,7 +598,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                   <button
                     type="button"
                     onClick={() => openGitDiff(item.path)}
-                    className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)] hover:bg-[#f4f4f1] hover:text-[var(--mm-text-primary)]"
+                    className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
                     title={`查看 ${item.path} 的 Git diff`}
                   >
                     Diff
@@ -609,7 +609,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                 <button
                   type="button"
                   onClick={() => setFilesExpanded((value) => !value)}
-                  className="mt-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[#f4f4f1] hover:text-[var(--mm-text-primary)]"
+                  className="mt-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
                 >
                   {filesExpanded ? "收起文件" : `展开其余 ${hiddenChangedCount} 个文件`}
                 </button>
@@ -619,31 +619,31 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         </div>
       </section>
 
-      <section className="min-h-0 rounded-[14px] border border-[#e9e9e6] bg-white p-3.5">
+      <section className="min-h-0 rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">进度</h2>
-          <span className="rounded-full bg-[#f4f4f1] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
+          <span className="rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
             {taskFlowItems.length > 0 ? `${taskFlowItems.length} tasks` : "idle"}
           </span>
         </div>
         {queue.lastError && (
-          <div className="mb-3 rounded-lg border border-[#fecaca] bg-[#fef2f2] px-3 py-2 text-xs leading-5 text-[#b91c1c]" role="alert">
+          <div className="mb-3 rounded-lg border border-[#fecaca] bg-[#fef2f2] px-3 py-2 text-xs leading-5 text-[var(--color-error)]" role="alert">
             {queue.lastError}
           </div>
         )}
         {!queue.lastError && queue.lastCompletedAt && (
-          <div className="mb-3 rounded-lg border border-[#dcfce7] bg-[#f0fdf4] px-3 py-2 text-xs leading-5 text-[#166534]" role="status">
+          <div className="mb-3 rounded-lg border border-[#dcfce7] bg-[#f0fdf4] px-3 py-2 text-xs leading-5 text-[var(--color-success)]" role="status">
             最近任务已完成
           </div>
         )}
         {queue.lastActivity && (
-          <div className="mb-3 rounded-lg border border-[#f0f0ed] bg-[#fafaf8] px-3 py-2 text-xs leading-5 text-[var(--mm-text-secondary)]" role="status">
+          <div className="mb-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs leading-5 text-[var(--mm-text-secondary)]" role="status">
             {queue.lastActivity}
           </div>
         )}
 
         {taskFlowItems.length > 0 && (
-          <div className="mb-3 rounded-lg border border-[#ecece7] bg-[#fbfbfa] p-2">
+          <div className="mb-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-2">
             <div className="mb-2 flex items-center justify-between text-[11px] text-[var(--mm-text-tertiary)]">
               <span>任务流</span>
               <span>{queue.autoRetrying ? "自动重试" : queue.running ? "运行中" : "排队"}</span>
@@ -654,7 +654,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                   <button
                     type="button"
                     onClick={() => jumpToSession(item.sessionId)}
-                    className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-1.5 text-left text-xs hover:bg-white"
+                    className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-1.5 text-left text-xs hover:bg-[var(--mm-bg-panel)]"
                     title={item.label}
                   >
                     <ProgressStatusIcon status={item.status} />
@@ -690,23 +690,23 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
             ))}
           </ul>
         ) : (
-          <p className="m-0 rounded-lg border border-dashed border-[#ecece7] bg-[#fafaf8] px-3 py-3 text-xs leading-5 text-[var(--mm-text-secondary)]">
+          <p className="m-0 rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-3 text-xs leading-5 text-[var(--mm-text-secondary)]">
             开始对话或执行工具后，这里会显示计划步骤、工具调用和长任务进度。
           </p>
         )}
       </section>
 
-      <section className="min-h-0 rounded-[14px] border border-[#e9e9e6] bg-white p-3.5">
+      <section className="min-h-0 rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">最近工具</h2>
-          <span className="rounded-full bg-[#f4f4f1] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
+          <span className="rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
             {recentTools.length}
           </span>
         </div>
         {recentTools.length > 0 ? (
           <ul className="m-0 max-h-[180px] list-none space-y-1.5 overflow-y-auto p-0">
             {recentTools.map((item) => (
-              <li key={item.id} className="rounded-lg border border-[#f0f0ed] px-2.5 py-2">
+              <li key={item.id} className="rounded-lg border border-[var(--mm-border)] px-2.5 py-2">
                 <div className="mb-1 flex min-w-0 items-center gap-2">
                   <ProgressStatusIcon status={item.status} />
                   <span className="min-w-0 flex-1 truncate text-xs" title={item.label}>
@@ -715,13 +715,13 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                 </div>
                 {item.command && (
                   <div className="flex items-center gap-1">
-                    <code className="min-w-0 flex-1 truncate rounded bg-[#fafaf8] px-1.5 py-1 font-mono text-[10px] text-[var(--mm-text-secondary)]">
+                    <code className="min-w-0 flex-1 truncate rounded bg-[var(--mm-bg-panel)] px-1.5 py-1 font-mono text-[10px] text-[var(--mm-text-secondary)]">
                       {item.command}
                     </code>
                     <button
                       type="button"
                       onClick={() => runCommandInTerminal(item.command!)}
-                      className={`shrink-0 rounded px-1.5 py-1 text-[11px] hover:bg-[#f4f4f1] ${
+                      className={`shrink-0 rounded px-1.5 py-1 text-[11px] hover:bg-[var(--mm-bg-sidebar)] ${
                         item.commandMode === "draft" ? "text-amber-700" : "text-[var(--mm-text-secondary)]"
                       }`}
                       title={item.commandMode === "draft" ? "高风险命令只填入终端，不自动执行" : "在终端中执行此命令"}
@@ -734,13 +734,13 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
             ))}
           </ul>
         ) : (
-          <p className="m-0 rounded-lg border border-dashed border-[#ecece7] bg-[#fafaf8] px-3 py-3 text-xs leading-5 text-[var(--mm-text-secondary)]">
+          <p className="m-0 rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-3 text-xs leading-5 text-[var(--mm-text-secondary)]">
             Pi 调用工具后，这里会保留最近的命令和文件操作，方便复跑或回看。
           </p>
         )}
       </section>
 
-      <section className="min-h-0 rounded-[14px] border border-[#e9e9e6] bg-white p-3.5">
+      <section className="min-h-0 rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">文件输出</h2>
           <PanelChevron />
@@ -748,7 +748,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         {fileOutputs.length > 0 ? (
           <ul className="m-0 max-h-[220px] list-none space-y-2 overflow-y-auto p-0">
             {fileOutputs.map((item) => (
-              <li key={item.path} className="min-w-0 rounded-lg border border-[#f0f0ed] px-2.5 py-2">
+              <li key={item.path} className="min-w-0 rounded-lg border border-[var(--mm-border)] px-2.5 py-2">
                 <div className="mb-1 flex min-w-0 items-center gap-2">
                   <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--mm-text-primary)]" title={item.path}>
                     {item.name}
@@ -759,35 +759,35 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                   <button
                     type="button"
                     onClick={() => openWorkspaceFile(item.path)}
-                    className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[#f4f4f1]"
+                    className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
                     Files
                   </button>
                   <button
                     type="button"
                     onClick={() => void openOutputPath(item.path)}
-                    className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[#f4f4f1]"
+                    className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
                     系统打开
                   </button>
                   <button
                     type="button"
                     onClick={() => void revealOutputPath(item.path)}
-                    className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[#f4f4f1]"
+                    className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
                     定位
                   </button>
                   <button
                     type="button"
                     onClick={() => void copyPath(item.path)}
-                    className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[#f4f4f1]"
+                    className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
                     {copiedPath === item.path ? "已复制" : "复制路径"}
                   </button>
                   <button
                     type="button"
                     onClick={() => referenceOutputPath(item.path)}
-                    className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[#f4f4f1]"
+                    className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
                     引用
                   </button>
@@ -795,7 +795,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                 {fileActionStatus?.path === item.path && (
                   <p
                     className={`m-0 mt-1 text-[10px] leading-4 ${
-                      fileActionStatus.tone === "error" ? "text-[#b91c1c]" : "text-[#166534]"
+                      fileActionStatus.tone === "error" ? "text-[var(--color-error)]" : "text-[var(--color-success)]"
                     }`}
                     role={fileActionStatus.tone === "error" ? "alert" : "status"}
                   >
@@ -806,7 +806,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
             ))}
           </ul>
         ) : (
-          <p className="m-0 rounded-lg border border-dashed border-[#ecece7] bg-[#fafaf8] px-3 py-3 text-xs leading-5 text-[var(--mm-text-secondary)]">
+          <p className="m-0 rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-3 text-xs leading-5 text-[var(--mm-text-secondary)]">
             本轮生成、修改或引用的文件会在这里汇总，方便打开、定位和复制路径。
           </p>
         )}

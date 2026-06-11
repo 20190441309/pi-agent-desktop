@@ -87,9 +87,9 @@ export function SkillsMarketplace(): React.JSX.Element {
 
     if (skillhubAvailable === false) {
         return (
-            <div className="p-8 text-center text-sm text-[#666]">
+            <div className="p-8 text-center text-sm text-[var(--mm-text-secondary)]">
                 <p className="mb-2">SkillHub CLI 未安装</p>
-                <code className="block text-xs bg-[#f5f5f5] p-2 rounded mb-3">
+                <code className="block text-xs bg-[var(--mm-bg-sidebar)] p-2 rounded mb-3">
                     curl -fsSL https://skillhub.cn/install/install.sh | bash
                 </code>
                 <Button
@@ -112,8 +112,8 @@ export function SkillsMarketplace(): React.JSX.Element {
                     role="alert"
                 >
                     <div className="min-w-0">
-                        <p className="text-sm text-[#ef4444] font-medium">搜索失败</p>
-                        <p className="text-xs text-[#666] truncate font-mono">{visibleError}</p>
+                        <p className="text-sm text-[var(--color-error)] font-medium">搜索失败</p>
+                        <p className="text-xs text-[var(--mm-text-secondary)] truncate font-mono">{visibleError}</p>
                     </div>
                     <Button
                         variant="danger"
@@ -151,7 +151,7 @@ export function SkillsMarketplace(): React.JSX.Element {
                 <select
                     value={sort}
                     onChange={(e) => setSort(e.target.value as "热门" | "最新")}
-                    className="text-xs px-2 py-1 bg-white border border-[#e5e5e5] rounded text-[#666]"
+                    className="text-xs px-2 py-1 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded text-[var(--mm-text-secondary)]"
                 >
                     <option value="热门">热门</option>
                     <option value="最新">最新</option>
@@ -160,12 +160,12 @@ export function SkillsMarketplace(): React.JSX.Element {
 
             {/* Grid */}
             {marketLoading ? (
-                <div className="text-center text-sm text-[#999] py-8" role="status">
+                <div className="text-center text-sm text-[var(--mm-text-tertiary)] py-8" role="status">
                     搜索中...
                 </div>
             ) : filtered.length === 0 ? (
                 <div
-                    className="text-center text-sm text-[#999] py-8"
+                    className="text-center text-sm text-[var(--mm-text-tertiary)] py-8"
                     role="status"
                 >
                     {marketQuery

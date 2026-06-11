@@ -70,7 +70,7 @@ const COMMANDS: readonly CommandDef[] = Object.freeze([
 
 function FileIcon(): React.JSX.Element {
     return (
-        <svg className="h-4 w-4 shrink-0 text-[#999]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <svg className="h-4 w-4 shrink-0 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14 3v5h5" />
         </svg>
@@ -435,7 +435,7 @@ export function CommandPalette({
         >
             <div
                 ref={dialogRef}
-                className="bg-white rounded-2xl shadow-2xl w-[640px] max-h-[500px] flex flex-col overflow-hidden"
+                className="bg-[var(--mm-bg-panel)] rounded-2xl shadow-2xl w-[640px] max-h-[500px] flex flex-col overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
@@ -443,7 +443,7 @@ export function CommandPalette({
             >
                 {/* Mode tabs */}
                 <div
-                    className="flex items-center gap-1 px-3 pt-3 border-b border-[#e5e5e5]"
+                    className="flex items-center gap-1 px-3 pt-3 border-b border-[var(--mm-border)]"
                     role="tablist"
                     aria-label={t("commandPalette.aria.mode")}
                 >
@@ -461,7 +461,7 @@ export function CommandPalette({
                                 className={`px-3 py-1.5 text-sm rounded-t-md transition-colors ${
                                     isActive
                                         ? "bg-[#1a1a1a] text-white"
-                                        : "text-[#666] hover:bg-[#f5f5f5]"
+                                        : "text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                                 }`}
                             >
                                 {t(`commandPalette.modes.${m === "cmd" ? "command" : m}`)}
@@ -489,7 +489,7 @@ export function CommandPalette({
                                 ? t("commandPalette.placeholders.history")
                                 : t("commandPalette.placeholders.command")
                         }
-                        className="w-full px-3 py-2 bg-[#f5f5f5] border border-[#e5e5e5] rounded-lg text-sm focus:outline-none focus:border-[#1a1a1a]"
+                        className="w-full px-3 py-2 bg-[var(--mm-bg-sidebar)] border border-[var(--mm-border)] rounded-lg text-sm focus:outline-none focus:border-[#1a1a1a]"
                         aria-label={t("commandPalette.aria.search")}
                         autoComplete="off"
                         role="combobox"
@@ -509,8 +509,8 @@ export function CommandPalette({
                         <div
                             className={`mx-3 mb-2 rounded-lg border p-2.5 text-xs ${
                                 actionStatus.tone === "error"
-                                    ? "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]"
-                                    : "border-[#bbf7d0] bg-[#f0fdf4] text-[#166534]"
+                                    ? "border-[#fecaca] bg-[#fef2f2] text-[var(--color-error)]"
+                                    : "border-[#bbf7d0] bg-[#f0fdf4] text-[var(--color-success)]"
                             }`}
                             role={actionStatus.tone === "error" ? "alert" : "status"}
                         >
@@ -533,25 +533,25 @@ export function CommandPalette({
                             className="m-3 p-3 bg-[#fef2f2] border border-[#fecaca] rounded-lg"
                             role="alert"
                         >
-                            <p className="text-sm text-[#ef4444] font-medium mb-1">
+                            <p className="text-sm text-[var(--color-error)] font-medium mb-1">
                                 {t("commandPalette.states.fileSearchFailed")}
                             </p>
-                            <p className="text-xs text-[#666] mb-2 break-all font-mono">
+                            <p className="text-xs text-[var(--mm-text-secondary)] mb-2 break-all font-mono">
                                 {filesError}
                             </p>
                             <button
                                 onClick={retryFileSearch}
-                                className="px-3 py-1.5 bg-[#ef4444] text-white text-xs rounded hover:bg-[#dc2626] transition-colors"
+                                className="px-3 py-1.5 bg-[var(--color-error)] text-white text-xs rounded hover:bg-[var(--color-error)] transition-colors"
                             >
                                 {t("common.retry")}
                             </button>
                         </div>
                     ) : mode === "file" && filesLoading ? (
-                        <div className="px-4 py-8 text-center text-sm text-[#999]" role="status">
+                        <div className="px-4 py-8 text-center text-sm text-[var(--mm-text-tertiary)]" role="status">
                             {t("common.loading")}
                         </div>
                     ) : results.length === 0 ? (
-                        <div className="px-4 py-8 text-center text-sm text-[#999]">
+                        <div className="px-4 py-8 text-center text-sm text-[var(--mm-text-tertiary)]">
                             {query
                                 ? t("commandPalette.states.noFileResults")
                                 : mode === "history"
@@ -585,16 +585,16 @@ export function CommandPalette({
                                             }}
                                             className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
                                                 isSelected
-                                                    ? "bg-[#f0f0f0]"
-                                                    : "hover:bg-[#f5f5f5]"
+                                                    ? "bg-[var(--mm-bg-hover)]"
+                                                    : "hover:bg-[var(--mm-bg-sidebar)]"
                                             }`}
                                         >
                                             {mode === "file" && <FileIcon />}
-                                            <span className="flex-1 truncate text-[#1a1a1a]">
+                                            <span className="flex-1 truncate text-[var(--mm-text-primary)]">
                                                 {r.primary}
                                             </span>
                                             {r.secondary && (
-                                                <span className="text-xs text-[#999] font-mono">{r.secondary}</span>
+                                                <span className="text-xs text-[var(--mm-text-tertiary)] font-mono">{r.secondary}</span>
                                             )}
                                         </button>
                                     </li>
@@ -606,20 +606,20 @@ export function CommandPalette({
 
                 {/* Footer hint */}
                 <div
-                    className="px-3 py-2 border-t border-[#e5e5e5] text-xs text-[#999] flex items-center gap-3"
+                    className="px-3 py-2 border-t border-[var(--mm-border)] text-xs text-[var(--mm-text-tertiary)] flex items-center gap-3"
                     aria-hidden="true"
                 >
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">↑↓</kbd> {t("commandPalette.hints.navigate")}
+                        <kbd className="px-1 py-0.5 bg-[var(--mm-bg-sidebar)] rounded">↑↓</kbd> {t("commandPalette.hints.navigate")}
                     </span>
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">↵</kbd> {t("commandPalette.hints.confirm")}
+                        <kbd className="px-1 py-0.5 bg-[var(--mm-bg-sidebar)] rounded">↵</kbd> {t("commandPalette.hints.confirm")}
                     </span>
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">Tab</kbd> {t("commandPalette.hints.switchMode")}
+                        <kbd className="px-1 py-0.5 bg-[var(--mm-bg-sidebar)] rounded">Tab</kbd> {t("commandPalette.hints.switchMode")}
                     </span>
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">Esc</kbd> {t("commandPalette.hints.close")}
+                        <kbd className="px-1 py-0.5 bg-[var(--mm-bg-sidebar)] rounded">Esc</kbd> {t("commandPalette.hints.close")}
                     </span>
                 </div>
             </div>

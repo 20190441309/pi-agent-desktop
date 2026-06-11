@@ -14,15 +14,15 @@ function DiffLineRow({ line }: { line: DiffLine }): React.JSX.Element {
     switch (line.type) {
       case 'add': return 'bg-[#dcfce7]';
       case 'remove': return 'bg-[#fef2f2]';
-      default: return 'bg-white';
+      default: return 'bg-[var(--mm-bg-panel)]';
     }
   };
 
   const getLineTextColor = () => {
     switch (line.type) {
-      case 'add': return 'text-[#166534]';
-      case 'remove': return 'text-[#991b1b]';
-      default: return 'text-[#1a1a1a]';
+      case 'add': return 'text-[var(--color-success)]';
+      case 'remove': return 'text-[var(--color-error)]';
+      default: return 'text-[var(--mm-text-primary)]';
     }
   };
 
@@ -37,12 +37,12 @@ function DiffLineRow({ line }: { line: DiffLine }): React.JSX.Element {
   return (
     <tr className={`${getLineBg()} hover:brightness-95 transition-all`}>
       {/* 旧文件行号 */}
-      <td className="w-[50px] px-2 py-0 text-right select-none text-[#999999] text-xs border-r border-[#e5e5e5] whitespace-nowrap"
+      <td className="w-[50px] px-2 py-0 text-right select-none text-[var(--mm-text-tertiary)] text-xs border-r border-[var(--mm-border)] whitespace-nowrap"
           style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", fontSize: '11px' }}>
         {line.oldLine ?? ''}
       </td>
       {/* 新文件行号 */}
-      <td className="w-[50px] px-2 py-0 text-right select-none text-[#999999] text-xs border-r border-[#e5e5e5] whitespace-nowrap"
+      <td className="w-[50px] px-2 py-0 text-right select-none text-[var(--mm-text-tertiary)] text-xs border-r border-[var(--mm-border)] whitespace-nowrap"
           style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", fontSize: '11px' }}>
         {line.newLine ?? ''}
       </td>
@@ -62,8 +62,8 @@ function DiffLineRow({ line }: { line: DiffLine }): React.JSX.Element {
 
 function HunkHeader({ header }: { header: string }): React.JSX.Element {
   return (
-    <tr className="bg-[#f0f0f0]">
-      <td colSpan={4} className="px-3 py-1 text-xs text-[#666666] border-y border-[#e5e5e5]"
+    <tr className="bg-[var(--mm-bg-hover)]">
+      <td colSpan={4} className="px-3 py-1 text-xs text-[var(--mm-text-secondary)] border-y border-[var(--mm-border)]"
           style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" }}>
         {header || '...'}
       </td>
@@ -75,9 +75,9 @@ function FileDiffView({ file }: { file: DiffFile }): React.JSX.Element {
   const [isExpanded, setIsExpanded] = useState(true);
 
   return (
-    <div className="border border-[#e5e5e5] rounded-lg overflow-hidden bg-white">
+    <div className="border border-[var(--mm-border)] rounded-lg overflow-hidden bg-[var(--mm-bg-panel)]">
       {/* 文件头 */}
-      <div className="bg-[#f5f5f5] border-b border-[#e5e5e5]">
+      <div className="bg-[var(--mm-bg-sidebar)] border-b border-[var(--mm-border)]">
         <FileChangeItem
           file={file}
           isExpanded={isExpanded}
@@ -125,13 +125,13 @@ export function DiffViewer({ diff, maxHeight = '500px' }: DiffViewerProps): Reac
     <div className="diff-viewer">
       {/* 总览 */}
       <div className="flex items-center gap-3 mb-2 px-1">
-        <span className="text-xs text-[#666666]">
+        <span className="text-xs text-[var(--mm-text-secondary)]">
           {parsedDiff.files.length} 个文件变更
         </span>
-        <span className="text-xs text-[#166534] font-medium">
+        <span className="text-xs text-[var(--color-success)] font-medium">
           +{totalAdditions}
         </span>
-        <span className="text-xs text-[#991b1b] font-medium">
+        <span className="text-xs text-[var(--color-error)] font-medium">
           -{totalDeletions}
         </span>
       </div>

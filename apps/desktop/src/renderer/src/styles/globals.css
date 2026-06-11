@@ -291,6 +291,266 @@ select:focus-visible,
   background: #2a2a2a;
 }
 
+/* ===== Dark Theme — 硬编码颜色覆盖 =====
+ * 组件中大量使用了 bg-white, bg-[#f*], text-[#1*], border-[#e*] 等
+ * 硬编码的浅色值，深色模式下不响应 data-theme 切换。
+ * 以下规则按类别批量覆盖，确保深色模式下视觉一致。
+ */
+
+/* ── 白色/浅色背景 → 深色背景 ── */
+[data-theme="dark"] .bg-white,
+[data-theme="dark"] .bg-\[\#ffffff\],
+[data-theme="dark"] .bg-\[\#fff\],
+[data-theme="dark"] .bg-\[\#fafaf8\],
+[data-theme="dark"] .bg-\[\#fbfbfa\],
+[data-theme="dark"] .bg-\[\#fafafa\] {
+  background-color: var(--mm-bg-panel) !important;
+}
+
+[data-theme="dark"] .bg-\[\#f7f7f4\],
+[data-theme="dark"] .bg-\[\#f7f7f7\],
+[data-theme="dark"] .bg-\[\#f7f7f5\],
+[data-theme="dark"] .bg-\[\#f9f9f9\],
+[data-theme="dark"] .bg-\[\#f5f5f5\],
+[data-theme="dark"] .bg-\[\#f6f6f3\],
+[data-theme="dark"] .bg-\[\#f8f8f6\],
+[data-theme="dark"] .bg-\[\#f5f5f2\] {
+  background-color: var(--mm-bg-sidebar) !important;
+}
+
+[data-theme="dark"] .bg-\[\#f4f4f1\],
+[data-theme="dark"] .bg-\[\#f1f1ee\],
+[data-theme="dark"] .bg-\[\#f0f0ed\],
+[data-theme="dark"] .bg-\[\#f0f0f0\],
+[data-theme="dark"] .bg-\[\#eeeeea\],
+[data-theme="dark"] .bg-\[\#ececea\],
+[data-theme="dark"] .bg-\[\#f3f3f3\],
+[data-theme="dark"] .bg-\[\#f4f4f4\] {
+  background-color: #2e2e2e !important;
+}
+
+[data-theme="dark"] .bg-\[\#e5e5e5\],
+[data-theme="dark"] .bg-\[\#e2e2de\],
+[data-theme="dark"] .bg-\[\#e9e9e5\] {
+  background-color: #383838 !important;
+}
+
+/* ── 状态色背景 → 深色版 ── */
+[data-theme="dark"] .bg-\[\#fef2f2\],
+[data-theme="dark"] .bg-\[\#fee2e2\] {
+  background-color: #3b1c1c !important;
+}
+
+[data-theme="dark"] .bg-\[\#f0fdf4\],
+[data-theme="dark"] .bg-\[\#eef8ef\],
+[data-theme="dark"] .bg-\[\#f5fbf0\],
+[data-theme="dark"] .bg-\[\#ecfdf5\],
+[data-theme="dark"] .bg-\[\#dcfce7\],
+[data-theme="dark"] .bg-\[\#e5f2dc\],
+[data-theme="dark"] .bg-\[\#eef3ff\],
+[data-theme="dark"] .bg-\[\#dbeafe\],
+[data-theme="dark"] .bg-\[\#dbe8d0\],
+[data-theme="dark"] .bg-\[\#d8e7d9\],
+[data-theme="dark"] .bg-\[\#bbf7d0\] {
+  background-color: #1a2e1a !important;
+}
+
+[data-theme="dark"] .bg-\[\#fff7ed\],
+[data-theme="dark"] .bg-\[\#fed7aa\] {
+  background-color: #3b2e1a !important;
+}
+
+[data-theme="dark"] .bg-\[\#eef3ff\],
+[data-theme="dark"] .bg-\[\#dbeafe\],
+[data-theme="dark"] .bg-\[\#f3f4f6\] {
+  background-color: #1a1e3a !important;
+}
+
+[data-theme="dark"] .bg-\[\#fffaf0\],
+[data-theme="dark"] .bg-\[\#fffefb\] {
+  background-color: #2a2518 !important;
+}
+
+/* ── 深色文字 → 浅色文字 ── */
+[data-theme="dark"] .text-\[\#1f1f1f\],
+[data-theme="dark"] .text-\[\#1a1a1a\],
+[data-theme="dark"] .text-\[\#1f2937\],
+[data-theme="dark"] .text-\[\#262626\],
+[data-theme="dark"] .text-\[\#111\],
+[data-theme="dark"] .text-\[\#1f1f1d\],
+[data-theme="dark"] .text-black {
+  color: #e5e5e5 !important;
+}
+
+[data-theme="dark"] .text-\[\#333\],
+[data-theme="dark"] .text-\[\#444\],
+[data-theme="dark"] .text-\[\#555\],
+[data-theme="dark"] .text-\[\#4b5563\],
+[data-theme="dark"] .text-\[\#62625c\] {
+  color: #b0b0b0 !important;
+}
+
+[data-theme="dark"] .text-\[\#666\],
+[data-theme="dark"] .text-\[\#666666\],
+[data-theme="dark"] .text-\[\#777\],
+[data-theme="dark"] .text-\[\#777771\],
+[data-theme="dark"] .text-\[\#888\],
+[data-theme="dark"] .text-\[\#999\],
+[data-theme="dark"] .text-\[\#999999\],
+[data-theme="dark"] .text-\[\#bbb\] {
+  color: #888888 !important;
+}
+
+/* ── 彩色文字 → 深色版 ── */
+[data-theme="dark"] .text-\[\#1d4ed8\],
+[data-theme="dark"] .text-\[\#2563eb\] {
+  color: #60a5fa !important;
+}
+
+[data-theme="dark"] .text-\[\#b91c1c\],
+[data-theme="dark"] .text-\[\#991b1b\] {
+  color: #f87171 !important;
+}
+
+[data-theme="dark"] .text-\[\#166534\],
+[data-theme="dark"] .text-\[\#2f6b38\],
+[data-theme="dark"] .text-\[\#315f24\],
+[data-theme="dark"] .text-\[\#3c7b46\],
+[data-theme="dark"] .text-\[\#16a34a\] {
+  color: #4ade80 !important;
+}
+
+[data-theme="dark"] .text-\[\#c2410c\] {
+  color: #fb923c !important;
+}
+
+/* ── 边框 → 深色版 ── */
+[data-theme="dark"] .border-\[\#e5e5e5\],
+[data-theme="dark"] .border-\[\#e5e5df\],
+[data-theme="dark"] .border-\[\#e5e5e2\],
+[data-theme="dark"] .border-\[\#e5e5e0\],
+[data-theme="dark"] .border-\[\#e4e4e0\],
+[data-theme="dark"] .border-\[\#e4e4df\],
+[data-theme="dark"] .border-\[\#e9e9e6\],
+[data-theme="dark"] .border-\[\#e9e9e5\],
+[data-theme="dark"] .border-\[\#e8e8e4\],
+[data-theme="dark"] .border-\[\#e8e8e3\],
+[data-theme="dark"] .border-\[\#e2e2de\],
+[data-theme="dark"] .border-\[\#ecece7\],
+[data-theme="dark"] .border-\[\#ececea\],
+[data-theme="dark"] .border-\[\#ededeb\],
+[data-theme="dark"] .border-\[\#deded8\],
+[data-theme="dark"] .border-\[\#dededb\],
+[data-theme="dark"] .border-\[\#d8d8d3\],
+[data-theme="dark"] .border-\[\#d8d8d8\],
+[data-theme="dark"] .border-\[\#d6d6d6\],
+[data-theme="dark"] .border-\[\#dcdcd8\],
+[data-theme="dark"] .border-\[\#d4d4cc\],
+[data-theme="dark"] .border-\[\#eeeeea\],
+[data-theme="dark"] .border-gray-100,
+[data-theme="dark"] .border-gray-200,
+[data-theme="dark"] .border-gray-300 {
+  border-color: var(--mm-border) !important;
+}
+
+/* ── 状态色边框 ── */
+[data-theme="dark"] .border-\[\#fecaca\] {
+  border-color: #7f1d1d !important;
+}
+
+[data-theme="dark"] .border-\[\#dcfce7\],
+[data-theme="dark"] .border-\[\#d8e7d9\],
+[data-theme="dark"] .border-\[\#dbe8d0\],
+[data-theme="dark"] .border-\[\#bbf7d0\] {
+  border-color: #166534 !important;
+}
+
+[data-theme="dark"] .border-\[\#dbeafe\] {
+  border-color: #1e40af !important;
+}
+
+[data-theme="dark"] .border-\[\#fed7aa\] {
+  border-color: #9a3412 !important;
+}
+
+[data-theme="dark"] .border-\[\#f1e4c8\] {
+  border-color: #78590a !important;
+}
+
+[data-theme="dark"] .border-\[\#f0f0ed\] {
+  border-color: #333333 !important;
+}
+
+/* ── Hover 状态 ── */
+[data-theme="dark"] .hover\:bg-white,
+[data-theme="dark"] .hover\:bg-\[\#f5f5f2\],
+[data-theme="dark"] .hover\:bg-\[\#ecece7\],
+[data-theme="dark"] .hover\:bg-\[\#e5e5e5\],
+[data-theme="dark"] .hover\:bg-\[\#e2e2de\],
+[data-theme="dark"] .hover\:bg-\[\#f5f5f5\],
+[data-theme="dark"] .hover\:bg-\[\#f0f0f0\],
+[data-theme="dark"] .hover\:bg-gray-100 {
+  --tw-bg-opacity: 1;
+  background-color: var(--mm-bg-hover) !important;
+}
+
+[data-theme="dark"] .hover\:text-\[\#1f1f1f\],
+[data-theme="dark"] .hover\:text-\[\#1a1a1a\] {
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .hover\:border-\[\#999\],
+[data-theme="dark"] .hover\:border-gray-400 {
+  border-color: #666666 !important;
+}
+
+/* ── 特殊元素 ── */
+[data-theme="dark"] .bg-\[\#1f1f1f\] {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+[data-theme="dark"] .bg-\[\#cccccc\] {
+  background-color: #555555 !important;
+}
+
+[data-theme="dark"] .bg-\[\#1795f6\] {
+  background-color: #2563eb !important;
+}
+
+[data-theme="dark"] .bg-\[\#ef4444\],
+[data-theme="dark"] .bg-\[\#dc2626\] {
+  background-color: #dc2626 !important;
+}
+
+[data-theme="dark"] .bg-\[\#16a34a\] {
+  background-color: #16a34a !important;
+}
+
+[data-theme="dark"] .bg-\[\#10b981\] {
+  background-color: #10b981 !important;
+}
+
+/* ── Shadow → 深色版 ── */
+[data-theme="dark"] .shadow-\[0_1px_2px_rgba\(0\,0\,0\,0\.02\)\] {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .shadow-\[0_18px_44px_rgba\(20\,20\,18\,0\.08\)\],
+[data-theme="dark"] .shadow-\[0_24px_80px_rgba\(0\,0\,0\,0\.22\)\] {
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .shadow-\[0_1px_2px_rgba\(0\,0\,0\,0\.14\)\] {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* ── 进度条轨道 ── */
+[data-theme="dark"] .bg-\[\#e5e5e5\],
+[data-theme="dark"] .bg-\[\#eeeeea\] {
+  background-color: #383838 !important;
+}
+
 /* Screen reader only utility */
 .sr-only {
   position: absolute;
@@ -513,4 +773,143 @@ code {
 @keyframes settings-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* ===== Dark Mode — 全局属性级覆盖 =====
+ * Tailwind CSS 4 的 class 选择器匹配不稳定，无法通过 [data-theme="dark"] .bg-white
+ * 等方式可靠覆盖硬编码颜色。以下使用 * 通配符直接设置 CSS 属性，
+ * 然后通过恢复规则还原需要特殊颜色的元素（状态色、链接、按钮等）。
+ */
+
+/* ── 第1层: 全局深色覆盖 ── */
+[data-theme="dark"] * {
+  background-color: var(--mm-bg-panel) !important;
+  border-color: var(--mm-border) !important;
+  color: var(--mm-text-primary) !important;
+  box-shadow: none !important;
+}
+
+/* ── 第2层: 恢复特殊元素 ── */
+[data-theme="dark"] html,
+[data-theme="dark"] body {
+  background-color: var(--mm-bg-main) !important;
+}
+
+[data-theme="dark"] main {
+  background-color: var(--mm-bg-main) !important;
+}
+
+[data-theme="dark"] aside,
+[data-theme="dark"] nav,
+[data-theme="dark"] header,
+[data-theme="dark"] footer {
+  background-color: var(--mm-bg-sidebar) !important;
+}
+
+[data-theme="dark"] pre {
+  background-color: #1e1e1e !important;
+  color: #e5e5e5 !important;
+}
+
+[data-theme="dark"] :not(pre) > code {
+  background-color: #333 !important;
+}
+
+[data-theme="dark"] svg {
+  color: inherit !important;
+  fill: none !important;
+}
+
+[data-theme="dark"] img {
+  opacity: 0.9 !important;
+}
+
+/* ── 第2层: 恢复彩色元素 ── */
+[data-theme="dark"] [class*="bg-red"],
+[data-theme="dark"] [class*="bg-green"],
+[data-theme="dark"] [class*="bg-blue"],
+[data-theme="dark"] [class*="bg-yellow"],
+[data-theme="dark"] [class*="bg-orange"] {
+  background-color: inherit !important;
+}
+
+[data-theme="dark"] [class*="text-red"],
+[data-theme="dark"] [class*="text-green"],
+[data-theme="dark"] [class*="text-blue"],
+[data-theme="dark"] [class*="text-yellow"],
+[data-theme="dark"] [class*="text-orange"] {
+  color: inherit !important;
+}
+
+[data-theme="dark"] [class*="border-red"],
+[data-theme="dark"] [class*="border-green"],
+[data-theme="dark"] [class*="border-blue"],
+[data-theme="dark"] [class*="border-yellow"],
+[data-theme="dark"] [class*="border-orange"] {
+  border-color: inherit !important;
+}
+
+/* ── 第2层: 恢复交互元素 ── */
+[data-theme="dark"] [role="switch"][aria-checked="true"] {
+  background-color: #1795f6 !important;
+}
+
+[data-theme="dark"] [role="switch"] {
+  background-color: #555 !important;
+}
+
+[data-theme="dark"] [role="progressbar"] > * {
+  background-color: #1795f6 !important;
+}
+
+[data-theme="dark"] a {
+  color: #60a5fa !important;
+}
+
+[data-theme="dark"] ::selection {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+[data-theme="dark"] :focus-visible {
+  outline-color: #60a5fa !important;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.3) !important;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #555 !important;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #777 !important;
+}
+
+/* ── 第2层: 恢复表格 ── */
+[data-theme="dark"] th {
+  background-color: var(--mm-bg-sidebar) !important;
+}
+
+[data-theme="dark"] tr:nth-child(even) {
+  background-color: var(--mm-bg-sidebar) !important;
+}
+
+/* ── 第2层: 恢复标记元素 ── */
+[data-theme="dark"] mark {
+  background-color: #3b2e1a !important;
+  color: #fbbf24 !important;
+}
+
+[data-theme="dark"] kbd {
+  background-color: #333 !important;
+  color: #e5e5e5 !important;
+  border-color: #555 !important;
+}
+
+[data-theme="dark"] blockquote {
+  background-color: #2a2a2a !important;
+  border-left-color: var(--mm-border) !important;
+}
+
+[data-theme="dark"] [role="tooltip"] {
+  background-color: #333 !important;
+  color: #e5e5e5 !important;
 }

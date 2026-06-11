@@ -134,24 +134,24 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
             aria-labelledby="onboarding-title"
             data-testid="onboarding-modal"
         >
-            <div className="bg-white rounded-2xl shadow-2xl w-[560px] max-w-[92vw] p-8">
+            <div className="bg-[var(--mm-bg-panel)] rounded-2xl shadow-2xl w-[560px] max-w-[92vw] p-8">
                 {/* Stepper */}
                 <Stepper current={step} />
 
                 {/* Title */}
                 <h2
                     id="onboarding-title"
-                    className="text-xl font-semibold text-[#1a1a1a] mt-6 mb-2"
+                    className="text-xl font-semibold text-[var(--mm-text-primary)] mt-6 mb-2"
                 >
                     {title}
                 </h2>
-                <p className="text-sm text-[#666] mb-6">{description}</p>
+                <p className="text-sm text-[var(--mm-text-secondary)] mb-6">{description}</p>
 
                 {/* Step 1: Pi CLI check */}
                 {step === 1 && (
                     <div className="space-y-4">
                         <div
-                            className="p-4 rounded-lg border bg-[#f9f9f9] border-[#e5e5e5]"
+                            className="p-4 rounded-lg border bg-[var(--mm-bg-sidebar)] border-[var(--mm-border)]"
                             role="status"
                             aria-live="polite"
                         >
@@ -159,10 +159,10 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                 <span
                                     className={`w-2 h-2 rounded-full ${
                                         piInstalled
-                                            ? "bg-[#10b981]"
+                                            ? "bg-[var(--color-success)]"
                                             : loading
                                             ? "bg-[#f59e0b]"
-                                            : "bg-[#ef4444]"
+                                            : "bg-[var(--color-error)]"
                                     }`}
                                 />
                                 <span className="text-sm font-medium">
@@ -173,7 +173,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                         : t("onboarding.step1.status.notFound")}
                                 </span>
                             </div>
-                            <p className="text-xs text-[#666]">
+                            <p className="text-xs text-[var(--mm-text-secondary)]">
                                 {piInstalled
                                     ? status?.localVersion
                                         ? t("onboarding.step1.status.versionKnown", { version: status.localVersion })
@@ -181,12 +181,12 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                     : t("onboarding.step1.status.notInstalled")}
                             </p>
                             {errorMessage && !piInstalled && (
-                                <p className="text-xs text-[#ef4444] mt-1" role="alert">
+                                <p className="text-xs text-[var(--color-error)] mt-1" role="alert">
                                     {errorMessage}
                                 </p>
                             )}
                             {!piInstalled && isOperating && progress && (
-                                <p className="text-xs text-[#666] mt-1">
+                                <p className="text-xs text-[var(--mm-text-secondary)] mt-1">
                                     {progress.message}
                                     {progress.percent != null && ` (${progress.percent}%)`}
                                 </p>
@@ -214,7 +214,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                             <button
                                 onClick={() => void refreshStatus()}
                                 disabled={loading || isOperating}
-                                className="px-4 py-2.5 bg-white border border-[#e5e5e5] text-[#666] rounded-lg hover:bg-[#f5f5f5] transition-colors text-sm"
+                                className="px-4 py-2.5 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] text-[var(--mm-text-secondary)] rounded-lg hover:bg-[var(--mm-bg-sidebar)] transition-colors text-sm"
                                 title={t("onboarding.step1.refresh")}
                             >
                                 {t("onboarding.step1.refresh")}
@@ -227,13 +227,13 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                 {step === 2 && (
                     <div className="space-y-4">
                         <div
-                            className="p-4 rounded-lg border bg-[#f9f9f9] border-[#e5e5e5]"
+                            className="p-4 rounded-lg border bg-[var(--mm-bg-sidebar)] border-[var(--mm-border)]"
                             role="status"
                         >
                             <div className="flex items-center gap-2 mb-1">
                                 <span
                                     className={`w-2 h-2 rounded-full ${
-                                        currentWorkspace ? "bg-[#10b981]" : "bg-[#999]"
+                                        currentWorkspace ? "bg-[var(--color-success)]" : "bg-[#999]"
                                     }`}
                                 />
                                 <span className="text-sm font-medium">
@@ -242,7 +242,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                         : t("onboarding.step2.status.notSelected")}
                                 </span>
                             </div>
-                            <p className="text-xs text-[#666]">
+                            <p className="text-xs text-[var(--mm-text-secondary)]">
                                 {currentWorkspace
                                     ? t("onboarding.step2.status.selectedDetail", {
                                           name: currentWorkspace.name,
@@ -267,7 +267,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                             </button>
                             <button
                                 onClick={() => setStep(1)}
-                                className="px-4 py-2.5 bg-white border border-[#e5e5e5] text-[#666] rounded-lg hover:bg-[#f5f5f5] transition-colors text-sm"
+                                className="px-4 py-2.5 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] text-[var(--mm-text-secondary)] rounded-lg hover:bg-[var(--mm-bg-sidebar)] transition-colors text-sm"
                             >
                                 {t("common.back")}
                             </button>
@@ -290,12 +290,12 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                             role="status"
                         >
                             <div className="flex items-center gap-2 mb-1">
-                                <span className="w-2 h-2 rounded-full bg-[#10b981]" />
-                                <span className="text-sm font-medium text-[#1a1a1a]">
+                                <span className="w-2 h-2 rounded-full bg-[var(--color-success)]" />
+                                <span className="text-sm font-medium text-[var(--mm-text-primary)]">
                                     {t("onboarding.step3.checkedOk")}
                                 </span>
                             </div>
-                            <p className="text-xs text-[#666]">
+                            <p className="text-xs text-[var(--mm-text-secondary)]">
                                 {t("onboarding.step3.details", {
                                     cli: status?.localVersion
                                         ? t("onboarding.step3.cliReady", { version: status.localVersion })
@@ -310,7 +310,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setStep(2)}
-                                className="px-4 py-2.5 bg-white border border-[#e5e5e5] text-[#666] rounded-lg hover:bg-[#f5f5f5] transition-colors text-sm"
+                                className="px-4 py-2.5 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] text-[var(--mm-text-secondary)] rounded-lg hover:bg-[var(--mm-bg-sidebar)] transition-colors text-sm"
                             >
                                 {t("common.back")}
                             </button>
@@ -329,7 +329,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                 <div className="mt-6 pt-4 border-t border-[#f0f0f0] text-right">
                     <button
                         onClick={handleFinish}
-                        className="text-xs text-[#999] hover:text-[#666] transition-colors"
+                        className="text-xs text-[var(--mm-text-tertiary)] hover:text-[var(--mm-text-secondary)] transition-colors"
                     >
                         {t("onboarding.skip")}
                     </button>
@@ -361,7 +361,7 @@ function Stepper({ current }: { current: Step }): React.JSX.Element {
                                     ? "bg-[#1a1a1a] text-white"
                                     : active
                                     ? "bg-[#1a1a1a] text-white"
-                                    : "bg-[#f0f0f0] text-[#999]"
+                                    : "bg-[var(--mm-bg-hover)] text-[var(--mm-text-tertiary)]"
                             }`}
                             aria-current={active ? "step" : undefined}
                         >
@@ -369,13 +369,13 @@ function Stepper({ current }: { current: Step }): React.JSX.Element {
                         </span>
                         <span
                             className={`text-xs ${
-                                active ? "text-[#1a1a1a] font-medium" : "text-[#999]"
+                                active ? "text-[var(--mm-text-primary)] font-medium" : "text-[var(--mm-text-tertiary)]"
                             }`}
                         >
                             {s.label}
                         </span>
                         {i < steps.length - 1 && (
-                            <span className="flex-1 h-px bg-[#e5e5e5] ml-1" />
+                            <span className="flex-1 h-px bg-[var(--mm-bg-hover)] ml-1" />
                         )}
                     </li>
                 );

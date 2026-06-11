@@ -24,8 +24,8 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
     switch (toolCall.status) {
       case 'running': return 'text-[#f59e0b]';
       case 'completed': return 'text-[#10b981]';
-      case 'error': return 'text-[#ef4444]';
-      default: return 'text-[#999999]';
+      case 'error': return 'text-[var(--color-error)]';
+      default: return 'text-[var(--mm-text-tertiary)]';
     }
   };
   
@@ -35,21 +35,21 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
         <div className="h-3.5 w-3.5 rounded-full border-2 border-[#b8b8b8] border-t-transparent animate-spin" />
       );
       case 'completed': return (
-        <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#16a34a]">
+        <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--color-success)]">
           <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
           </svg>
         </div>
       );
       case 'error': return (
-        <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#ef4444]">
+        <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--color-error)]">
           <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </div>
       );
       default: return (
-        <div className="h-3.5 w-3.5 rounded-full border border-[#d8d8d8]" />
+        <div className="h-3.5 w-3.5 rounded-full border border-[var(--mm-border)]" />
       );
     }
   };
@@ -96,10 +96,10 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
   };
 
   return (
-    <div className="border-l border-[#e5e5e2] pl-3">
+    <div className="border-l border-[var(--mm-border)] pl-3">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full items-center justify-between py-1 text-left text-[#a0a0a0] transition-colors duration-150 hover:text-[#777]"
+        className="flex w-full items-center justify-between py-1 text-left text-[#a0a0a0] transition-colors duration-150 hover:text-[var(--mm-text-tertiary)]"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {getStatusIcon()}
@@ -139,7 +139,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
                 <button
                   type="button"
                   onClick={runInTerminal}
-                  className="rounded-md border border-[#d8d8d2] bg-[#fbfbfa] px-2 py-1 text-[11px] text-[#333] hover:bg-white"
+                  className="rounded-md border border-[#d8d8d2] bg-[var(--mm-bg-panel)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)]"
                   title={commandMode === "draft" ? "高风险命令只填入终端，不自动执行" : "在终端中执行此命令"}
                 >
                   {commandMode === "draft" ? "填入终端" : "在终端运行"}
@@ -147,7 +147,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
                 <button
                   type="button"
                   onClick={() => void copyText("input", commandText)}
-                  className="rounded-md border border-[#eeeeea] px-2 py-1 text-[11px] text-[#666] hover:bg-[#fbfbfa] hover:text-[#222]"
+                  className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[#222]"
                 >
                   {copied === "input" ? "已复制命令" : "复制命令"}
                 </button>
@@ -162,7 +162,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => void copyText("output", outputStr)}
-                className="rounded-md border border-[#eeeeea] px-2 py-1 text-[11px] text-[#666] hover:bg-[#fbfbfa] hover:text-[#222]"
+                className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[#222]"
               >
                 {copied === "output" ? "已复制输出" : "复制输出"}
               </button>
@@ -172,14 +172,14 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
                 key={path}
                 type="button"
                 onClick={() => openOutputPath(path)}
-                className="max-w-[220px] truncate rounded-md border border-[#eeeeea] px-2 py-1 text-[11px] text-[#666] hover:bg-[#fbfbfa] hover:text-[#222]"
+                className="max-w-[220px] truncate rounded-md border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[#222]"
                 title={`在文件工作区打开 ${path}`}
               >
                 打开 {basename(path)}
               </button>
             ))}
             {copyError && (
-              <span className="self-center text-[11px] text-[#b91c1c]" role="alert">
+              <span className="self-center text-[11px] text-[var(--color-error)]" role="alert">
                 {copyError}
               </span>
             )}
@@ -187,8 +187,8 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
           {/* Input */}
           {inputStr !== null ? (
             <div className="mb-3">
-              <div className="mb-1 text-xs font-medium text-[#777]">输入：</div>
-              <pre className="overflow-x-auto rounded-lg border border-[#ededeb] bg-[#fbfbfa] p-2 text-xs">
+              <div className="mb-1 text-xs font-medium text-[var(--mm-text-tertiary)]">输入：</div>
+              <pre className="overflow-x-auto rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-2 text-xs">
                 {inputStr}
               </pre>
             </div>
@@ -197,7 +197,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
           {/* Output */}
           {outputStr !== null ? (
             <div>
-              <div className="mb-1 text-xs font-medium text-[#777]">输出：</div>
+              <div className="mb-1 text-xs font-medium text-[var(--mm-text-tertiary)]">输出：</div>
               {(toolName === 'edit' || toolName === 'write') &&
                typeof toolCall.output === 'string' &&
                extractDiffFromOutput(toolCall.output) ? (
@@ -205,7 +205,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
                   <DiffViewer diff={toolCall.output} maxHeight="400px" />
                 </div>
               ) : (
-                <pre className="max-h-40 overflow-x-auto overflow-y-auto rounded-lg border border-[#ededeb] bg-[#fbfbfa] p-2 text-xs">
+                <pre className="max-h-40 overflow-x-auto overflow-y-auto rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-2 text-xs">
                   {outputStr}
                 </pre>
               )}

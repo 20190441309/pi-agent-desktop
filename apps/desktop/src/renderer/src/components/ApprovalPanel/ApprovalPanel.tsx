@@ -28,17 +28,17 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
 
   return (
     <div
-      className="w-[420px] flex-shrink-0 bg-[#ffffff] border-l border-[#e5e5e5] flex flex-col h-full"
+      className="w-[420px] flex-shrink-0 bg-[#ffffff] border-l border-[var(--mm-border)] flex flex-col h-full"
       role="region"
       aria-label="文件变更审批"
     >
       {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#e5e5e5] bg-[#fafafa]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-panel)]">
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-[#666666]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <svg className="w-4 h-4 text-[var(--mm-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
-          <h2 className="text-sm font-medium text-[#1a1a1a]">文件变更审批</h2>
+          <h2 className="text-sm font-medium text-[var(--mm-text-primary)]">文件变更审批</h2>
           {pendingCount > 0 && (
             <span
               className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold text-white bg-[#f59e0b]"
@@ -51,7 +51,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
         <button
           type="button"
           onClick={onToggle}
-          className="p-1 rounded hover:bg-[#e5e5e5] transition-colors text-[#999999]"
+          className="p-1 rounded hover:bg-[var(--mm-bg-hover)] transition-colors text-[var(--mm-text-tertiary)]"
           title="关闭面板"
           aria-label="关闭审批面板"
         >
@@ -63,7 +63,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
 
       {/* 变更计数 */}
       {totalChanges > 0 && (
-        <div className="px-4 py-2 border-b border-[#e5e5e5] text-xs text-[#666666]">
+        <div className="px-4 py-2 border-b border-[var(--mm-border)] text-xs text-[var(--mm-text-secondary)]">
           {pendingCount > 0 ? (
             <span><strong className="text-[#f59e0b]">{pendingCount}</strong> 个文件待审批</span>
           ) : (
@@ -84,7 +84,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
             <svg className="w-12 h-12 text-[#e5e5e5] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
             </svg>
-            <p className="text-sm text-[#999999]">暂无待审批的变更</p>
+            <p className="text-sm text-[var(--mm-text-tertiary)]">暂无待审批的变更</p>
             <p className="text-xs text-[#cccccc] mt-1">AI 修改文件时将在此处显示</p>
           </li>
         ) : (
@@ -102,7 +102,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
 
       {/* 底部操作栏 */}
       {totalChanges > 0 && (
-        <div className="px-3 py-3 border-t border-[#e5e5e5] bg-[#fafafa]">
+        <div className="px-3 py-3 border-t border-[var(--mm-border)] bg-[var(--mm-bg-panel)]">
           <div className="flex items-center justify-between gap-2">
             {/* 左侧: 全部操作 */}
             <div className="flex items-center gap-2">
@@ -111,7 +111,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
                   <button
                     type="button"
                     onClick={approveAll}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium text-white bg-[#10b981] hover:bg-[#059669] transition-colors"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-success)] hover:bg-[#059669] transition-colors"
                     aria-label="全部接受"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -122,7 +122,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
                   <button
                     type="button"
                     onClick={rejectAll}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium text-white bg-[#ef4444] hover:bg-[#dc2626] transition-colors"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-error)] hover:bg-[var(--color-error)] transition-colors"
                     aria-label="全部拒绝"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -135,7 +135,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
               <button
                 type="button"
                 onClick={clearChanges}
-                className="px-2.5 py-1.5 rounded text-xs text-[#666666] hover:bg-[#e5e5e5] transition-colors"
+                className="px-2.5 py-1.5 rounded text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] transition-colors"
                 aria-label="清除所有变更"
               >
                 清除
@@ -151,14 +151,14 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
               aria-label="自动审批"
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors ${
                 autoApprove
-                  ? 'bg-[#dcfce7] text-[#166534]'
-                  : 'bg-white border border-[#e5e5e5] text-[#666666] hover:bg-[#f0f0f0]'
+                  ? 'bg-[#dcfce7] text-[var(--color-success)]'
+                  : 'bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]'
               }`}
               title={autoApprove ? '自动审批已开启' : '自动审批已关闭'}
             >
               <span
                 aria-hidden="true"
-                className={`w-3 h-3 rounded-full ${autoApprove ? 'bg-[#10b981]' : 'bg-[#cccccc]'}`}
+                className={`w-3 h-3 rounded-full ${autoApprove ? 'bg-[var(--color-success)]' : 'bg-[var(--mm-bg-selected)]'}`}
               />
               自动审批
             </button>

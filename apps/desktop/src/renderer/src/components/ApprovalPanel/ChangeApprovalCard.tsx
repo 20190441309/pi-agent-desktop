@@ -22,11 +22,11 @@ function BreadcrumbPath({ filePath }: { filePath: string }): React.JSX.Element {
     <div className="flex items-center gap-1 text-xs min-w-0 overflow-hidden">
       {dirParts.map((part, i) => (
         <React.Fragment key={i}>
-          <span className="text-[#999999] truncate">{part}</span>
+          <span className="text-[var(--mm-text-tertiary)] truncate">{part}</span>
           <span className="text-[#cccccc] flex-shrink-0">/</span>
         </React.Fragment>
       ))}
-      <span className="text-[#1a1a1a] font-medium truncate font-mono" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" }}>
+      <span className="text-[var(--mm-text-primary)] font-medium truncate font-mono" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" }}>
         {fileName}
       </span>
     </div>
@@ -37,7 +37,7 @@ function BreadcrumbPath({ filePath }: { filePath: string }): React.JSX.Element {
 function ToolBadge({ toolName }: { toolName: 'write' | 'edit' }): React.JSX.Element {
   if (toolName === 'write') {
     return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#dbeafe] text-[#1d4ed8]">
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#dbeafe] text-[var(--color-info)]">
         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
@@ -61,7 +61,7 @@ function StatusBadge({ status }: { status: 'pending' | 'approved' | 'rejected' }
 
   if (status === 'approved') {
     return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#dcfce7] text-[#166534]">
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#dcfce7] text-[var(--color-success)]">
         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
         </svg>
@@ -71,7 +71,7 @@ function StatusBadge({ status }: { status: 'pending' | 'approved' | 'rejected' }
   }
 
   return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#fef2f2] text-[#991b1b]">
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#fef2f2] text-[var(--color-error)]">
       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
       </svg>
@@ -98,9 +98,9 @@ export function ChangeApprovalCard({ change, onApprove, onReject }: ChangeApprov
   })();
 
   return (
-    <div className={`bg-white border border-[#e5e5e5] rounded-lg overflow-hidden ${borderColor}`}>
+    <div className={`bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-lg overflow-hidden ${borderColor}`}>
       {/* 头部: 文件路径 + 工具类型 + 状态 */}
-      <div className="px-3 py-2.5 bg-[#fafafa] border-b border-[#e5e5e5]">
+      <div className="px-3 py-2.5 bg-[var(--mm-bg-panel)] border-b border-[var(--mm-border)]">
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <BreadcrumbPath filePath={change.filePath} />
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -111,11 +111,11 @@ export function ChangeApprovalCard({ change, onApprove, onReject }: ChangeApprov
 
         {/* Edit 操作的变更摘要 */}
         {change.toolName === 'edit' && change.oldString && change.newString && (
-          <div className="mt-1.5 text-xs text-[#666666]">
-            <span className="line-through text-[#ef4444]">
+          <div className="mt-1.5 text-xs text-[var(--mm-text-secondary)]">
+            <span className="line-through text-[var(--color-error)]">
               {change.oldString.length > 60 ? change.oldString.slice(0, 60) + '...' : change.oldString}
             </span>
-            <span className="mx-1 text-[#999]">→</span>
+            <span className="mx-1 text-[var(--mm-text-tertiary)]">→</span>
             <span className="text-[#10b981]">
               {change.newString.length > 60 ? change.newString.slice(0, 60) + '...' : change.newString}
             </span>
@@ -132,10 +132,10 @@ export function ChangeApprovalCard({ change, onApprove, onReject }: ChangeApprov
 
       {/* 操作按钮 */}
       {!isDecided && (
-        <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[#e5e5e5] bg-[#fafafa]">
+        <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[var(--mm-border)] bg-[var(--mm-bg-panel)]">
           <button
             onClick={() => onReject(change.id)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-[#ef4444] hover:bg-[#dc2626] transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-error)] hover:bg-[var(--color-error)] transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -144,7 +144,7 @@ export function ChangeApprovalCard({ change, onApprove, onReject }: ChangeApprov
           </button>
           <button
             onClick={() => onApprove(change.id)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-[#10b981] hover:bg-[#059669] transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-success)] hover:bg-[#059669] transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

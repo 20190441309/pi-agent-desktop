@@ -7,8 +7,8 @@ export type WorkspaceNotice = {
 };
 
 const TONE_CLASS: Record<WorkspaceNotice["tone"], string> = {
-    success: "border-[#bbf7d0] bg-[#f0fdf4] text-[#166534]",
-    error: "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]",
+    success: "border-[#bbf7d0] bg-[#f0fdf4] text-[var(--color-success)]",
+    error: "border-[#fecaca] bg-[#fef2f2] text-[var(--color-error)]",
     info: "border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)]",
 };
 
@@ -41,7 +41,7 @@ export function WorkspaceNoticeBanner(): React.JSX.Element | null {
             <button
                 type="button"
                 onClick={() => setNotice(null)}
-                className="shrink-0 rounded-[var(--mm-radius-sm)] px-2 py-1 text-xs opacity-70 hover:bg-white/60 hover:opacity-100"
+                className="shrink-0 rounded-[var(--mm-radius-sm)] px-2 py-1 text-xs opacity-70 hover:bg-[var(--mm-bg-panel)]/60 hover:opacity-100"
                 aria-label="关闭工作区提示"
             >
                 x

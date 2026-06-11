@@ -115,10 +115,10 @@ function ToolActivity({
       <button
         type="button"
         onClick={() => setIsExpanded((v) => !v)}
-        className="mt-2 flex w-full items-center justify-between rounded-lg border border-[#eeeeea] bg-[#fbfbfa] px-2.5 py-1.5 text-left text-xs text-[#777] transition-colors hover:border-[#deded9] hover:text-[#333]"
+        className="mt-2 flex w-full items-center justify-between rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-1.5 text-left text-xs text-[var(--mm-text-tertiary)] transition-colors hover:border-[#deded9] hover:text-[var(--mm-text-secondary)]"
       >
         <span className="flex min-w-0 items-center gap-1.5 truncate">
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "bg-[#f59e0b]" : "bg-[#16a34a]"}`} aria-hidden />
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "bg-[#f59e0b]" : "bg-[var(--color-success)]"}`} aria-hidden />
           <span className="truncate">{running ? "处理中" : toolSummary(toolCalls)}</span>
         </span>
         <svg
@@ -204,15 +204,15 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
         </div>
           <div className={`${
             isUser
-              ? 'rounded-2xl border border-[#e9e9e5] bg-[#f7f7f4] px-4 py-3 text-[#1f1f1f]'
-              : 'rounded-xl border border-[#ececea] bg-white px-4 py-3 text-[#1f1f1f] shadow-[0_1px_2px_rgba(0,0,0,0.02)]'
+              ? 'rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-4 py-3 text-[var(--mm-text-primary)]'
+              : 'rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-3 text-[var(--mm-text-primary)] shadow-[0_1px_2px_rgba(0,0,0,0.02)]'
           }`}>
             {isUser ? (
               <div className="space-y-2">
                 {userCommand.badge && (
                   <div className="flex justify-end">
                     <span
-                      className="inline-flex items-center gap-1.5 rounded-full border border-[#d8e7d9] bg-[#eef8ef] px-2.5 py-1 text-[11px] font-medium text-[#2f6b38]"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[#d8e7d9] bg-[#eef8ef] px-2.5 py-1 text-[11px] font-medium text-[var(--color-success)]"
                       aria-label={`${userCommand.badge}消息`}
                     >
                       <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -281,7 +281,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
                 <button
                   type="button"
                   onClick={() => void handleCopy()}
-                  className="text-[#aaa] hover:text-[#666] transition-colors"
+                  className="text-[#aaa] hover:text-[var(--mm-text-secondary)] transition-colors"
                   aria-label={copied ? "已复制" : "复制内容"}
                   title={copied ? "已复制" : "复制"}
                 >
@@ -295,7 +295,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
                 </button>
               )}
               {copyError && (
-                <span className="text-[11px] text-[#b91c1c]" role="alert">
+                <span className="text-[11px] text-[var(--color-error)]" role="alert">
                   {copyError}
                 </span>
               )}

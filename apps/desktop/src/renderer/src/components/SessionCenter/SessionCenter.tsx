@@ -227,14 +227,14 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--mm-bg-main)] px-6 py-6 text-[var(--mm-text-primary)]">
-      <div className="mb-5 flex items-center justify-between gap-4 border-b border-[#ecece7] pb-4">
+      <div className="mb-5 flex items-center justify-between gap-4 border-b border-[var(--mm-border)] pb-4">
         <div>
           <h1 className="m-0 text-lg font-semibold">会话中心</h1>
           <p className="m-0 mt-1 text-xs text-[var(--mm-text-secondary)]">
             管理历史任务、标签、收藏和只读恢复，适合回到长任务上下文。
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-[#deded8] bg-white px-3">
+        <div className="flex items-center gap-2 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3">
           <span className="text-[12px] text-[var(--mm-text-tertiary)]" aria-hidden="true">⌕</span>
           <input
             value={query}
@@ -249,8 +249,8 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
         <div
           className={`mb-4 flex items-center gap-3 rounded-lg border px-3 py-2 text-sm ${
             notice.tone === "error"
-              ? "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]"
-              : "border-[#dbe8d0] bg-[#f5fbf0] text-[#315f24]"
+              ? "border-[#fecaca] bg-[#fef2f2] text-[var(--color-error)]"
+              : "border-[#dbe8d0] bg-[#f5fbf0] text-[var(--color-success)]"
           }`}
           role={notice.tone === "error" ? "alert" : "status"}
         >
@@ -262,7 +262,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                 notice.undo?.();
                 setNotice(null);
               }}
-              className="shrink-0 rounded-md px-2 py-1 text-xs text-[#315f24] hover:bg-[#e5f2dc]"
+              className="shrink-0 rounded-md px-2 py-1 text-xs text-[var(--color-success)] hover:bg-[#e5f2dc]"
             >
               撤销
             </button>
@@ -313,14 +313,14 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                     return (
                       <article
                         key={session.id}
-                        className="rounded-lg border border-[#e8e8e3] bg-white p-3 transition-colors hover:border-[#d4d4cc] hover:bg-[#fffefb]"
+                        className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 transition-colors hover:border-[var(--mm-border)] hover:bg-[#fffefb]"
                         style={{ marginLeft: depth * 18 }}
                       >
                         <div className="flex items-start gap-3">
                           <button
                             type="button"
                             onClick={() => toggleFavorite(session.id)}
-                            className={`h-7 w-7 rounded-md text-sm ${session.favorite ? "bg-[#1f1f1f] text-white" : "border border-[#e4e4df] text-[#999]"}`}
+                            className={`h-7 w-7 rounded-md text-sm ${session.favorite ? "bg-[#1f1f1f] text-white" : "border border-[var(--mm-border)] text-[var(--mm-text-tertiary)]"}`}
                             aria-label={session.favorite ? "取消收藏" : "收藏"}
                           >
                             ★
@@ -346,7 +346,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                               {session.summary || session.messages.find((message) => message.role === "user")?.content || "暂无摘要"}
                             </p>
                             {matchingMessage && (
-                              <div className="mt-2 rounded-md border border-[#eeeeea] bg-[#fbfbfa] px-2.5 py-2">
+                              <div className="mt-2 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-2">
                                 <div className="mb-1 flex items-center justify-between gap-2">
                                   <span className="text-[10px] uppercase tracking-[0.4px] text-[var(--mm-text-tertiary)]">
                                     匹配消息 · {matchingMessage.role === "user" ? "用户" : "Pi"}
@@ -355,25 +355,25 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                                     type="button"
                                     onClick={() => void continueAndOpen(session, matchingMessage.id)}
                                     disabled={continuingKey != null}
-                                    className="rounded px-1.5 py-0.5 text-[11px] text-[#555] hover:bg-white hover:text-[#111] disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="rounded px-1.5 py-0.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     {continuingKey === `${session.id}:${matchingMessage.id}` ? "继续中" : "从这里继续"}
                                   </button>
                                 </div>
-                                <p className="m-0 line-clamp-2 text-xs leading-5 text-[#666]">
+                                <p className="m-0 line-clamp-2 text-xs leading-5 text-[var(--mm-text-secondary)]">
                                   {compactSnippet(matchingMessage.content || matchingMessage.thinking || "", query)}
                                 </p>
                               </div>
                             )}
                             <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <span className="rounded bg-[#f7f7f4] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">
+                              <span className="rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">
                                 {session.messages.length} messages
                               </span>
-                              <span className="rounded bg-[#f7f7f4] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">
+                              <span className="rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">
                                 {toolCount} tools
                               </span>
                               {childCount > 0 && (
-                                <span className="rounded bg-[#eef3ff] px-1.5 py-0.5 text-[10px] text-[#1d4ed8]">
+                                <span className="rounded bg-[#eef3ff] px-1.5 py-0.5 text-[10px] text-[var(--color-info)]">
                                   {childCount} branches
                                 </span>
                               )}
@@ -382,41 +382,41 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                                 onChange={(event) => setTagDraftById((state) => ({ ...state, [session.id]: event.target.value }))}
                                 onBlur={() => setSessionTags(session.id, tagDraft.split(","))}
                                 placeholder="标签，用逗号分隔"
-                                className="h-7 min-w-[180px] rounded-md border border-[#eeeeea] px-2 text-xs outline-none focus:border-[#bbb]"
+                                className="h-7 min-w-[180px] rounded-md border border-[var(--mm-border)] px-2 text-xs outline-none focus:border-[#bbb]"
                               />
                               <span className="text-[11px] text-[var(--mm-text-tertiary)]">
                                 {formatRelative(sessionActivityTime(session), t)}
                               </span>
-                              {session.readOnly && <span className="rounded bg-[#f4f4f1] px-1.5 py-0.5 text-[10px] text-[#777]">只读</span>}
-                              {session.archived && <span className="rounded bg-[#f4f4f1] px-1.5 py-0.5 text-[10px] text-[#777]">归档</span>}
+                              {session.readOnly && <span className="rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">只读</span>}
+                              {session.archived && <span className="rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">归档</span>}
                               {session.parentSessionId && (
-                                <span className="rounded bg-[#eef3ff] px-1.5 py-0.5 text-[10px] text-[#1d4ed8]">
+                                <span className="rounded bg-[#eef3ff] px-1.5 py-0.5 text-[10px] text-[var(--color-info)]">
                                   分支自 {parent?.title ?? "旧会话"}
                                 </span>
                               )}
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-wrap justify-end gap-1">
-                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]" onClick={() => openSession(session, false)}>打开</button>
-                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]" onClick={() => openSession(session, true)}>只读</button>
+                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => openSession(session, false)}>打开</button>
+                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => openSession(session, true)}>只读</button>
                             <button
-                              className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]"
+                              className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]"
                               disabled={continuingKey != null}
                               onClick={() => void continueAndOpen(session)}
                             >
                               {continuingKey === `${session.id}:latest` ? "继续中" : "继续"}
                             </button>
-                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]" onClick={() => setExportSessionId(session.id)}>导出</button>
-                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]" onClick={() => toggleArchive(session)}>
+                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => setExportSessionId(session.id)}>导出</button>
+                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => toggleArchive(session)}>
                               {session.archived ? "恢复" : "归档"}
                             </button>
                             {pendingDeleteId === session.id ? (
                               <>
-                                <button className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]" onClick={() => setPendingDeleteId(null)}>取消删除</button>
+                                <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => setPendingDeleteId(null)}>取消删除</button>
                                 <button className="rounded-md bg-[#b91c1c] px-2 py-1 text-xs text-white hover:bg-[#991b1b]" onClick={() => confirmDelete(session)}>确认删除</button>
                               </>
                             ) : (
-                              <button className="rounded-md px-2 py-1 text-xs text-[#b91c1c] hover:bg-[#fef2f2]" onClick={() => requestDelete(session)}>删除</button>
+                              <button className="rounded-md px-2 py-1 text-xs text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)]" onClick={() => requestDelete(session)}>删除</button>
                             )}
                           </div>
                         </div>

@@ -486,7 +486,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center px-8 py-12 text-center">
             <div className="mb-5 flex items-center gap-3 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-1.5 text-xs text-[var(--mm-text-secondary)] shadow-[var(--mm-shadow-elevated)]">
-              <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-[#16a34a]" : "bg-[#ef4444]"}`} aria-hidden />
+              <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden />
               <span className="max-w-[560px] truncate" title={workspaceLabel}>
                 {isConnected ? "Pi 已连接" : "Pi 未连接"} · {workspaceLabel}
               </span>
@@ -539,25 +539,25 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             {/* 错误提示 — 强 CTA：未装 Pi CLI 时引导用户立即安装 */}
             {!isConnected && (
               <div
-                className="mt-6 max-w-md w-full inline-flex flex-col gap-3 px-4 py-4 bg-[#fef2f2] border border-[#fecaca] rounded-lg text-left"
+                className="mt-6 max-w-md w-full inline-flex flex-col gap-3 px-4 py-4 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-lg text-left"
                 role="alert"
               >
                 <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-[#ef4444] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 text-[var(--color-error)] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
                   </svg>
-                  <span className="text-sm text-[#ef4444] font-medium">
+                  <span className="text-sm text-[var(--color-error)] font-medium">
                     {t('chatView.piCliMissing.title')}
                   </span>
                 </div>
-                <p className="text-xs text-[#666]">
+                <p className="text-xs text-[var(--mm-text-secondary)]">
                   {t('chatView.piCliMissing.description')}
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => void install()}
                     disabled={isOperating}
-                    className="flex-1 px-4 py-2 bg-[#ef4444] text-white rounded-md hover:bg-[#dc2626] transition-colors text-sm font-medium disabled:opacity-50"
+                    className="flex-1 px-4 py-2 bg-[var(--color-error)] text-white rounded-md hover:opacity-90 transition-colors text-sm font-medium disabled:opacity-50"
                   >
                     {isOperating
                       ? progress?.percent != null
@@ -567,7 +567,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                   </button>
                   <button
                     onClick={() => window.open("https://github.com/badlogic/pi-mono", "_blank")}
-                    className="px-4 py-2 bg-white border border-[#fecaca] text-[#666] rounded-md hover:bg-[#fef2f2] transition-colors text-sm"
+                    className="px-4 py-2 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] text-[var(--mm-text-secondary)] rounded-md hover:bg-[var(--mm-bg-hover)] transition-colors text-sm"
                   >
                     {t('chatView.piCliMissing.viewDocs')}
                   </button>
@@ -578,18 +578,18 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             {/* Chat send 失败的错误 — 重试按钮 */}
             {isConnected && (streamError || sendError || sessionActionError) && (
               <div
-                className="mt-6 max-w-md w-full inline-flex flex-col gap-3 px-4 py-4 bg-[#fef2f2] border border-[#fecaca] rounded-lg text-left"
+                className="mt-6 max-w-md w-full inline-flex flex-col gap-3 px-4 py-4 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-lg text-left"
                 role="alert"
               >
                 <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-[#ef4444] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 text-[var(--color-error)] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
                   </svg>
-                  <span className="text-sm text-[#ef4444] font-medium">
+                  <span className="text-sm text-[var(--color-error)] font-medium">
                     {t('chatView.sendFailed.title')}
                   </span>
                 </div>
-                <p className="text-xs text-[#666] break-all font-mono">{streamError || sendError || sessionActionError}</p>
+                <p className="text-xs text-[var(--mm-text-secondary)] break-all font-mono">{streamError || sendError || sessionActionError}</p>
                 <button
                   onClick={() => {
                     clearError();
@@ -654,10 +654,10 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                 className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-3 text-left"
                 role="alert"
               >
-                <div className="mb-1 text-sm font-medium text-[#ef4444]">
+                <div className="mb-1 text-sm font-medium text-[var(--color-error)]">
                   {t('chatView.sendFailed.title')}
                 </div>
-                <p className="break-all font-mono text-xs text-[#666]">{streamError || sendError || sessionActionError}</p>
+                <p className="break-all font-mono text-xs text-[var(--mm-text-secondary)]">{streamError || sendError || sessionActionError}</p>
                 <button
                   type="button"
                   onClick={() => {

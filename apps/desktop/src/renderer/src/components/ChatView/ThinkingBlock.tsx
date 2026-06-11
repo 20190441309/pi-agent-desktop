@@ -27,7 +27,7 @@ export function ThinkingBlock({
     <div className="my-1">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full items-center justify-between py-1 text-left text-[#a0a0a0] transition-colors duration-150 hover:text-[#777]"
+        className="flex w-full items-center justify-between py-1 text-left text-[#a0a0a0] transition-colors duration-150 hover:text-[var(--mm-text-tertiary)]"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="text-xs">
@@ -58,8 +58,8 @@ export function ThinkingBlock({
 
       {/* 展开内容 */}
       {isExpanded && (
-        <div className="border-l border-[#e5e5e2] py-2 pl-3">
-          <div className="whitespace-pre-wrap text-xs leading-relaxed text-[#777]">
+        <div className="border-l border-[var(--mm-border)] py-2 pl-3">
+          <div className="whitespace-pre-wrap text-xs leading-relaxed text-[var(--mm-text-tertiary)]">
             {content}
             {isStreaming && (
               <span className="inline-block w-0.5 h-4 bg-[#1a1a1a] animate-pulse ml-0.5 align-text-bottom" />

@@ -57,7 +57,7 @@ const StatusIcon: React.FC<{ status: TaskStatus }> = ({ status }) => {
             return (
                 <svg
                     aria-hidden
-                    className="w-4 h-4 text-[#1a1a1a] animate-spin flex-shrink-0"
+                    className="w-4 h-4 text-[var(--mm-text-primary)] animate-spin flex-shrink-0"
                     viewBox="0 0 24 24"
                     fill="none"
                 >
@@ -97,7 +97,7 @@ const StatusIcon: React.FC<{ status: TaskStatus }> = ({ status }) => {
             return (
                 <svg
                     aria-hidden
-                    className="w-4 h-4 text-[#ef4444] flex-shrink-0"
+                    className="w-4 h-4 text-[var(--color-error)] flex-shrink-0"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -228,7 +228,7 @@ export function TaskProgressPanel({
                                                     aria-valuemin={0}
                                                     aria-valuemax={100}
                                                     aria-label={`${t.name} 进度`}
-                                                    className="mt-1.5 h-[2px] w-full overflow-hidden rounded-[1px] bg-[#e5e5e5]"
+                                                    className="mt-1.5 h-[2px] w-full overflow-hidden rounded-[1px] bg-[var(--mm-bg-hover)]"
                                                 >
                                                     <div
                                                         className="h-full bg-[#1a1a1a] transition-all"

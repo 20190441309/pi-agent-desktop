@@ -226,17 +226,17 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
     if (!isOpen) return null;
 
     return (
-        <div className="border-t border-[#e5e5e5] bg-white flex flex-col h-64">
+        <div className="border-t border-[var(--mm-border)] bg-[var(--mm-bg-panel)] flex flex-col h-64">
             {/* Tab bar */}
-            <div className="flex items-center gap-2 px-2 py-1 border-b border-[#e5e5e5] bg-[#fafafa]">
+            <div className="flex items-center gap-2 px-2 py-1 border-b border-[var(--mm-border)] bg-[var(--mm-bg-panel)]">
                 <div className="flex items-center gap-1 flex-1 overflow-x-auto">
                     {tabs.map((t) => (
                         <div
                             key={t.id}
                             className={`flex items-center gap-2 px-3 py-1 text-xs rounded transition-colors ${
                                 activeId === t.id
-                                    ? "bg-white text-[#1a1a1a] border border-[#e5e5e5]"
-                                    : "text-[#666] hover:bg-[#f0f0f0]"
+                                    ? "bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] border border-[var(--mm-border)]"
+                                    : "text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
                             }`}
                         >
                             <button
@@ -254,7 +254,7 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
                                     e.stopPropagation();
                                     closeTab(t.id);
                                 }}
-                                className="text-[#999] hover:text-red-500 ml-1"
+                                className="text-[var(--mm-text-tertiary)] hover:text-red-500 ml-1"
                                 aria-label={`关闭终端 ${t.title}`}
                                 title={`关闭 ${t.title}`}
                             >
@@ -264,7 +264,7 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
                     ))}
                 </div>
                 {activeTab && (
-                    <div className="hidden min-w-0 max-w-[32%] items-center gap-1 rounded border border-[#eeeeea] bg-white px-2 py-1 text-[10px] text-[#777] md:flex">
+                    <div className="hidden min-w-0 max-w-[32%] items-center gap-1 rounded border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-[10px] text-[var(--mm-text-tertiary)] md:flex">
                         <span className="shrink-0 text-[#aaa]">cwd</span>
                         <span className="truncate font-mono" title={activeTab.cwd || "workspace"}>
                             {activeTab.cwd || "workspace"}
@@ -275,7 +275,7 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
                     type="button"
                     onClick={() => void copyActiveOutput()}
                     disabled={!activeTab?.output}
-                    className="rounded px-2 py-1 text-xs text-[#666] hover:bg-[#e5e5e5] disabled:cursor-not-allowed disabled:text-[#bbb] disabled:hover:bg-transparent"
+                    className="rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:text-[var(--mm-text-tertiary)] disabled:hover:bg-transparent"
                     title={activeTab?.output ? "复制当前终端最近输出" : "当前终端暂无输出"}
                 >
                     {copiedOutput ? "已复制" : "复制输出"}
@@ -284,7 +284,7 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
                     type="button"
                     onClick={clearActiveTerminal}
                     disabled={!activeTab}
-                    className="rounded px-2 py-1 text-xs text-[#666] hover:bg-[#e5e5e5] disabled:cursor-not-allowed disabled:text-[#bbb] disabled:hover:bg-transparent"
+                    className="rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:text-[var(--mm-text-tertiary)] disabled:hover:bg-transparent"
                     title="清空当前终端屏幕和输出缓存"
                 >
                     清屏
@@ -292,7 +292,7 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
                 <button
                     type="button"
                     onClick={() => void createTab()}
-                    className="text-xs px-2 py-1 text-[#666] hover:bg-[#e5e5e5] rounded"
+                    className="text-xs px-2 py-1 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded"
                     title="新建终端"
                 >
                     +
@@ -300,7 +300,7 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
                 <button
                     type="button"
                     onClick={onClose}
-                    className="text-xs px-2 py-1 text-[#666] hover:bg-[#e5e5e5] rounded ml-1"
+                    className="text-xs px-2 py-1 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded ml-1"
                     title="收起终端"
                 >
                     ✕
@@ -345,11 +345,11 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
                         <svg className="w-10 h-10 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
-                        <p className="text-sm text-[#1a1a1a] mb-1 font-medium">
+                        <p className="text-sm text-[var(--mm-text-primary)] mb-1 font-medium">
                             暂无终端
                         </p>
-                        <p className="text-xs text-[#999] mb-3">
-                            按 <kbd className="px-1.5 py-0.5 bg-[#f0f0f0] rounded text-[10px] font-mono">Ctrl + `</kbd> 或点下面按钮新建
+                        <p className="text-xs text-[var(--mm-text-tertiary)] mb-3">
+                            按 <kbd className="px-1.5 py-0.5 bg-[var(--mm-bg-hover)] rounded text-[10px] font-mono">Ctrl + `</kbd> 或点下面按钮新建
                         </p>
                         <button
                             onClick={() => void createTab()}

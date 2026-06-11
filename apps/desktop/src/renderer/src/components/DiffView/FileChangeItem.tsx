@@ -15,19 +15,19 @@ export function FileChangeItem({ file, isExpanded, onToggle }: FileChangeItemPro
   // 获取文件图标颜色
   const getFileIconColor = () => {
     if (file.isNew) return 'text-[#10b981]';
-    if (file.isDeleted) return 'text-[#ef4444]';
-    return 'text-[#666666]';
+    if (file.isDeleted) return 'text-[var(--color-error)]';
+    return 'text-[var(--mm-text-secondary)]';
   };
 
   return (
     <button
       onClick={onToggle}
-      className="w-full flex items-center justify-between px-3 py-2 hover:bg-[#f0f0f0] transition-colors duration-150 cursor-pointer"
+      className="w-full flex items-center justify-between px-3 py-2 hover:bg-[var(--mm-bg-hover)] transition-colors duration-150 cursor-pointer"
     >
       <div className="flex items-center gap-2 min-w-0">
         {/* 展开/折叠箭头 */}
         <svg
-          className={`w-3 h-3 text-[#999999] transition-transform duration-150 flex-shrink-0 ${
+          className={`w-3 h-3 text-[var(--mm-text-tertiary)] transition-transform duration-150 flex-shrink-0 ${
             isExpanded ? 'rotate-90' : ''
           }`}
           fill="none"
@@ -53,18 +53,18 @@ export function FileChangeItem({ file, isExpanded, onToggle }: FileChangeItemPro
         </svg>
 
         {/* 文件路径 */}
-        <span className="text-sm text-[#1a1a1a] truncate font-mono" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" }}>
+        <span className="text-sm text-[var(--mm-text-primary)] truncate font-mono" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" }}>
           {displayPath}
         </span>
 
         {/* 新建/删除标记 */}
         {file.isNew && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#dcfce7] text-[#166534] flex-shrink-0">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#dcfce7] text-[var(--color-success)] flex-shrink-0">
             新建
           </span>
         )}
         {file.isDeleted && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#fef2f2] text-[#991b1b] flex-shrink-0">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#fef2f2] text-[var(--color-error)] flex-shrink-0">
             删除
           </span>
         )}
@@ -73,12 +73,12 @@ export function FileChangeItem({ file, isExpanded, onToggle }: FileChangeItemPro
       {/* 变更统计 */}
       <div className="flex items-center gap-2 flex-shrink-0 ml-2">
         {file.additions > 0 && (
-          <span className="text-xs font-medium text-[#166534]">
+          <span className="text-xs font-medium text-[var(--color-success)]">
             +{file.additions}
           </span>
         )}
         {file.deletions > 0 && (
-          <span className="text-xs font-medium text-[#991b1b]">
+          <span className="text-xs font-medium text-[var(--color-error)]">
             -{file.deletions}
           </span>
         )}

@@ -74,16 +74,16 @@ export function ShortcutsCheatsheet({
             <div
                 ref={containerRef}
                 tabIndex={-1}
-                className="bg-white rounded-2xl shadow-2xl w-[640px] max-h-[70vh] flex flex-col overflow-hidden focus:outline-none"
+                className="bg-[var(--mm-bg-panel)] rounded-2xl shadow-2xl w-[640px] max-h-[70vh] flex flex-col overflow-hidden focus:outline-none"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="px-5 py-4 border-b border-[#e5e5e5] flex items-center justify-between">
+                <div className="px-5 py-4 border-b border-[var(--mm-border)] flex items-center justify-between">
                     <div>
-                        <h2 className="text-base font-semibold text-[#1a1a1a]">
+                        <h2 className="text-base font-semibold text-[var(--mm-text-primary)]">
                             {t("shortcutsCheatsheet.title")}
                         </h2>
-                        <p className="text-xs text-[#999] mt-0.5">
+                        <p className="text-xs text-[var(--mm-text-tertiary)] mt-0.5">
                             {t("shortcutsCheatsheet.subtitle", {
                                 open: "?",
                                 close: "Esc",
@@ -93,7 +93,7 @@ export function ShortcutsCheatsheet({
                     <button
                         onClick={onClose}
                         aria-label={t("shortcutsCheatsheet.closeAria")}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[#999] hover:bg-[#f5f5f5] hover:text-[#1a1a1a] transition-colors"
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)] transition-colors"
                     >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -105,7 +105,7 @@ export function ShortcutsCheatsheet({
                 <div className="flex-1 overflow-auto px-5 py-3">
                     {groups.map((g) => (
                         <section key={g.category} className="mb-4 last:mb-0">
-                            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[#999] mb-1.5">
+                            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--mm-text-tertiary)] mb-1.5">
                                 {t(`shortcuts.categories.${g.category}`)}
                             </h3>
                             <ul className="divide-y divide-[#f0f0f0]" role="list">
@@ -119,10 +119,10 @@ export function ShortcutsCheatsheet({
                                             aria-selected={active}
                                             onMouseEnter={() => setActiveIdx(idx)}
                                             className={`flex items-center justify-between py-2 px-2 rounded-md cursor-default transition-colors ${
-                                                active ? "bg-[#f0f0f0]" : ""
+                                                active ? "bg-[var(--mm-bg-hover)]" : ""
                                             }`}
                                         >
-                                            <span className="text-sm text-[#1a1a1a]">{t(s.labelKey)}</span>
+                                            <span className="text-sm text-[var(--mm-text-primary)]">{t(s.labelKey)}</span>
                                             <KeyChip keys={s.keys} />
                                         </li>
                                     );
@@ -133,12 +133,12 @@ export function ShortcutsCheatsheet({
                 </div>
 
                 {/* Footer */}
-                <div className="px-5 py-2.5 border-t border-[#e5e5e5] text-xs text-[#999] flex items-center gap-3">
+                <div className="px-5 py-2.5 border-t border-[var(--mm-border)] text-xs text-[var(--mm-text-tertiary)] flex items-center gap-3">
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">↑↓</kbd> {t("shortcutsCheatsheet.footer.navigate")}
+                        <kbd className="px-1 py-0.5 bg-[var(--mm-bg-sidebar)] rounded">↑↓</kbd> {t("shortcutsCheatsheet.footer.navigate")}
                     </span>
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">Esc</kbd> {t("shortcutsCheatsheet.footer.close")}
+                        <kbd className="px-1 py-0.5 bg-[var(--mm-bg-sidebar)] rounded">Esc</kbd> {t("shortcutsCheatsheet.footer.close")}
                     </span>
                     <span className="ml-auto">
                         {t("shortcutsCheatsheet.footer.count", { count: flat.length })}
@@ -157,7 +157,7 @@ function KeyChip({ keys }: { keys: string }): React.ReactElement {
             {parts.map((p, i) => (
                 <React.Fragment key={`${p}-${i}`}>
                     {i > 0 && <span className="text-[#ccc] text-[10px]">+</span>}
-                    <kbd className="px-1.5 py-0.5 bg-[#f5f5f5] border border-[#e5e5e5] rounded text-[11px] font-mono text-[#666] min-w-[20px] inline-block text-center">
+                    <kbd className="px-1.5 py-0.5 bg-[var(--mm-bg-sidebar)] border border-[var(--mm-border)] rounded text-[11px] font-mono text-[var(--mm-text-secondary)] min-w-[20px] inline-block text-center">
                         {p}
                     </kbd>
                 </React.Fragment>

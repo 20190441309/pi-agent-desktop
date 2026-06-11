@@ -170,12 +170,12 @@ export function SkillsPanel(): React.JSX.Element {
 
     return (
         <div className="flex flex-col h-full bg-[var(--mm-bg-sidebar)]" role="region" aria-label="插件面板">
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-[#e5e5e5]">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--mm-border)]">
                 <div className="min-w-0">
                     <h1 className="m-0 text-[14px] font-medium text-[var(--mm-text-primary)]">插件与技能</h1>
                     <p className="m-0 text-[11px] text-[var(--mm-text-tertiary)]">安装 Pi packages，管理本地 skills</p>
                 </div>
-                <div className="flex items-center gap-1 rounded-lg bg-[#f0f0ed] p-1" role="tablist" aria-label="插件面板分类">
+                <div className="flex items-center gap-1 rounded-lg bg-[var(--mm-bg-sidebar)] p-1" role="tablist" aria-label="插件面板分类">
                     {([["pi", "Pi 插件"], ["skillhub", "SkillHub"], ["installed", "已安装"]] as const).map(([id, label]) => {
                         const isActive = tab === id;
                         return (
@@ -189,8 +189,8 @@ export function SkillsPanel(): React.JSX.Element {
                                 onClick={() => setTab(id)}
                                 className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
                                     isActive
-                                        ? "bg-white text-[#1a1a1a] shadow-sm"
-                                        : "text-[#666] hover:bg-[#f7f7f4]"
+                                        ? "bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] shadow-sm"
+                                        : "text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                                 }`}
                             >
                                 {label}
@@ -206,7 +206,7 @@ export function SkillsPanel(): React.JSX.Element {
                         value={packageQuery}
                         onChange={(e) => setPackageQuery(e.target.value)}
                         aria-label="搜索 Pi 插件"
-                        className="pl-3 pr-3 py-1.5 bg-white border border-[#e5e5e5] rounded-md text-sm text-[#1a1a1a] placeholder:text-[#999] focus:outline-none focus:border-[#1a1a1a] w-64"
+                        className="pl-3 pr-3 py-1.5 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-md text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus:border-[#1a1a1a] w-64"
                     />
                 )}
                 {tab === "skillhub" && (
@@ -216,7 +216,7 @@ export function SkillsPanel(): React.JSX.Element {
                         value={marketQuery}
                         onChange={(e) => setMarketQuery(e.target.value)}
                         aria-label="搜索 SkillHub"
-                        className="pl-3 pr-3 py-1.5 bg-white border border-[#e5e5e5] rounded-md text-sm text-[#1a1a1a] placeholder:text-[#999] focus:outline-none focus:border-[#1a1a1a] w-64"
+                        className="pl-3 pr-3 py-1.5 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-md text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus:border-[#1a1a1a] w-64"
                     />
                 )}
                 <SkillCreateDropdown
@@ -261,7 +261,7 @@ export function SkillsPanel(): React.JSX.Element {
                                 className={`mb-4 whitespace-pre-wrap rounded border px-3 py-2 text-sm ${
                                     githubDialog.result.includes("失败") || githubDialog.result.includes("请输入")
                                         ? "border-red-200 bg-red-50 text-red-700"
-                                        : "border-[#dbe8d0] bg-[#f5fbf0] text-[#315f24]"
+                                        : "border-[#dbe8d0] bg-[#f5fbf0] text-[var(--color-success)]"
                                 }`}
                                 role="status"
                             >

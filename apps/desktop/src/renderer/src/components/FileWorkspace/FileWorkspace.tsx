@@ -45,8 +45,8 @@ function FileTreeRow({
           if (isDirectory) onToggle(node);
           onSelect(node);
         }}
-        className={`flex h-8 w-full min-w-0 items-center gap-2 px-2 text-left text-xs transition-colors hover:bg-[#f4f4f1] ${
-          selectedPath === node.path ? "bg-[#eef3ff] text-[#1d4ed8]" : "text-[var(--mm-text-primary)]"
+        className={`flex h-8 w-full min-w-0 items-center gap-2 px-2 text-left text-xs transition-colors hover:bg-[var(--mm-bg-sidebar)] ${
+          selectedPath === node.path ? "bg-[#eef3ff] text-[var(--color-info)]" : "text-[var(--mm-text-primary)]"
         }`}
         style={{ paddingLeft: 8 + depth * 14 }}
         title={node.path}
@@ -104,7 +104,7 @@ function SearchResultRow({
       <button
         type="button"
         onClick={() => void onOpen(file)}
-        className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-[#f4f4f1]"
+        className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-[var(--mm-bg-sidebar)]"
         title={file.path}
       >
         <span className="shrink-0 font-mono text-[11px] text-[var(--mm-text-tertiary)]">
@@ -670,8 +670,8 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
 
   return (
     <div className="flex h-full min-h-0 bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)]" role="region" aria-label="文件工作区">
-      <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-[#e5e5df] bg-white">
-        <div className="border-b border-[#ecece7] px-4 py-3">
+      <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-[var(--mm-border)] bg-[var(--mm-bg-panel)]">
+        <div className="border-b border-[var(--mm-border)] px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <h1 className="m-0 text-sm font-semibold">Files</h1>
@@ -682,7 +682,7 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
             <button
               type="button"
               onClick={() => void loadTree()}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--mm-text-secondary)] hover:bg-[#f4f4f1]"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
               aria-label="刷新文件树"
               title="刷新"
             >
@@ -692,7 +692,7 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="mt-3 h-8 w-full rounded-md border border-[#deded8] bg-[#fbfbfa] px-2 text-xs outline-none focus:border-[#999]"
+            className="mt-3 h-8 w-full rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 text-xs outline-none focus:border-[#999]"
             placeholder="搜索文件"
             aria-label="搜索文件"
           />
@@ -704,7 +704,7 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
                 <li className="px-2 py-6 text-center text-xs text-[var(--mm-text-secondary)]">正在搜索文件...</li>
               )}
               {searchState === "error" && (
-                <li className="rounded-md border border-[#fecaca] bg-[#fef2f2] px-3 py-3 text-xs text-[#b91c1c]" role="alert">
+                <li className="rounded-md border border-[#fecaca] bg-[#fef2f2] px-3 py-3 text-xs text-[var(--color-error)]" role="alert">
                   <div className="font-medium">文件搜索失败</div>
                   <div className="mt-1 break-all font-mono text-[11px]">{searchError}</div>
                   <button
@@ -726,7 +726,7 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
           ) : treeState === "loading" ? (
             <div className="px-4 py-6 text-xs text-[var(--mm-text-secondary)]">正在读取文件树...</div>
           ) : treeState === "error" ? (
-            <div className="m-3 rounded-md border border-[#fecaca] bg-[#fef2f2] px-3 py-3 text-xs text-[#b91c1c]" role="alert">
+            <div className="m-3 rounded-md border border-[#fecaca] bg-[#fef2f2] px-3 py-3 text-xs text-[var(--color-error)]" role="alert">
               <div className="font-medium">文件树加载失败</div>
               <div className="mt-1 break-all font-mono text-[11px]">{error}</div>
               <button
@@ -759,13 +759,13 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-12 items-center justify-between gap-3 border-b border-[#e5e5df] bg-white px-4">
+        <div className="flex h-12 items-center justify-between gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <div className="truncate font-mono text-sm">{selectedNode?.name ?? content?.name ?? "选择一个文件开始预览"}</div>
-              {isDirty && <span className="shrink-0 rounded bg-[#fff7ed] px-1.5 py-0.5 text-[10px] font-medium text-[#c2410c]">未保存</span>}
-              {saveState === "error" && <span className="shrink-0 rounded bg-[#fef2f2] px-1.5 py-0.5 text-[10px] font-medium text-[#b91c1c]">{saveConflict ? "保存冲突" : "保存失败"}</span>}
-              {selectedPath && <span className="shrink-0 rounded bg-[#f4f4f1] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">{modeLabel(viewMode)}</span>}
+              {isDirty && <span className="shrink-0 rounded bg-[#fff7ed] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-warn)]">未保存</span>}
+              {saveState === "error" && <span className="shrink-0 rounded bg-[#fef2f2] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-error)]">{saveConflict ? "保存冲突" : "保存失败"}</span>}
+              {selectedPath && <span className="shrink-0 rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">{modeLabel(viewMode)}</span>}
               {selectedGitMark && <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${selectedGitMark.className}`}>{selectedGitMark.label}</span>}
             </div>
             <div className="truncate text-[11px] text-[var(--mm-text-tertiary)]">
@@ -780,8 +780,8 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
                     <button type="button" onClick={() => setViewMode("edit")} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333]">编辑</button>
                   ) : (
                     <>
-                      <button type="button" onClick={() => setViewMode("preview")} disabled={isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1] disabled:opacity-40">只读</button>
-                      <button type="button" onClick={discardDraft} disabled={!isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1] disabled:opacity-40">丢弃修改</button>
+                      <button type="button" onClick={() => setViewMode("preview")} disabled={isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-40">只读</button>
+                      <button type="button" onClick={discardDraft} disabled={!isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-40">丢弃修改</button>
                       <button type="button" onClick={() => void saveDraft()} disabled={!isDirty || saveState === "loading"} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333] disabled:opacity-40">
                         {saveState === "loading" ? "保存中" : "保存"}
                       </button>
@@ -790,26 +790,26 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
                 </>
               )}
               {selectedGitMark && (
-                <button type="button" onClick={() => void openSelectedDiff()} className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]">查看 Diff</button>
+                <button type="button" onClick={() => void openSelectedDiff()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">查看 Diff</button>
               )}
               {viewMode === "diff" && (
-                <button type="button" onClick={() => setViewMode("preview")} className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]">返回预览</button>
+                <button type="button" onClick={() => setViewMode("preview")} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">返回预览</button>
               )}
               {viewMode === "conflict" && saveConflict && (
-                <button type="button" onClick={continueEditingDraft} className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]">继续编辑</button>
+                <button type="button" onClick={continueEditingDraft} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">继续编辑</button>
               )}
               {saveConflict && viewMode !== "conflict" && (
-                <button type="button" onClick={showConflictDiff} className="rounded-md px-2 py-1 text-xs text-[#b91c1c] hover:bg-[#fef2f2]">查看冲突</button>
+                <button type="button" onClick={showConflictDiff} className="rounded-md px-2 py-1 text-xs text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)]">查看冲突</button>
               )}
-              <button type="button" onClick={() => void openSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]">打开</button>
-              <button type="button" onClick={() => void revealSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]">定位</button>
-              <button type="button" onClick={() => void copySelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]">{copied ? "已复制" : "复制路径"}</button>
-              <button type="button" onClick={() => void copySelectedRelativePath()} className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]">复制相对路径</button>
+              <button type="button" onClick={() => void openSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">打开</button>
+              <button type="button" onClick={() => void revealSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">定位</button>
+              <button type="button" onClick={() => void copySelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{copied ? "已复制" : "复制路径"}</button>
+              <button type="button" onClick={() => void copySelectedRelativePath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">复制相对路径</button>
               <button type="button" onClick={sendToChat} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333]">引用到聊天</button>
             </div>
           )}
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-[#fbfbfa]">
+        <div className="min-h-0 flex-1 overflow-auto bg-[var(--mm-bg-panel)]">
           {!selectedPath ? (
             <div className="flex h-full items-center justify-center text-sm text-[var(--mm-text-secondary)]">
               从左侧文件树或搜索结果中选择文件。
@@ -819,11 +819,11 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
               {diffState === "loading" ? (
                 <div className="text-sm text-[var(--mm-text-secondary)]">正在读取 diff...</div>
               ) : diffState === "error" ? (
-                <div className="text-sm text-[#b91c1c]">{error}</div>
+                <div className="text-sm text-[var(--color-error)]">{error}</div>
               ) : diffContent ? (
                 <DiffViewer diff={diffContent} maxHeight="calc(100vh - 160px)" />
               ) : (
-                <div className="rounded-lg border border-dashed border-[#deded8] bg-white px-4 py-8 text-center text-sm text-[var(--mm-text-secondary)]">
+                <div className="rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-8 text-center text-sm text-[var(--mm-text-secondary)]">
                   当前文件没有可显示的工作区 diff。
                 </div>
               )}
@@ -834,13 +834,13 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
                 磁盘文件已在外部发生变化。下面显示“磁盘版本”到“当前草稿”的差异，草稿仍保留在编辑器中。
               </div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <button type="button" onClick={continueEditingDraft} className="rounded-md border border-[#e8e8e3] bg-white px-2 py-1 text-xs hover:bg-[#f4f4f1]">
+                <button type="button" onClick={continueEditingDraft} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
                   继续编辑草稿
                 </button>
-                <button type="button" onClick={useDiskVersion} className="rounded-md border border-[#e8e8e3] bg-white px-2 py-1 text-xs hover:bg-[#f4f4f1]">
+                <button type="button" onClick={useDiskVersion} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
                   采用磁盘版本
                 </button>
-                <button type="button" onClick={() => void copyDraft()} className="rounded-md border border-[#e8e8e3] bg-white px-2 py-1 text-xs hover:bg-[#f4f4f1]">
+                <button type="button" onClick={() => void copyDraft()} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
                   复制草稿
                 </button>
               </div>
@@ -849,18 +849,18 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
           ) : contentState === "loading" ? (
             <div className="p-5 text-sm text-[var(--mm-text-secondary)]">正在读取文件...</div>
           ) : contentState === "error" ? (
-            <div className="p-5 text-sm text-[#b91c1c]">{error}</div>
+            <div className="p-5 text-sm text-[var(--color-error)]">{error}</div>
           ) : content?.binary ? (
-            <div className="m-5 rounded-lg border border-[#ecece7] bg-white p-4 text-sm text-[var(--mm-text-secondary)]">
+            <div className="m-5 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4 text-sm text-[var(--mm-text-secondary)]">
               二进制文件暂不预览，可使用“打开”或“定位”查看。
             </div>
           ) : content?.truncated ? (
-            <div className="m-5 rounded-lg border border-[#ecece7] bg-white p-4 text-sm text-[var(--mm-text-secondary)]">
+            <div className="m-5 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4 text-sm text-[var(--mm-text-secondary)]">
               文件过大，当前只显示前 512KB。为避免误保存，截断文件暂不可编辑。
             </div>
           ) : content && viewMode === "preview" ? (
-            <div className="grid min-h-full grid-cols-[58px_minmax(0,1fr)] overflow-auto font-mono text-[12px] leading-5 text-[#1f2937]">
-              <div className="select-none border-r border-[#ecece7] bg-[#f7f7f4] py-3 text-right text-[11px] text-[var(--mm-text-tertiary)]">
+            <div className="grid min-h-full grid-cols-[58px_minmax(0,1fr)] overflow-auto font-mono text-[12px] leading-5 text-[var(--mm-text-primary)]">
+              <div className="select-none border-r border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] py-3 text-right text-[11px] text-[var(--mm-text-tertiary)]">
                 {previewLines.map((_, index) => (
                   <div key={index} className="h-5 px-3">{index + 1}</div>
                 ))}
@@ -884,7 +884,7 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
             </div>
           ) : null}
         </div>
-        <div className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-[#e5e5df] bg-white px-3 text-[11px] text-[var(--mm-text-tertiary)]" aria-label="文件状态栏">
+        <div className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-[11px] text-[var(--mm-text-tertiary)]" aria-label="文件状态栏">
           <div className="min-w-0 truncate font-mono">
             {selectedPath ? relativeToWorkspace(selectedPath, workspacePath) || selectedPath : statusLine}
           </div>
@@ -894,24 +894,24 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
                 key={item.label}
                 className={`rounded px-1.5 py-0.5 ${
                   item.tone === "danger"
-                    ? "bg-[#fef2f2] text-[#b91c1c]"
+                    ? "bg-[#fef2f2] text-[var(--color-error)]"
                     : item.tone === "warning"
-                      ? "bg-[#fff7ed] text-[#c2410c]"
+                      ? "bg-[#fff7ed] text-[var(--color-warn)]"
                       : item.tone === "active"
-                        ? "bg-[#eef3ff] text-[#1d4ed8]"
-                        : "bg-[#f7f7f4] text-[var(--mm-text-secondary)]"
+                        ? "bg-[#eef3ff] text-[var(--color-info)]"
+                        : "bg-[var(--mm-bg-sidebar)] text-[var(--mm-text-secondary)]"
                 }`}
               >
                 {item.label}
               </span>
             ))}
-            {actionMessage && <span className="rounded bg-[#ecfdf5] px-1.5 py-0.5 text-[#166534]">{actionMessage}</span>}
-            {actionError && <span className="rounded bg-[#fef2f2] px-1.5 py-0.5 text-[#b91c1c]">{actionError}</span>}
+            {actionMessage && <span className="rounded bg-[#ecfdf5] px-1.5 py-0.5 text-[var(--color-success)]">{actionMessage}</span>}
+            {actionError && <span className="rounded bg-[#fef2f2] px-1.5 py-0.5 text-[var(--color-error)]">{actionError}</span>}
           </div>
         </div>
       </main>
 
-      <aside className="hidden h-full w-[240px] shrink-0 border-l border-[#e5e5df] bg-white p-4 text-xs lg:block">
+      <aside className="hidden h-full w-[240px] shrink-0 border-l border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4 text-xs lg:block">
         <h2 className="m-0 mb-3 text-sm font-semibold">文件信息</h2>
         <dl className="space-y-3">
           <div>
@@ -943,13 +943,13 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
           {saveMessage && (
             <div>
               <dt className="text-[var(--mm-text-tertiary)]">保存状态</dt>
-              <dd className={`m-0 mt-1 ${saveState === "error" ? "text-[#b91c1c]" : "text-[#166534]"}`}>{saveMessage}</dd>
+              <dd className={`m-0 mt-1 ${saveState === "error" ? "text-[var(--color-error)]" : "text-[var(--color-success)]"}`}>{saveMessage}</dd>
             </div>
           )}
           {(actionMessage || actionError) && (
             <div>
               <dt className="text-[var(--mm-text-tertiary)]">最近操作</dt>
-              <dd className={`m-0 mt-1 ${actionError ? "text-[#b91c1c]" : "text-[#166534]"}`}>
+              <dd className={`m-0 mt-1 ${actionError ? "text-[var(--color-error)]" : "text-[var(--color-success)]"}`}>
                 {actionError ?? actionMessage}
               </dd>
             </div>
@@ -963,24 +963,24 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
                 </button>
                 {saveConflict && (
                   <>
-                    <button type="button" onClick={useDiskVersion} className="rounded-md border border-[#e8e8e3] px-2 py-1">
+                    <button type="button" onClick={useDiskVersion} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
                       采用磁盘版本
                     </button>
-                    <button type="button" onClick={continueEditingDraft} className="rounded-md border border-[#e8e8e3] px-2 py-1">
+                    <button type="button" onClick={continueEditingDraft} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
                       继续编辑
                     </button>
-                    <button type="button" onClick={showConflictDiff} className="rounded-md border border-[#e8e8e3] px-2 py-1">
+                    <button type="button" onClick={showConflictDiff} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
                       查看冲突
                     </button>
                   </>
                 )}
-                <button type="button" onClick={() => void copySaveError()} className="rounded-md border border-[#e8e8e3] px-2 py-1">
+                <button type="button" onClick={() => void copySaveError()} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
                   复制错误
                 </button>
-                <button type="button" onClick={() => void copyDraft()} className="rounded-md border border-[#e8e8e3] px-2 py-1">
+                <button type="button" onClick={() => void copyDraft()} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
                   复制草稿
                 </button>
-                <button type="button" onClick={() => void reloadSelectedFile()} className="rounded-md border border-[#e8e8e3] px-2 py-1">
+                <button type="button" onClick={() => void reloadSelectedFile()} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
                   重新读取文件
                 </button>
               </dd>
@@ -989,10 +989,10 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
           <div>
             <dt className="text-[var(--mm-text-tertiary)]">操作</dt>
             <dd className="m-0 mt-2 flex flex-wrap gap-1">
-              <button type="button" disabled={!selectedPath} onClick={() => void copySelectedPath()} className="rounded-md border border-[#e8e8e3] px-2 py-1 disabled:opacity-40">
+              <button type="button" disabled={!selectedPath} onClick={() => void copySelectedPath()} className="rounded-md border border-[var(--mm-border)] px-2 py-1 disabled:opacity-40">
                 {copied ? "已复制" : "复制路径"}
               </button>
-              <button type="button" disabled={!selectedPath} onClick={() => void copySelectedRelativePath()} className="rounded-md border border-[#e8e8e3] px-2 py-1 disabled:opacity-40">
+              <button type="button" disabled={!selectedPath} onClick={() => void copySelectedRelativePath()} className="rounded-md border border-[var(--mm-border)] px-2 py-1 disabled:opacity-40">
                 复制相对路径
               </button>
               <button type="button" disabled={!selectedPath} onClick={sendToChat} className="rounded-md border border-[#1f1f1f] bg-[#1f1f1f] px-2 py-1 text-white disabled:opacity-40">
