@@ -2,7 +2,7 @@
 // AI 消息: 白底圆角卡片 + 底部复制/时间戳
 // 用户消息: 浅色 pill + normal 字重
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Message } from '../../stores/session-store';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { CommandCard } from './CommandCard';
@@ -143,7 +143,7 @@ function ToolActivity({
   );
 }
 
-export function MessageBubble({ message, isStreaming = false, onPlanAction }: MessageBubbleProps): React.JSX.Element {
+export const MessageBubble = React.memo(function MessageBubble({ message, isStreaming = false, onPlanAction }: MessageBubbleProps): React.JSX.Element {
   const isUser = message.role === 'user';
   const timeText = formatTime(message.timestamp);
   const timeIso = formatIso(message.timestamp);
@@ -160,6 +160,18 @@ export function MessageBubble({ message, isStreaming = false, onPlanAction }: Me
   const planAction = !isUser ? message.planAction : undefined;
   const planStatus = planAction?.status ?? "pending";
   const showPlanPanel = Boolean(planAction);
+  const planSteps = usePlanStore((state) => state.steps);
+
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 清理定时器，防止内存泄漏
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleCopy = useCallback(async () => {
     if (!visibleContent) return;
@@ -172,7 +184,11 @@ export function MessageBubble({ message, isStreaming = false, onPlanAction }: Me
     }
     setCopyError(null);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    // 清理之前的定时器
+    if (copyTimerRef.current) {
+      clearTimeout(copyTimerRef.current);
+    }
+    copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
   }, [visibleContent]);
 
   return (
@@ -238,7 +254,7 @@ export function MessageBubble({ message, isStreaming = false, onPlanAction }: Me
                     content={visibleContent}
                     filename={planAction?.filename}
                     status={planStatus}
-                    steps={usePlanStore.getState().steps}
+                    steps={planSteps}
                     onExecute={() => void onPlanAction?.(message, "execute")}
                     onRefine={() => void onPlanAction?.(message, "refine")}
                     onCancel={() => void onPlanAction?.(message, "cancel")}
@@ -291,4 +307,4 @@ export function MessageBubble({ message, isStreaming = false, onPlanAction }: Me
       </div>
     </article>
   );
-}
+});
