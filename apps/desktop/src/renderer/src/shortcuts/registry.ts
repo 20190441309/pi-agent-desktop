@@ -96,6 +96,13 @@ export const SHORTCUTS: readonly ShortcutDef[] = Object.freeze([
         combo: { key: "escape" },
         ignoreInEditable: true,
     },
+    {
+        id: "search-history",
+        keys: "Ctrl+Shift+F",
+        labelKey: "shortcuts.labels.search-history",
+        category: "nav",
+        combo: { mod: true, shift: true, key: "f" },
+    },
 ]);
 
 /** 按 category 分组, 顺序按固定枚举顺序稳定 */

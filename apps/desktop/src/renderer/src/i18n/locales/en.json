@@ -92,7 +92,8 @@
       "new-chat": "New chat",
       "toggle-sidebar": "Toggle sidebar",
       "show-shortcuts-question": "Show keyboard shortcuts",
-      "close-overlay": "Close overlay / modal"
+      "close-overlay": "Close overlay / modal",
+      "search-history": "Search conversation history"
     }
   },
   "shortcutsCheatsheet": {
@@ -328,7 +329,8 @@
     "theme": {
       "label": "Theme",
       "light": "Light",
-      "dark": "Dark"
+      "dark": "Dark",
+      "system": "System"
     },
     "fontSize": {
       "label": "Font size: {{value}}px",

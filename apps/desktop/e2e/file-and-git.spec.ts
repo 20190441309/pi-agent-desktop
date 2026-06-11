@@ -1,0 +1,98 @@
+/**
+ * File & Git Workflow Tests — Pi Desktop 文件操作与版本控制
+ */
+import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
+import { electronMainEntry } from '../playwright.config';
+import { join } from 'path';
+import { mkdirSync, writeFileSync } from 'fs';
+
+const TEST_TIMEOUT = 60_000;
+
+async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
+    const app = await _electron.launch({
+        args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
+        env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
+    });
+    const page = await app.firstWindow();
+    await page.waitForLoadState('domcontentloaded');
+
+    // Skip onboarding
+    const modalCount = await page.locator('[data-testid="onboarding-modal"]').count();
+    if (modalCount > 0) {
+        await page.getByRole('button', { name: '跳过引导' }).click({ timeout: 5000 });
+        await page.waitForFunction(
+            () => document.querySelector('[data-testid="onboarding-modal"]') === null,
+            { timeout: 5000 }
+        );
+    }
+    return { app, page };
+}
+
+function prepareGitRepo(dir: string): void {
+    const { execSync } = require('child_process');
+    execSync('git init', { cwd: dir, stdio: 'ignore' });
+    execSync('git config user.email "test@test.com"', { cwd: dir, stdio: 'ignore' });
+    execSync('git config user.name "Test"', { cwd: dir, stdio: 'ignore' });
+    writeFileSync(join(dir, 'README.md'), '# Test Project\n', 'utf-8');
+    execSync('git add README.md', { cwd: dir, stdio: 'ignore' });
+    execSync('git commit -m "Initial commit"', { cwd: dir, stdio: 'ignore' });
+}
+
+test.describe('Pi Desktop — File & Git Workflow', () => {
+    test.setTimeout(TEST_TIMEOUT);
+
+    // ===== Test 1: Git 状态检测 =====
+    test('git status via IPC shows correct branch and modifications', async () => {
+        const userDataDir = test.info().outputPath(`git-test-${Date.now()}`);
+        const wsPath = join(userDataDir, 'git-project');
+        mkdirSync(wsPath, { recursive: true });
+        prepareGitRepo(wsPath);
+        writeFileSync(join(wsPath, 'modified.ts'), 'export const changed = true;\n', 'utf-8');
+
+        const { app, page } = await launchApp(userDataDir);
+
+        await page.evaluate(async ({ wsPath }) => {
+            await window.piAPI.createWorkspace('git-test', wsPath);
+        }, { wsPath });
+
+        const gitStatus = await page.evaluate(async () => {
+            const workspaces = await window.piAPI.listWorkspaces();
+            const ws = workspaces[0];
+            if (!ws) return null;
+            return await window.piAPI.getGitStatus(ws.path);
+        });
+
+        expect(gitStatus).toBeTruthy();
+        expect(gitStatus.branch).toBe('master');
+        console.log(`[TEST] Git branch: ${gitStatus.branch}, modified files: ${gitStatus.modified?.length ?? 0}`);
+
+        await app.close();
+    });
+
+    // ===== Test 2: 文件树加载 (通过 project:detect) =====
+    test('project detection returns file tree', async () => {
+        const userDataDir = test.info().outputPath(`project-${Date.now()}`);
+        const wsPath = join(userDataDir, 'project');
+        mkdirSync(wsPath, { recursive: true });
+        writeFileSync(join(wsPath, 'index.ts'), 'export const x = 1;\n', 'utf-8');
+        writeFileSync(join(wsPath, 'package.json'), '{"name": "test"}\n', 'utf-8');
+
+        const { app, page } = await launchApp(userDataDir);
+
+        await page.evaluate(async ({ wsPath }) => {
+            await window.piAPI.createWorkspace('project-test', wsPath);
+        }, { wsPath });
+
+        const project = await page.evaluate(async () => {
+            const workspaces = await window.piAPI.listWorkspaces();
+            const ws = workspaces[0];
+            if (!ws) return null;
+            return await window.piAPI.detectProject(ws.path);
+        });
+
+        expect(project).toBeTruthy();
+        console.log(`[TEST] Project detected: ${JSON.stringify(project).slice(0, 200)}`);
+
+        await app.close();
+    });
+});

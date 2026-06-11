@@ -325,6 +325,10 @@ export class PiDriver extends EventEmitter {
       return { path: managed, method: 'managed' };
     }
 
+    // v1.1 fix: 确保 PATH 包含 npm global bin 目录
+    // Electron 桌面快捷方式启动时 PATH 可能不完整
+    this.ensureNpmBinInPath();
+
     // 1. 用 which/where 检查 PATH,逐行验证是真实文件
     try {
       const cmd = isWin ? 'where pi' : 'which pi';
@@ -380,6 +384,46 @@ export class PiDriver extends EventEmitter {
     }
 
     return null;
+  }
+
+  /**
+   * v1.1 fix: 确保 PATH 包含 npm global bin 目录
+   * Electron 桌面快捷方式启动时 PATH 可能不完整
+   */
+  private ensureNpmBinInPath(): void {
+    const isWin = platform() === 'win32';
+    try {
+      const npm = isWin ? 'npm.cmd' : 'npm';
+      const prefix = execFileSync(npm, ['config', 'get', 'prefix'], {
+        encoding: 'utf-8',
+        timeout: 3000,
+        stdio: ['pipe', 'pipe', 'ignore'],
+      }).trim();
+      if (!prefix) return;
+
+      const currentPath = process.env.PATH || process.env.Path || '';
+      const separator = isWin ? ';' : ':';
+      const paths = currentPath.split(separator);
+
+      // 需要检查的路径列表
+      const pathsToCheck = isWin
+        ? [prefix, join(prefix, 'node_modules', '.bin')]
+        : [join(prefix, 'bin'), join(prefix, 'node_modules', '.bin')];
+
+      let modified = false;
+      for (const binPath of pathsToCheck) {
+        if (!paths.includes(binPath) && existsSync(binPath)) {
+          process.env.PATH = `${binPath}${separator}${currentPath}`;
+          modified = true;
+        }
+      }
+
+      if (modified) {
+        log.info('[PiDriver] Added npm bin directories to PATH for detection');
+      }
+    } catch {
+      // npm not available, skip
+    }
   }
 
   /**

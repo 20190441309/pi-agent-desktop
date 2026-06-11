@@ -32,12 +32,12 @@ describe("M2 utilities", () => {
     it("mention: null when no @", () => {
         expect(findActiveMention("hello world", 5)).toBeNull();
     });
-    it("scanner: skips node_modules and .git", () => {
+    it("scanner: skips node_modules and .git", async () => {
         const dir = mkdtempSync(join(tmpdir(), "scan-"));
         mkdirSync(join(dir, "node_modules"), { recursive: true });
         writeFileSync(join(dir, "node_modules", "x.js"), "");
         writeFileSync(join(dir, "real.ts"), "");
-        const files = scanFiles(dir);
+        const files = await scanFiles(dir);
         expect(files).toContain("real.ts");
         expect(files.some((f) => f.includes("node_modules"))).toBe(false);
     });

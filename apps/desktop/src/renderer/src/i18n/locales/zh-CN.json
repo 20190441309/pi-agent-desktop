@@ -92,7 +92,8 @@
       "new-chat": "新建对话",
       "toggle-sidebar": "切换侧栏",
       "show-shortcuts-question": "打开快捷键速查",
-      "close-overlay": "关闭弹窗 / 模态"
+      "close-overlay": "关闭弹窗 / 模态",
+      "search-history": "搜索对话历史"
     }
   },
   "shortcutsCheatsheet": {
@@ -326,7 +327,8 @@
     "theme": {
       "label": "主题",
       "light": "浅色",
-      "dark": "深色"
+      "dark": "深色",
+      "system": "跟随系统"
     },
     "fontSize": {
       "label": "字体大小: {{value}}px",

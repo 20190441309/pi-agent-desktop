@@ -25,6 +25,8 @@
 
 import React from "react";
 import { useSessionStore } from "../../stores/session-store";
+import { useWorkspaceStore } from "../../stores/workspace-store";
+import { RecentWorkspaces } from "../RecentWorkspaces/RecentWorkspaces";
 
 // ----------------------------------------------------------------------
 // 类型
@@ -412,6 +414,12 @@ export function MiniMaxCodeSidebar({
                 )}
 
                 {/* 空分组已移除，等接入真实数据后再恢复 */}
+                <RecentWorkspaces
+                    className="px-3 pb-3"
+                    onSelect={(workspace) => {
+                        useWorkspaceStore.getState().setCurrentWorkspace(workspace.id);
+                    }}
+                />
                 {GROUPED_SECTIONS.length > 0 && GROUPED_SECTIONS.map((group) => (
                     <div key={group.title} className="flex flex-col gap-1">
                         <h3

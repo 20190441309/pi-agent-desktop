@@ -5,6 +5,7 @@ import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useQueueStore, type QueueTaskStatus } from "../../stores/queue-store";
 import { ToolPermissionsPanel } from "../ToolPermissions/ToolPermissionsPanel";
+import { UsageStatsPanel } from "../UsageStats/UsageStatsPanel";
 import { classifyTerminalCommand } from "../../utils/terminal-command";
 import { projectScriptCommand } from "../../utils/project-scripts";
 import type { TaskProgressItem } from "./TaskProgressPanel";
@@ -440,6 +441,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
           {railActionStatus.message}
         </div>
       )}
+      <UsageStatsPanel />
       <section className="rounded-[14px] border border-[#e9e9e6] bg-white p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">运行状态</h2>

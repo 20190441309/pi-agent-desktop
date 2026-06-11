@@ -83,7 +83,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on `windows-latest`:
 │ Main Process (Electron + Node.js)        │
 │  - IPC handlers in src/main/ipc/*.ipc.ts │
 │  - Services in src/main/services/        │
-│  - Pi CLI integration via pi-driver      │
+│  - Pi CLI integration via pi-driver.ts    │
 └────────────────┬────────────────────────┘
                  │ in-process
 ┌────────────────┴────────────────────────┐
@@ -198,7 +198,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on `windows-latest`:
 3. **i18n**: Currently zh-CN only, but i18next is set up for easy addition. Two locale files: `src/renderer/src/i18n/locales/{zh-CN,en}.json`
 4. **E2E tests**: Playwright tests require built app (`e2e:build` script)
 5. **Native modules**: `node-pty` requires build tools (node-gyp, Python, Visual Studio on Windows)
-6. **No pre-commit hooks**: No `.husky/` or `.pre-commit-config`. Run typecheck → lint → test manually before pushing
+6. **Pre-commit hooks**: Lefthook runs `typecheck` and `lint` in parallel on commit (see `lefthook.yml`). Run `typecheck → lint → test` manually before pushing if hooks are skipped.
 7. **Release**: Triggered by pushing a `v*.*.*` tag. Builds NSIS Windows installer via `.github/workflows/release.yml`
 
 ## Quick Verification
