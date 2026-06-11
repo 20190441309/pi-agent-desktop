@@ -1,7 +1,7 @@
 # Pi Desktop
 
 > An open-source Windows desktop GUI for [Pi](https://github.com/earendil-works/pi-coding-agent) — the AI coding agent CLI.
-> Built with Electron 34 + React 19 + TypeScript 5.
+> Built with Electron 41 + React 19 + TypeScript 5.
 
 ## What is this?
 
@@ -23,19 +23,19 @@ Pi Desktop wraps the [Pi CLI](https://github.com/earendil-works/pi-coding-agent)
 
 - **Frontend**: React 19 + TypeScript 5 + Vite 6 + Tailwind CSS 4
 - **State**: Zustand 5
-- **Desktop**: Electron 34 + electron-vite
+- **Desktop**: Electron 41 + electron-vite
 - **Terminal**: node-pty + xterm.js
 - **Markdown**: react-markdown + rehype-highlight
 - **Diff**: diff2html
 - **Storage**: electron-store
-- **Test**: vitest 2 + @testing-library/react
+- **Test**: vitest 4 + @testing-library/react
 - **CI**: GitHub Actions
 - **Auto-update**: electron-updater (GitHub Releases)
 - **Package Manager**: pnpm 9 (monorepo)
 
 ## Prerequisites
 
-- **Node.js** >= 22.19.0 (Electron 34 bundled)
+- **Node.js** >= 22.19.0 (Electron 41 bundled)
 - **pnpm** >= 9.0.0
 - **Windows 10/11** (v1.0 Windows-only; macOS / Linux in v1.1+)
 - **Pi CLI** installed and on PATH: <https://github.com/earendil-works/pi-coding-agent>

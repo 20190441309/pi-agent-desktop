@@ -1,10 +1,9 @@
 // Electron Main Process Entry Point
 
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
-import { execFileSync } from 'child_process';
-import { existsSync, readFileSync, readdirSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import yaml from 'js-yaml';
 import log from 'electron-log/main';
@@ -21,13 +20,15 @@ import { setupTerminalIpc } from './ipc/terminal.ipc';
 import { setupAgentsIpc } from './ipc/agents.ipc';
 import { setupConfigIpc } from './ipc/config.ipc';
 import { setupCodexSessionsIpc } from './ipc/codex-sessions.ipc';
+import { setupGitIpc } from './ipc/git.ipc';
+import { setupPiDriverIpc } from './ipc/pi-driver.ipc';
+import { setupSettingsIpc } from './ipc/settings.ipc';
+import { setupWindowIpc, setupWindowEvents } from './ipc/window.ipc';
+import { setupWorkspaceIpc } from './ipc/workspace.ipc';
 import { setupProjectShellIpc } from './ipc/project-shell.ipc';
-import { workspaceCreateSchema, settingsSetSchema, gitCommitSchema, gitAddSchema, gitDiffSchema, gitDiffStagedSchema } from './ipc/schemas';
-import { gitAdd, gitCommit, gitDiff, gitDiffStaged, getGitStatus, gitUnstage } from './services/git-service';
-import { ptyManager } from './services/shell/pty-manager';
-import { setupAutoUpdater } from './services/updater';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
-import { ipcError } from '@shared';
+import { setupAutoUpdater } from './services/updater';
+import { ptyManager } from './services/shell/pty-manager';
 import type { AppSettings, Session } from '@shared';
 import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
 import { ConfigManager } from './services/config/config-manager';
@@ -37,7 +38,7 @@ let mainWindow: BrowserWindow | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
 let piDriver: PiDriver | null = null;
 
-// M1: 长连接 Pi session 管理
+// Pi session (long-lived AgentSession per workspace)
 const piRegistry = new WorkspaceRegistry();
 const piPendingEdits = new PendingEdits();
 
@@ -66,7 +67,7 @@ interface PiAgentConfig {
 
 const PI_AGENT_DIR = join(homedir(), '.pi', 'agent');
 
-// M7: 启动横幅 — 让 electron-log 文件里有清晰入口, 便于排查崩溃
+// Startup banner for electron-log diagnostics
 log.info(`[Main] Pi Desktop starting (electron ${process.versions.electron}, node ${process.versions.node})`);
 
 // 从本地 Pi Agent 配置目录加载配置
@@ -138,7 +139,7 @@ function loadPiAgentConfig(): PiAgentConfig | null {
 }
 
 // Parse Pi models.yml into PiAgentConfig['providers'] using js-yaml.
-// (replaces an earlier 60-line hand-written regex parser; removed 2026-06-01)
+// (replaces an earlier 60-line hand-written regex parser)
 function loadYamlProviders(content: string): PiAgentConfig['providers'] {
   const data = yaml.load(content) as { providers?: Record<string, unknown> } | null;
   if (!data || typeof data !== 'object' || !data.providers) return [];
@@ -190,8 +191,8 @@ interface Workspace {
   lastActiveAt?: number;
 }
 
-// Session 类型用 @shared 的版本(包含 messages 字段),不再 inline
-// 2026-06-06 hotfix: 持久化需要 messages 字段,inline 版本已删
+// Session type from @shared (includes messages field for persistence)
+// Session type used by @shared (includes messages field)
 
 interface StoreSchema {
   workspaces: Workspace[];
@@ -244,8 +245,8 @@ function createWindow(): void {
     minHeight: 768,
     show: false,
     autoHideMenuBar: true,
-    // v1.1.0: renderer 接管 title bar(跨平台)
-    //  - darwin: hiddenInset 保留原生 traffic lights(左上 3 个圆点)
+    // Custom title bar (renderer-controlled)
+    //  - darwin: hiddenInset preserves native traffic lights
     //  - 其他: frame:false 全部由 renderer 渲染 drag region + 按钮
     ...(process.platform === "darwin"
       ? { titleBarStyle: "hiddenInset" as const, frame: true }
@@ -291,7 +292,7 @@ function initializePiDriver(): void {
 
 // IPC Handlers
 function setupIPC(): void {
-  // M1: 替换老的 pi:prompt (一次性 spawn), 走 AgentSession 长连接
+  // Pi session (long-lived AgentSession)
   setupChatIpc({
     registry: piRegistry,
     agentRegistry,
@@ -307,10 +308,10 @@ function setupIPC(): void {
   setupConfigIpc(configManager);
   setupCodexSessionsIpc(codexSessionImporter);
 
-  // M2: 文件搜索 (给 @ 引用和 CommandPalette 用)
+  // File search (for @ references and CommandPalette)
   setupFilesIpc();
 
-  // M3: Skills 面板 (SkillHub 集成)
+  // Skills panel (SkillHub integration)
   setupSkillsIpc({
     getWorkspacePath: () => {
       const ws = store.get('workspaces');
@@ -319,193 +320,12 @@ function setupIPC(): void {
     getStateFile: () => join(app.getPath('userData'), 'skills-state.json'),
   });
 
-  // ── Pi Driver 管理 ───────────────────────────────────────────────
+  // Pi Driver management
+  setupPiDriverIpc(() => piDriver);
 
-  ipcMain.handle('pi:status', async () => {
-    if (!piDriver) {
-      return ipcError(
-        "ipcErrors.pi.driverNotInitialized",
-        "PiDriver 尚未初始化",
-      );
-    }
-    // 优先用缓存，否则同步检测
-    return piDriver.detectSync();
-  });
+  setupWorkspaceIpc({ store, getMainWindow: () => mainWindow });
 
-  ipcMain.handle('pi:refresh-status', async () => {
-    if (!piDriver) {
-      return ipcError(
-        "ipcErrors.pi.driverNotInitialized",
-        "PiDriver 尚未初始化",
-      );
-    }
-    try {
-      return await piDriver.detect();
-    } catch (err) {
-      log.error("[index.ts] pi:refresh-status failed:", err);
-      return ipcError(
-        "ipcErrors.pi.detectFailed",
-        `Pi 状态检测失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  ipcMain.handle('pi:install', async () => {
-    if (!piDriver) {
-      return ipcError(
-        "ipcErrors.pi.driverNotInitialized",
-        "PiDriver 尚未初始化",
-      );
-    }
-    try {
-      await piDriver.install();
-      return piDriver.detectSync();
-    } catch (err) {
-      log.error("[index.ts] pi:install failed:", err);
-      return ipcError(
-        "ipcErrors.pi.installFailed",
-        `安装 Pi CLI 失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  ipcMain.handle('pi:update', async () => {
-    if (!piDriver) {
-      return ipcError(
-        "ipcErrors.pi.driverNotInitialized",
-        "PiDriver 尚未初始化",
-      );
-    }
-    try {
-      await piDriver.update();
-      return piDriver.detectSync();
-    } catch (err) {
-      log.error("[index.ts] pi:update failed:", err);
-      return ipcError(
-        "ipcErrors.pi.updateFailed",
-        `更新 Pi CLI 失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  ipcMain.handle('pi:uninstall', async () => {
-    if (!piDriver) {
-      return ipcError(
-        "ipcErrors.pi.driverNotInitialized",
-        "PiDriver 尚未初始化",
-      );
-    }
-    try {
-      await piDriver.uninstall();
-      return piDriver.detectSync();
-    } catch (err) {
-      log.error("[index.ts] pi:uninstall failed:", err);
-      return ipcError(
-        "ipcErrors.pi.uninstallFailed",
-        `卸载 Pi CLI 失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  ipcMain.handle('pi:cancel-operation', async () => {
-    piDriver?.cancelOperation();
-  });
-
-  // 注: pi:stop 已经在 setupChatIpc 里注册 (M1 走 session.abort 而不是 SIGKILL)
-
-  // Workspace management
-  ipcMain.handle('workspace:list', async () => {
-    let workspaces = store.get('workspaces');
-    if (workspaces.length === 0) {
-      workspaces = [{
-        id: 'default',
-        name: 'Default',
-        path: process.cwd(),
-        createdAt: Date.now(),
-        lastActiveAt: Date.now()
-      }];
-      store.set('workspaces', workspaces);
-    }
-    return workspaces;
-  });
-
-  ipcMain.handle('workspace:create', async (_, name: string, path: string) => {
-    try {
-      workspaceCreateSchema.parse([name, path]);
-    } catch (err) {
-      log.warn("[index.ts] workspace:create invalid args:", err);
-      return ipcError(
-        "ipcErrors.workspace.invalidArgs",
-        `工作区参数无效: ${err instanceof Error ? err.message : String(err)}`,
-        { name, path },
-      );
-    }
-    const workspace = {
-      id: Date.now().toString(),
-      name,
-      path,
-      createdAt: Date.now(),
-      lastActiveAt: Date.now()
-    };
-    const workspaces = store.get('workspaces');
-    workspaces.push(workspace);
-    store.set('workspaces', workspaces);
-    return workspace;
-  });
-
-  ipcMain.handle('workspace:delete', async (_, id: string) => {
-    const workspaces = store.get('workspaces').filter(w => w.id !== id);
-    store.set('workspaces', workspaces);
-  });
-
-  ipcMain.handle('workspace:select', async (_, path: string) => {
-    // Pipe 模式无需重启持久进程，直接返回成功
-    log.info('Workspace selected:', path);
-  });
-
-  ipcMain.handle('workspace:select-directory', async () => {
-    if (!mainWindow) return null;
-    try {
-      const result = await dialog.showOpenDialog(mainWindow, {
-        properties: ['openDirectory'],
-        title: 'Select Workspace Directory'
-      });
-      return result.canceled ? null : result.filePaths[0];
-    } catch (err) {
-      log.error("[index.ts] workspace:select-directory failed:", err);
-      return ipcError(
-        "ipcErrors.workspace.selectDirectoryFailed",
-        `打开目录选择器失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  // v1.0.13: 多选文件 picker,ChatInput 附件按钮
-  ipcMain.handle('files:select', async (
-    _,
-    opts?: { multiSelections?: boolean; filters?: { name: string; extensions: string[] }[] },
-  ) => {
-    if (!mainWindow) return [];
-    try {
-      const properties: Array<'openFile' | 'multiSelections'> = ['openFile'];
-      if (opts?.multiSelections !== false) properties.push('multiSelections');
-      const result = await dialog.showOpenDialog(mainWindow, {
-        properties,
-        title: '选择附件',
-        filters: opts?.filters,
-      });
-      return result.canceled ? [] : result.filePaths;
-    } catch (err) {
-      log.error("[index.ts] files:select failed:", err);
-      return ipcError(
-        "ipcErrors.files.selectFailed",
-        `打开文件选择器失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  // Session management (4 个原有 + 3 个新增 messages handler 都在 sessions.ipc.ts)
-  // 2026-06-06 hotfix: 重构到 ipc/sessions.ipc.ts,走 services/session-store 模块
+  // Session management (delegated to sessions.ipc.ts)
   setupSessionsIpc({
     store: {
       get: (key) => store.get(key) as Session[],
@@ -516,342 +336,22 @@ function setupIPC(): void {
   setupPackagesIpc();
   setupProjectShellIpc();
 
-  // Git status
-  ipcMain.handle('git:status', async (_, workspacePath: string) => {
-    try {
-      return getGitStatus(workspacePath);
-    } catch (err) {
-      log.error("[index.ts] git:status failed:", err);
-      return ipcError(
-        "ipcErrors.git.statusFailed",
-        `读取 git 状态失败: ${err instanceof Error ? err.message : String(err)}`,
-        { path: workspacePath },
-      );
-    }
+  setupGitIpc();
+
+  setupSettingsIpc({
+    store,
+    getPiAgentConfig: () => piAgentConfig,
+    piAgentDir: PI_AGENT_DIR,
   });
 
-  // Git diff (指定文件或全部) — 参数化执行
-  ipcMain.handle('git:diff', async (_, workspacePath: string, filePath?: string) => {
-    try {
-      gitDiffSchema.parse(filePath === undefined ? [workspacePath] : [workspacePath, filePath]);
-    } catch (err) {
-      log.warn("[index.ts] git:diff invalid args:", err);
-      return ipcError(
-        "ipcErrors.git.invalidArgs",
-        `git diff 参数无效: ${err instanceof Error ? err.message : String(err)}`,
-        { path: String(filePath ?? "") },
-      );
-    }
-    try {
-      return gitDiff(workspacePath, filePath);
-    } catch (err) {
-      log.error("[index.ts] git:diff failed:", err);
-      return ipcError(
-        "ipcErrors.git.diffFailed",
-        `读取 git diff 失败: ${err instanceof Error ? err.message : String(err)}`,
-        { path: filePath ?? "all" },
-      );
-    }
-  });
-
-  // Git staged diff
-  ipcMain.handle('git:diff-staged', async (_, workspacePath: string) => {
-    try {
-      gitDiffStagedSchema.parse([workspacePath]);
-    } catch (err) {
-      log.warn("[index.ts] git:diff-staged invalid args:", err);
-      return ipcError(
-        "ipcErrors.git.invalidArgs",
-        `git staged diff 参数无效: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    try {
-      // gitDiffStaged delegates to git with the standard ['diff', '--staged'] argv.
-      return gitDiffStaged(workspacePath);
-    } catch (err) {
-      log.error("[index.ts] git:diff-staged failed:", err);
-      return ipcError(
-        "ipcErrors.git.diffFailed",
-        `读取 staged diff 失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  // Git add — 参数化, 杜绝文件路径 shell 注入
-  ipcMain.handle('git:add', async (_, workspacePath: string, files: string[]) => {
-    try {
-      gitAddSchema.parse([workspacePath, files]);
-    } catch (err) {
-      log.warn("[index.ts] git:add invalid args:", err);
-      return ipcError(
-        "ipcErrors.git.invalidArgs",
-        `git add 参数无效: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    if (files.length === 0) return;
-    try {
-      return gitAdd(workspacePath, files);
-    } catch (err) {
-      log.error("[index.ts] git:add exec failed:", err);
-      return ipcError(
-        "ipcErrors.git.addFailed",
-        `git add 失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  ipcMain.handle('git:unstage', async (_, workspacePath: string, files: string[]) => {
-    try {
-      gitAddSchema.parse([workspacePath, files]);
-    } catch (err) {
-      log.warn("[index.ts] git:unstage invalid args:", err);
-      return ipcError(
-        "ipcErrors.git.invalidArgs",
-        `git unstage 参数无效: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    if (files.length === 0) return undefined;
-    try {
-      return gitUnstage(workspacePath, files);
-    } catch (err) {
-      log.error("[index.ts] git:unstage exec failed:", err);
-      return ipcError(
-        "ipcErrors.git.unstageFailed",
-        `git unstage 失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  // Git commit — 参数化, message 走 argv 不会被 shell 解析
-  ipcMain.handle('git:commit', async (_, workspacePath: string, message: string) => {
-    try {
-      gitCommitSchema.parse([workspacePath, message]);
-    } catch (err) {
-      log.warn("[index.ts] git:commit invalid args:", err);
-      return ipcError(
-        "ipcErrors.git.invalidArgs",
-        `git commit 参数无效: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    try {
-      return gitCommit(workspacePath, message);
-    } catch (err) {
-      log.error("[index.ts] git:commit exec failed:", err);
-      return ipcError(
-        "ipcErrors.git.commitFailed",
-        `git commit 失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  // Git log (最近 N 条) — count 是 number, 安全
-  ipcMain.handle('git:log', async (_, workspacePath: string, count: number = 20) => {
-    try {
-      const format = '--pretty=format:{"hash":"%h","author":"%an","date":"%ai","message":"%s"}';
-      const output = execFileSync('git', ['log', format, '-n', String(count)], { cwd: workspacePath, encoding: 'utf-8' });
-      return output.split('\n').filter(l => l.trim()).map(l => JSON.parse(l));
-    } catch (err) {
-      log.error("[index.ts] git:log failed:", err);
-      return ipcError(
-        "ipcErrors.git.logFailed",
-        `读取 git log 失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  // Git branches
-  ipcMain.handle('git:branches', async (_, workspacePath: string) => {
-    try {
-      const output = execFileSync('git', ['branch', '-a'], { cwd: workspacePath, encoding: 'utf-8' });
-      return output.split('\n').filter(l => l.trim()).map(l => ({
-        name: l.replace(/^\*?\s+/, '').trim(),
-        isCurrent: l.startsWith('*'),
-        isRemote: l.includes('remotes/')
-      }));
-    } catch (err) {
-      log.error("[index.ts] git:branches failed:", err);
-      return ipcError(
-        "ipcErrors.git.branchesFailed",
-        `读取 git branches 失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  // v1.0.10 (H3): 渲染层日志转发主进程 electron-log 落文件
-  // fire-and-forget, 不走 handle 走 on. level 白名单防止任意调用 log 自定义方法.
-  ipcMain.on('log:write', (_event, level: string, message: string, extra: unknown) => {
-    const safeLevel: "error" | "warn" | "info" | "debug" =
-      level === "error" || level === "warn" || level === "info" || level === "debug"
-        ? level
-        : "info";
-    const safeExtra = Array.isArray(extra) ? (extra as unknown[]) : [];
-    log[safeLevel]("[renderer] " + message, ...safeExtra);
-  });
-
-  // Settings
-  ipcMain.handle('settings:get', async () => {
-    return store.get('settings');
-  });
-
-  ipcMain.handle('settings:set', async (_, settings: Partial<AppSettings>) => {
-    try {
-      settingsSetSchema.parse([settings]);
-    } catch (err) {
-      log.warn("[index.ts] settings:set invalid args:", err);
-      return ipcError(
-        "ipcErrors.settings.invalidArgs",
-        `设置参数无效: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    const current = store.get('settings');
-    const updated = { ...current, ...settings };
-    store.set('settings', updated);
-    return updated;
-  });
-
-  // Load Pi Agent local config — 直接返回已解析的本地配置（不含 API Key）
-  ipcMain.handle('settings:load-pi-config', async () => {
-    if (!piAgentConfig) return { models: [], currentModel: null };
-
-    // 构建模型列表（不包含 API Key）
-    const models = piAgentConfig.providers.flatMap(p =>
-      p.models.map(m => ({
-        id: m.id,
-        name: m.name,
-        provider: p.id,
-        providerName: p.name,
-        description: `${p.name} · ${m.reasoning ? '推理' : '通用'} · ${m.contextWindow ? `${Math.round(m.contextWindow / 1000)}K` : '未知'}上下文`,
-        maxTokens: m.maxTokens
-      }))
-    );
-
-    // 当前默认模型信息
-    const currentModel = piAgentConfig.defaultModel ? {
-      model: piAgentConfig.defaultModel,
-      provider: piAgentConfig.defaultProvider
-    } : null;
-
-    if (currentModel) {
-      const currentSettings = store.get('settings');
-      if (!currentSettings.model && !currentSettings.provider) {
-        store.set('settings', {
-          ...currentSettings,
-          model: currentModel.model,
-          provider: currentModel.provider,
-        });
-      }
-    }
-
-    return { models, currentModel };
-  });
-
-  // Get full Pi Agent config (for settings panel)
-  ipcMain.handle('pi:get-full-config', async () => {
-    if (!piAgentConfig) {
-      return {
-        configPath: PI_AGENT_DIR,
-        defaultProvider: 'google',
-        defaultModel: '',
-        providers: []
-      };
-    }
-
-    return {
-      configPath: PI_AGENT_DIR,
-      defaultProvider: piAgentConfig.defaultProvider,
-      defaultModel: piAgentConfig.defaultModel,
-      providers: piAgentConfig.providers.map(p => ({
-        id: p.id,
-        name: p.name,
-        baseUrl: p.baseUrl,
-        modelCount: p.models.length,
-        hasApiKey: false // 从配置文件读取，不返回实际 key
-      }))
-    };
-  });
-
-  // List skills from .agents/skills directory
-  ipcMain.handle('pi:list-skills', async () => {
-    try {
-      const skillsDir = join(process.cwd(), '.agents', 'skills');
-      if (!existsSync(skillsDir)) return [];
-
-      const entries = readdirSync(skillsDir, { withFileTypes: true });
-      const skills = [];
-
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const skillPath = join(skillsDir, entry.name);
-          let description = '';
-
-          // Try to read SKILL.md for description
-          const skillMdPath = join(skillPath, 'SKILL.md');
-          if (existsSync(skillMdPath)) {
-            try {
-              const content = readFileSync(skillMdPath, 'utf-8');
-              const lines = content.split('\n').filter((l: string) => l.trim());
-              // Get first non-empty, non-heading line as description
-              for (const line of lines) {
-                if (!line.startsWith('#') && line.trim().length > 0) {
-                  description = line.trim().substring(0, 100);
-                  break;
-                }
-              }
-            } catch {
-              // ignore read errors
-            }
-          }
-
-          skills.push({
-            name: entry.name,
-            description,
-            path: skillPath,
-            enabled: true
-          });
-        }
-      }
-
-      return skills;
-    } catch (error) {
-      log.error('Failed to list skills:', error);
-      return [];
-    }
-  });
-
-  // M4: Terminal IPC 走 node-pty (替换老 child_process.spawn 模式)
+  // Terminal (node-pty)
   setupTerminalIpc();
 
-  // v1.1.0: 窗口控制 IPC(renderer 接管 title bar 后用)
-  ipcMain.handle("window:minimize", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
-  });
-  ipcMain.handle("window:toggle-maximize", () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
-    } else {
-      mainWindow.maximize();
-    }
-  });
-  ipcMain.handle("window:is-maximized", () => {
-    return mainWindow && !mainWindow.isDestroyed()
-      ? mainWindow.isMaximized()
-      : false;
-  });
-  ipcMain.handle("window:close", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
-  });
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    const sendMaximizeState = (maximized: boolean): void => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("window:maximize-changed", maximized);
-      }
-    };
-    mainWindow.on("maximize", () => sendMaximizeState(true));
-    mainWindow.on("unmaximize", () => sendMaximizeState(false));
-  }
+  // Custom title bar (renderer-controlled)
+  setupWindowIpc(() => mainWindow);
+  setupWindowEvents(() => mainWindow);
 
-  // M5: Auto-updater (从 GitHub Releases 拉, 仅在 packaged 模式跑)
+  // Auto-updater
   setupAutoUpdater({ getMainWindow: () => mainWindow });
 }
 
@@ -895,7 +395,7 @@ app.on('window-all-closed', () => {
     piDriver = null;
   }
 
-  // M1: 清理所有 Pi session (每个 workspace 一个)
+  // Clean up all Pi sessions
   clearAllPendingApprovals();
   piPendingEdits.clear();
   piRegistry.disposeAll();

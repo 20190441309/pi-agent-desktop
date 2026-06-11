@@ -22,7 +22,8 @@
     "lint": "pnpm -r run lint",
     "test": "pnpm -r run test",
     "clean": "pnpm -r run clean",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "pnpm -r run typecheck",
+    "prepare": "lefthook install"
   },
   "pnpm": {
     "overrides": {
@@ -37,6 +38,7 @@
     "@playwright/test": "^1.49.0",
     "@typescript-eslint/parser": "^8",
     "eslint-plugin-react-hooks": "^5",
+    "lefthook": "^2.1.9",
     "playwright": "^1.49.0",
     "typescript-eslint": "^8"
   }
