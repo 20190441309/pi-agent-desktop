@@ -5,6 +5,7 @@ import { formatRelative } from "../../utils/format";
 import { useI18n } from "../../i18n";
 import { emitWorkspaceNotice } from "../WorkspaceNoticeBanner/WorkspaceNoticeBanner";
 import { isIpcError } from "@shared";
+import { SessionExportDialog } from "../SessionExport/SessionExportDialog";
 
 interface SessionCenterProps {
   onOpenChat?: () => void;
@@ -87,6 +88,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
   const [tagDraftById, setTagDraftById] = useState<Record<string, string>>({});
   const [titleDraftById, setTitleDraftById] = useState<Record<string, string>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [exportSessionId, setExportSessionId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ message: string; undo?: () => void; tone?: "success" | "error" } | null>(null);
   const [continuingKey, setContinuingKey] = useState<string | null>(null);
   const { t } = useI18n();
@@ -404,6 +406,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                             >
                               {continuingKey === `${session.id}:latest` ? "继续中" : "继续"}
                             </button>
+                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]" onClick={() => setExportSessionId(session.id)}>导出</button>
                             <button className="rounded-md px-2 py-1 text-xs hover:bg-[#f4f4f1]" onClick={() => toggleArchive(session)}>
                               {session.archived ? "恢复" : "归档"}
                             </button>
@@ -426,6 +429,11 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
           </div>
         )}
       </div>
+      <SessionExportDialog
+        isOpen={exportSessionId !== null}
+        onClose={() => setExportSessionId(null)}
+        sessionId={exportSessionId ?? undefined}
+      />
     </div>
   );
 }
