@@ -9,6 +9,7 @@ import { usePiStatusStore } from '../../stores/pi-status-store';
 import { useAgentStore } from '../../stores/agent-store';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
+import { ModelSelector } from '../ModelSelector/ModelSelector';
 import { useI18n } from '../../i18n';
 import { usePlanStore } from '../../stores/plan-store';
 import type { Message } from '../../stores/session-store';
@@ -517,6 +518,9 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             </div>
 
             <div className="w-full max-w-[900px]">
+              <div className="mb-3 flex justify-center">
+                <ModelSelector />
+              </div>
               <ChatInput
                 isConnected={isConnected}
                 isProcessing={isStreaming}
@@ -704,6 +708,9 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
           </div>
         ) : (
           <div className="shrink-0 bg-[var(--mm-bg-main)]">
+            <div className="flex justify-center border-t border-[var(--mm-border)] px-4 py-2">
+              <ModelSelector />
+            </div>
             <ChatInput
               isConnected={isConnected}
               isProcessing={isStreaming}
