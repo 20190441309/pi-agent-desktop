@@ -11,6 +11,7 @@ import {
 
 interface FileWorkspaceProps {
   workspacePath: string;
+  workspaceId?: string;
   initialTarget?: { path: string; mode?: "edit" | "diff"; nonce: number } | null;
 }
 
@@ -124,7 +125,7 @@ function SearchResultRow({
   );
 }
 
-export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspaceProps): React.JSX.Element {
+export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: FileWorkspaceProps): React.JSX.Element {
   const [tree, setTree] = useState<FileTreeNode | null>(null);
   const [treeState, setTreeState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -153,6 +154,13 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
   const gitStatusSeq = useRef(0);
   const fileReadSeq = useRef(0);
   const diffReadSeq = useRef(0);
+
+  // Sync currently-viewed file to main process (workbench context)
+  useEffect(() => {
+    if (workspaceId && window.piAPI?.setWorkbenchContext) {
+      window.piAPI.setWorkbenchContext(workspaceId, selectedPath);
+    }
+  }, [selectedPath, workspaceId]);
 
   const loadTree = useCallback(async () => {
     if (!window.piAPI?.filesGetTree) return;

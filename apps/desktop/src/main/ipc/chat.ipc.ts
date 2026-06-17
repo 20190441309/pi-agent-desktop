@@ -12,6 +12,7 @@ import { WorkspaceRegistry } from "../services/pi-session/registry";
 import type { IpcSender } from "../services/pi-session/event-bridge";
 import { PendingEdits } from "../services/approval/pending-edits";
 import { resolveApprovalRequest } from "../services/approval/approval-bridge";
+import { getWorkbenchContext } from "./workbench.ipc";
 import {
     resolveExtensionUiRequest,
     setDesktopPermissionMode,
@@ -389,6 +390,12 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             );
         }
 
+        // Prepend workbench context if user is viewing a file
+        const contextFile = getWorkbenchContext(ws.id);
+        const prompt = contextFile
+            ? `[Currently viewing: ${contextFile}]\n\n${text}`
+            : text;
+
         try {
             if (deps.agentRegistry) {
                 let agent = deps.agentRegistry.findDefaultAgent(ws.id);
@@ -398,13 +405,13 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                         title: `${ws.name} Agent`,
                     });
                 }
-                await deps.agentRegistry.prompt({ agentId: agent.id, message: text });
+                await deps.agentRegistry.prompt({ agentId: agent.id, message: prompt });
                 return undefined;
             }
             // registry.get() 内部会 lazy-init: 第一次创建 session + bridge + interceptor
             // 并只订阅一次 Pi 事件 (修复之前的订阅泄漏 + 重复处理 bug)
             const wsSession = await deps.registry.get(ws.id, ws.path, deps.pendingEdits, send);
-            await wsSession.session.prompt(text);
+            await wsSession.session.prompt(prompt);
             return undefined; // 显式返 void 满足 TS 全部路径 return 一致
         } catch (err) {
             log.error("[chat.ipc] prompt failed:", err);

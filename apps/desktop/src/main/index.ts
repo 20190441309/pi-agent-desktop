@@ -26,6 +26,8 @@ import { setupSettingsIpc } from './ipc/settings.ipc';
 import { setupWindowIpc, setupWindowEvents } from './ipc/window.ipc';
 import { setupWorkspaceIpc } from './ipc/workspace.ipc';
 import { setupProjectShellIpc } from './ipc/project-shell.ipc';
+import { setupWorkbenchIpc } from './ipc/workbench.ipc';
+import { registerLocalFileProtocol } from './services/local-file-protocol';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 import { clearPendingExtensionUiRequests } from './services/extensions/extension-ui-bridge';
 import { setupAutoUpdater } from './services/updater';
@@ -367,11 +369,15 @@ function setupIPC(): void {
   setupWindowIpc(() => mainWindow);
   setupWindowEvents(() => mainWindow);
 
+  // Workbench context (renderer tells main which file user is viewing)
+  setupWorkbenchIpc();
+
   // Auto-updater
   setupAutoUpdater({ getMainWindow: () => mainWindow });
 }
 
 // App lifecycle
+registerLocalFileProtocol();
 app.whenReady().then(() => {
   // 先加载 Pi 配置，再初始化
   piAgentConfig = loadPiAgentConfig();

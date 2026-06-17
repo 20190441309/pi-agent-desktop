@@ -278,6 +278,11 @@ const piAPI: PiAPI = {
     windowIsMaximized: () => ipcRenderer.invoke("window:is-maximized") as Promise<boolean>,
     windowClose: () => ipcRenderer.invoke("window:close"),
     onWindowMaximizeChanged: (cb) => subscribe<boolean>("window:maximize-changed", cb),
+
+    // v1.2: Workbench context — renderer tells main which file user is viewing
+    setWorkbenchContext: (workspaceId, filePath) => {
+        ipcRenderer.send("workbench:set-active-file", workspaceId, filePath);
+    },
 };
 
 const nodeAPI: NodeAPI = {

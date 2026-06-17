@@ -7,6 +7,7 @@ import { useSessionStore } from '../../stores/session-store';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { useAgentStore } from '../../stores/agent-store';
 import { MessageBubble } from './MessageBubble';
+import { VirtualizedMessageList } from './VirtualizedMessageList';
 import { ChatInput } from './ChatInput';
 import { useI18n } from '../../i18n';
 import { usePlanStore } from '../../stores/plan-store';
@@ -522,14 +523,23 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             aria-label={t('chatView.messagesAria')}
             aria-busy={isStreaming}
           >
-            {messages.map((message) => (
+            {messages.length > 50 ? (
+              <VirtualizedMessageList
+                messages={messages}
+                isStreaming={isStreaming}
+                streamingMessageId={streamingMessageId}
+                onPlanAction={handlePlanAction}
+              />
+            ) : (
+            messages.map((message) => (
               <MessageBubble
                 key={message.id}
                 message={message}
                 isStreaming={isStreaming && message.id === streamingMessageId}
                 onPlanAction={handlePlanAction}
               />
-            ))}
+            ))
+            )}
 
             {/* 流式处理中指示器（仅在没有 assistant 消息占位符时显示） */}
             {isStreaming && !streamingMessageId && (

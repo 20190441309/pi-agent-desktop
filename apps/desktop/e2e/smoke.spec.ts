@@ -136,21 +136,22 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await page.getByRole('button', { name: '设置' }).click();
         await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible({ timeout: 5000 });
 
-        // 4 个 tab 都在 — 用 tablist + tab roles
+        // 当前设置页 7 个 tab 都在 — 用 tablist + tab roles
         const tablist = page.getByRole('tablist', { name: '设置分类' });
         await expect(tablist).toBeVisible();
         const tabs = tablist.getByRole('tab');
         const tabCount = await tabs.count();
-        expect(tabCount).toBe(5); // appearance / general / model / piagent / about
+        expect(tabCount).toBe(7); // appearance / model / piagent / config / general / shortcuts / about
+        for (const name of ['外观', '模型', 'Pi Agent', '配置中心', '通用', '快捷键', '关于']) {
+            await expect(tablist.getByRole('tab', { name })).toBeVisible();
+        }
 
-        // 验证能切 tab(点第 2 个 — model)
-        await tabs.nth(1).click();
-        // model tab 应该是 selected
-        await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+        // 验证能切 tab
+        await tablist.getByRole('tab', { name: '模型' }).click();
+        await expect(tablist.getByRole('tab', { name: '模型' })).toHaveAttribute('aria-selected', 'true');
 
-        // 切到 about (第 4 个)
-        await tabs.nth(3).click();
-        await expect(tabs.nth(3)).toHaveAttribute('aria-selected', 'true');
+        await tablist.getByRole('tab', { name: '关于' }).click();
+        await expect(tablist.getByRole('tab', { name: '关于' })).toHaveAttribute('aria-selected', 'true');
 
         // 关闭按钮接通 — Settings 顶部关闭按钮 aria-label="关闭" (t('common.close'))
         //   注: Settings 内有 2 个 "关闭" substring-match 的按钮 (line 76 = "关闭" + line 440 = "关闭设置")

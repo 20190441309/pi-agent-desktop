@@ -68,6 +68,9 @@ const COMMANDS: readonly CommandDef[] = Object.freeze([
     { id: "toggle_terminal", labelKey: "commandPalette.commands.toggle_terminal", hint: "Ctrl+`" },
 ]);
 
+const COMMAND_RESULT_LIMIT = 24;
+const CONTEXT_RESULT_LIMIT = 8;
+
 function FileIcon(): React.JSX.Element {
     return (
         <svg className="h-4 w-4 shrink-0 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -367,7 +370,11 @@ export function CommandPalette({
                     );
                 },
             }));
-        results = [...gitContextResults, ...projectResults, ...builtInResults].slice(0, 24);
+        results = [
+            ...builtInResults,
+            ...gitContextResults.slice(0, CONTEXT_RESULT_LIMIT),
+            ...projectResults.slice(0, CONTEXT_RESULT_LIMIT),
+        ].slice(0, COMMAND_RESULT_LIMIT);
     } else if (mode === "history") {
         // 历史搜索 (M2-6): 跨 session 搜消息内容
         const sessions = useSessionStore

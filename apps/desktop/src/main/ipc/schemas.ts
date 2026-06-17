@@ -1,6 +1,6 @@
-// IPC handler zod schemas (security hardening slice)
+// IPC handler zod schemas (security hardening)
 // 每个 schema 验证对应 IPC handler 的入参, 无效输入抛 z.ZodError.
-// 约束: 仅暴露 5 个最高危 handler 的最小校验, 其它 handler 留待后续切片.
+// 覆盖范围: 文件操作, git, 终端, 会话, 设置, 工作区, 代理, codex 导入, 工作台上下文.
 
 import { z } from "zod";
 
@@ -299,4 +299,41 @@ export const writeTextFileSchema = z.union([
             })
             .strict(),
     ]),
+]);
+
+// ── Agent IPC schemas ──────────────────────────────────────
+
+export const agentsCreateSchema = z.object({
+    workspaceId: z.string().min(1),
+    title: z.string().min(1).optional(),
+    model: z.string().optional(),
+    provider: z.string().optional(),
+});
+
+export const agentsPromptSchema = z.object({
+    agentId: z.string().min(1, "agentId must be a non-empty string"),
+    message: z.string().min(1, "message must be a non-empty string"),
+    streamingBehavior: z.enum(["followUp", "newTurn"]).optional(),
+});
+
+export const agentsIdSchema = z.tuple([
+    z.string().min(1, "agentId must be a non-empty string"),
+]);
+
+// ── Codex session import schemas ──────────────────────────
+
+export const codexScanSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+]);
+
+export const codexImportSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+    z.array(z.string().min(1), { message: "sourcePaths must be an array of non-empty strings" }),
+]);
+
+// ── Workbench context schema ───────────────────────────────
+
+export const workbenchSetActiveFileSchema = z.tuple([
+    z.string().min(1, "workspaceId must be a non-empty string"),
+    z.union([z.string().min(1), z.null()]),
 ]);

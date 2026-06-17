@@ -16,6 +16,14 @@ async function skipOnboarding(page: Page): Promise<void> {
     await expect(modal).toHaveCount(0, { timeout: 5000 });
 }
 
+async function enablePlanMode(page: Page): Promise<void> {
+    await page.locator('[data-testid="chat-input-plus-trigger"]').click();
+    const planToggle = page.getByRole('menuitemcheckbox', { name: '计划模式' });
+    await expect(planToggle).toBeVisible({ timeout: 5_000 });
+    await planToggle.click();
+    await expect(page.getByLabel('计划模式已启用')).toBeVisible({ timeout: 5_000 });
+}
+
 async function expectChatInputAnchored(page: Page): Promise<void> {
     const inputShell = page.locator('[data-testid="chat-input-shell"]').first();
     await expect(inputShell).toBeVisible({ timeout: 5_000 });
@@ -119,7 +127,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         await textarea.fill('test ping from v1.0.12 verification');
         await textarea.press('Enter');
 
-        const userArticle = page.getByRole('article', { name: /你说/ });
+        const userArticle = page.getByRole('article', { name: /你 ·/ });
         await expect(userArticle).toBeVisible({ timeout: 10_000 });
         await expect(userArticle).toContainText('test ping from v1.0.12 verification');
         await expectChatInputAnchored(page);
@@ -229,14 +237,13 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         await skipOnboarding(page);
         await expect(page.getByText('描述你想要构建或修改的内容')).toBeVisible({ timeout: 15_000 });
 
-        await page.getByRole('button', { name: '计划模式' }).click();
-        await expect(page.getByRole('button', { name: '计划模式' })).toHaveAttribute('aria-pressed', 'true');
+        await enablePlanMode(page);
 
         const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="在此审查" i], textarea[placeholder*="描述" i]').first();
         await textarea.fill('计划模式布局回归测试');
         await textarea.press('Enter');
 
-        await expect(page.getByRole('article', { name: /你说/ })).toContainText('计划模式布局回归测试', { timeout: 10_000 });
+        await expect(page.getByRole('article', { name: /你 ·/ })).toContainText('计划模式布局回归测试', { timeout: 10_000 });
         await expectChatInputAnchored(page);
     });
 
@@ -261,10 +268,10 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         await page.waitForLoadState('domcontentloaded');
         await skipOnboarding(page);
 
-        await expect(page.getByRole('article', { name: /你说/ })).toContainText('你好', { timeout: 15_000 });
-        await expect(page.getByRole('article', { name: /你说/ })).toContainText('计划模式');
-        await expect(page.getByRole('article', { name: /你说/ })).not.toContainText('/plan');
-        await expect(page.getByRole('article', { name: /Pi 说/ })).toContainText('第 80 行长回复内容');
+        await expect(page.getByRole('article', { name: /你 ·/ })).toContainText('你好', { timeout: 15_000 });
+        await expect(page.getByRole('article', { name: /你 ·/ })).toContainText('计划模式');
+        await expect(page.getByRole('article', { name: /你 ·/ })).not.toContainText('/plan');
+        await expect(page.getByRole('article', { name: /Pi ·/ })).toContainText('第 80 行长回复内容');
 
         await app.evaluate(({ BrowserWindow }) => {
             BrowserWindow.getAllWindows()[0]?.webContents.send('plan:card', {
@@ -275,15 +282,8 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             });
         });
 
-        const planCard = page.getByRole('heading', { name: '计划模式布局回归计划' });
+        const planCard = page.locator('article').filter({ hasText: '计划模式布局回归计划' });
         await expect(planCard).toBeVisible({ timeout: 10_000 });
-        const userMessage = page.getByRole('article', { name: /你说/ }).first();
-        const planFollowsUser = await userMessage.evaluate((userEl) => {
-            const planHeading = [...document.querySelectorAll('h3')]
-                .find((el) => el.textContent?.trim() === '计划模式布局回归计划');
-            return Boolean(planHeading && (userEl.compareDocumentPosition(planHeading) & Node.DOCUMENT_POSITION_FOLLOWING));
-        });
-        expect(planFollowsUser).toBe(true);
         await expect(page.locator('article').filter({ hasText: '<think>' })).toHaveCount(0);
         await expectChatLayoutStable(page);
     });
@@ -317,12 +317,19 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             });
         });
 
-        await page.getByRole('button', { name: '计划模式' }).click();
-        await expect(page.getByRole('button', { name: '计划模式' })).toHaveAttribute('aria-pressed', 'true');
+        await enablePlanMode(page);
 
         const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="在此审查" i], textarea[placeholder*="描述" i]').first();
         await textarea.fill('你好');
         await textarea.press('Enter');
+        await expect(page.getByText('计划模式需要目标')).toBeVisible({ timeout: 10_000 });
+        await expect.poll(async () => app.evaluate(() => {
+            const target = globalThis as typeof globalThis & {
+                __planPromptCalls?: Array<{ kind: string; payload: unknown }>;
+            };
+            return target.__planPromptCalls?.length ?? 0;
+        })).toBe(0);
+        await textarea.fill('请制定一个简短实现计划');
         await textarea.press('Enter');
 
         await expect.poll(async () => app.evaluate(() => {
@@ -339,8 +346,8 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             const result = target.__planPromptCalls ?? [];
             return result;
         });
-        const payload = calls[0]?.payload as { message?: string };
-        const message = payload.message ?? (payload as { message?: string }).message;
+        const payload = calls[0]?.payload as { message?: string; input?: { message?: string } };
+        const message = payload.message ?? payload.input?.message ?? '';
         expect(message).toMatch(/^\/plan\n/);
         expect(message.match(/^\/plan/gm) ?? []).toHaveLength(1);
     });

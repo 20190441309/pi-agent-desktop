@@ -48,6 +48,7 @@ coverage/
 
 # Electron
 release/
+apps/desktop/release-test/
 *.dmg
 *.exe
 *.msi

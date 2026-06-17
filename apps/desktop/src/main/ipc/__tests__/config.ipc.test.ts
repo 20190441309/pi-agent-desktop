@@ -85,6 +85,21 @@ describe("setupConfigIpc", () => {
         expect(manager.setDefaultModel).toHaveBeenCalledWith("", "");
     });
 
+    it("notifies when direct config saves change Pi Agent config", async () => {
+        const manager = createManagerStub();
+        const onManagedModelsChanged = vi.fn();
+
+        setupConfigIpc(manager as ConfigManager, { onManagedModelsChanged });
+
+        await handlers.get("config:save-models")?.({}, { providers: {} });
+        await handlers.get("config:save-auth")?.({}, {});
+        await handlers.get("config:save-settings")?.({}, {});
+        await handlers.get("config:save-raw")?.({}, "models.json", '{"providers":{}}');
+        await handlers.get("config:import")?.({}, '{"files":{"models.json":{"providers":{}}}}');
+
+        expect(onManagedModelsChanged).toHaveBeenCalledTimes(5);
+    });
+
     it("returns IpcError for unsafe fetch-models URLs", async () => {
         const manager = createManagerStub();
 

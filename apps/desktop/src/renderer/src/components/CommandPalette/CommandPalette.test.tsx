@@ -159,6 +159,39 @@ describe("CommandPalette", () => {
     expect(onRunCommand).toHaveBeenCalledWith("open_git");
   });
 
+  it("keeps built-in commands visible when git and project context are large", async () => {
+    const scripts = Object.fromEntries(
+      Array.from({ length: 12 }, (_, index) => [`script${index}`, `echo ${index}`]),
+    );
+    filesList.mockResolvedValue([]);
+    detectProject.mockResolvedValue({
+      type: "node",
+      name: "repo",
+      rootPath: "C:/repo",
+      configFiles: ["package.json"],
+      packageManager: "pnpm",
+      hasGit: true,
+      scripts,
+    });
+    getGitStatus.mockResolvedValue({
+      branch: "main",
+      modified: Array.from({ length: 8 }, (_, index) => `src/file-${index}.ts`),
+      added: [],
+      deleted: [],
+      untracked: [],
+      ahead: 0,
+      behind: 0,
+    });
+
+    renderPalette({ workspacePath: "C:/repo" });
+
+    fireEvent.click(screen.getByRole("tab", { name: "命令" }));
+
+    expect(await screen.findByRole("button", { name: "打开变更 src/file-0.ts" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "运行脚本 script0" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "切换终端" })).toBeTruthy();
+  });
+
   it("exposes searchable git change context actions in command mode", async () => {
     const openFileSpy = vi.fn();
     const openDiffSpy = vi.fn();

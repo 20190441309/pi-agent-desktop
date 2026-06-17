@@ -536,7 +536,7 @@ function AppShell(): React.ReactElement {
                         {activePanel === "files" && currentWorkspace && (
                             <ErrorBoundary fallback={panelFallback("文件")}>
                                 <div className="flex-1 overflow-hidden">
-                                    <FileWorkspace workspacePath={currentWorkspace.path} initialTarget={fileWorkspaceTarget} />
+                                    <FileWorkspace workspacePath={currentWorkspace.path} workspaceId={currentWorkspace.id} initialTarget={fileWorkspaceTarget} />
                                 </div>
                             </ErrorBoundary>
                         )}

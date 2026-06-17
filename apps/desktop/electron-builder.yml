@@ -48,3 +48,5 @@ npmRebuild: false
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
   cache: .electron-cache
+
+electronDist: node_modules/electron/dist

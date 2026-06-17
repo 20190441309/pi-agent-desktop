@@ -223,7 +223,7 @@ test.describe("Pi Desktop — current chat UI user path", () => {
 
     await textarea.fill("了解一下这个项目");
     await textarea.press("Enter");
-    await expect(page.getByRole("article", { name: /你说/ })).toContainText("了解一下这个项目", { timeout: 10_000 });
+    await expect(page.getByRole("article", { name: /你 ·/ })).toContainText("了解一下这个项目", { timeout: 10_000 });
     await expect(page.getByText("计划模式需要目标")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("PLAN QUESTION")).toHaveCount(0);
     await expect(page.locator("section textarea")).toHaveCount(0);
@@ -264,7 +264,7 @@ test.describe("Pi Desktop — current chat UI user path", () => {
         createdAt: Date.now(),
       });
     });
-    await expect(page.getByRole("article", { name: /Pi 说/ }).filter({ hasText: "聊天内流程" })).toBeVisible();
+    await expect(page.getByRole("article", { name: /Pi ·/ }).filter({ hasText: "聊天内流程" })).toBeVisible();
     await expect(page.getByRole("button", { name: "执行计划" })).toBeVisible();
     await page.getByRole("button", { name: "执行计划" }).click();
     await expect.poll(async () => app.evaluate(() => {
@@ -273,7 +273,7 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     })).toBe(2);
     await expect(page.getByText("执行计划：chat-input-plan.md")).toBeVisible();
     await expect(page.getByText(/\/execute_plan/)).toHaveCount(0);
-    const planArticle = page.getByRole("article", { name: /Pi 说/ }).filter({ hasText: "聊天内流程" });
+    const planArticle = page.getByRole("article", { name: /Pi ·/ }).filter({ hasText: "聊天内流程" });
     await expect(planArticle.getByText("执行中")).toBeVisible();
     await expect(planArticle.getByRole("button", { name: "暂停执行" })).toBeVisible();
     await planArticle.getByRole("button", { name: "暂停执行" }).click();
@@ -298,7 +298,6 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     page = await app.firstWindow();
     await page.waitForLoadState("domcontentloaded");
 
-    await installTestIpc(app);
     await page.evaluate(async ({ workspacePath }) => {
       window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
       window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
@@ -330,8 +329,8 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     await page.waitForLoadState("domcontentloaded");
     await skipOnboarding(page);
 
-    await expect(page.getByRole("article", { name: /你说/ })).toContainText("验证思考合并", { timeout: 15_000 });
-    await expect(page.getByRole("article", { name: /Pi 说/ })).toHaveCount(1);
+    await expect(page.getByRole("article", { name: /你 ·/ })).toContainText("验证思考合并", { timeout: 15_000 });
+    await expect(page.getByRole("article", { name: /Pi ·/ })).toHaveCount(1);
     await expect(page.getByText(/思考 2 次 · \d+ 字符/)).toBeVisible();
     await expect(page.locator("article").filter({ hasText: "第一轮思考" })).toHaveCount(0);
     await expect(page.locator("article").filter({ hasText: "第二轮思考" })).toHaveCount(0);

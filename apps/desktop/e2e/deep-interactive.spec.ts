@@ -23,6 +23,7 @@ import { mkdirSync } from 'fs';
 
 const TEST_TIMEOUT = 300_000; // 5 minutes for real AI responses
 const SCREENSHOT_DIR = join(__dirname, '..', 'e2e-output', 'deep-interactive');
+const deepInteractiveDescribe = process.env.RUN_DEEP_INTERACTIVE === '1' ? test.describe : test.describe.skip;
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -55,7 +56,7 @@ async function takeScreenshot(page: Page, name: string): Promise<void> {
     console.log(`[DEEP-TEST] Screenshot: ${name}`);
 }
 
-test.describe('Pi Desktop — Deep AI Interaction', () => {
+deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
     let app: ElectronApplication;
     let page: Page;
 

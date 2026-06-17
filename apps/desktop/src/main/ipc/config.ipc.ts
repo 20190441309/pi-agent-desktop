@@ -39,14 +39,22 @@ export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedMo
     ipcMain.handle("config:get-models", () => configManager.getModelsConfig());
     ipcMain.handle("config:get-auth", () => configManager.getAuthConfig());
     ipcMain.handle("config:get-settings", () => configManager.getSettingsConfig());
-    ipcMain.handle("config:save-models", (_event, data: PiModelsFile) => configManager.saveModelsConfig(data));
-    ipcMain.handle("config:save-auth", (_event, data: PiAuthFile) => configManager.saveAuthConfig(data));
-    ipcMain.handle("config:save-settings", (_event, data: PiSettingsFile) => configManager.saveSettingsConfig(data));
-    ipcMain.handle("config:save-raw", (_event, fileName: string, rawJson: string) =>
-        configManager.saveRawConfig(fileName, rawJson),
+    ipcMain.handle("config:save-models", async (_event, data: PiModelsFile) =>
+        notifyIfValid(await configManager.saveModelsConfig(data)),
+    );
+    ipcMain.handle("config:save-auth", async (_event, data: PiAuthFile) =>
+        notifyIfValid(await configManager.saveAuthConfig(data)),
+    );
+    ipcMain.handle("config:save-settings", async (_event, data: PiSettingsFile) =>
+        notifyIfValid(await configManager.saveSettingsConfig(data)),
+    );
+    ipcMain.handle("config:save-raw", async (_event, fileName: string, rawJson: string) =>
+        notifyIfValid(await configManager.saveRawConfig(fileName, rawJson)),
     );
     ipcMain.handle("config:export", () => configManager.exportConfig());
-    ipcMain.handle("config:import", (_event, packageJson: string) => configManager.importConfig(packageJson));
+    ipcMain.handle("config:import", async (_event, packageJson: string) =>
+        notifyIfValid(await configManager.importConfig(packageJson)),
+    );
     ipcMain.handle("config:list-managed-models", () => configManager.listManagedModels());
     ipcMain.handle("config:save-managed-model", async (_event, input: ManagedModelSaveInput) =>
         notifyIfValid(await configManager.saveManagedModel(input)),

@@ -92,7 +92,7 @@ test.describe("Pi Desktop — visual function audit", () => {
         ({ app, page } = await launchApp(userDataDir));
 
         await expect(page.locator('nav[aria-label="主导航"]')).toBeVisible({ timeout: 15_000 });
-        await expect(page.locator('nav[aria-label="主导航"]').getByRole("button", { name: "Git" })).toHaveCount(0);
+        await expect(page.locator('nav[aria-label="主导航"]').getByRole("button", { name: "Git" })).toBeVisible();
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "01-initial-loaded");
 
@@ -103,8 +103,8 @@ test.describe("Pi Desktop — visual function audit", () => {
         await screenshot(page, screenshotDir, "02-new-task");
 
         await page.locator('button[data-mmcode-section="session:visual-audit-session"]').click();
-        await expect(page.getByRole("article", { name: /你说/ })).toContainText("请检查这个桌面应用");
-        await expect(page.getByRole("article", { name: /Pi 说/ })).toContainText("主要界面已加载");
+        await expect(page.getByRole("article", { name: /你 ·/ })).toContainText("请检查这个桌面应用");
+        await expect(page.getByRole("article", { name: /Pi ·/ })).toContainText("主要界面已加载");
         await expect(page.getByText("查看 1 个文件")).toBeVisible();
         await expectSingleSidebarCurrent(page, "UI 巡检会话");
         await expectHealthyLayout(page);

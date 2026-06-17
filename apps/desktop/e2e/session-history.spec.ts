@@ -71,11 +71,11 @@ test.describe("Pi Desktop — session history navigation", () => {
 
         await page.locator('button[data-mmcode-section="session:e2e-target-session"]').click();
 
-        await expect(page.getByRole("article", { name: /你说/ })).toContainText(
+        await expect(page.getByRole("article", { name: /你 ·/ })).toContainText(
             "打开历史会话后必须看到这条用户消息",
             { timeout: 10_000 },
         );
-        await expect(page.getByRole("article", { name: /Pi 说/ })).toContainText(
+        await expect(page.getByRole("article", { name: /Pi ·/ })).toContainText(
             "打开历史会话后必须看到这条助手回复",
             { timeout: 10_000 },
         );
