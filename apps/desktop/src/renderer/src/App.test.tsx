@@ -46,9 +46,6 @@ vi.mock("./components/Onboarding/Onboarding", () => ({
 vi.mock("./components/ChatView/ChatView", () => ({
     ChatView: () => <div>ChatView</div>,
 }));
-vi.mock("./components/GitPanel/GitPanel", () => ({
-    GitPanel: () => <div>GitPanel</div>,
-}));
 
 import App from "./App";
 import { useAgentStore } from "./stores/agent-store";

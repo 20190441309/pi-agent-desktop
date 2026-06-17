@@ -6,33 +6,10 @@ import { useI18n } from "../../i18n";
 import { emitWorkspaceNotice } from "../WorkspaceNoticeBanner/WorkspaceNoticeBanner";
 import { isIpcError } from "@shared";
 import { SessionExportDialog } from "../SessionExport/SessionExportDialog";
+import { sessionMatches, sessionDepth, sessionActivityTime } from "../../utils/session-grouping";
 
 interface SessionCenterProps {
   onOpenChat?: () => void;
-}
-
-function sessionMatches(session: Session, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  const text = [
-    session.title,
-    session.summary,
-    ...(session.tags ?? []),
-    ...session.messages.map((message) => `${message.content} ${message.thinking ?? ""}`),
-  ].join("\n").toLowerCase();
-  return text.includes(q);
-}
-
-function sessionDepth(session: Session, byId: Map<string, Session>): number {
-  let depth = 0;
-  let current = session;
-  const seen = new Set<string>();
-  while (current.parentSessionId && byId.has(current.parentSessionId) && !seen.has(current.parentSessionId)) {
-    seen.add(current.parentSessionId);
-    depth += 1;
-    current = byId.get(current.parentSessionId)!;
-  }
-  return Math.min(depth, 4);
 }
 
 function findMatchingMessage(session: Session, query: string): Session["messages"][number] | null {
@@ -61,10 +38,6 @@ function countToolCalls(session: Session): number {
 
 function countChildren(session: Session, sessions: Session[]): number {
   return sessions.filter((item) => item.parentSessionId === session.id).length;
-}
-
-function sessionActivityTime(session: Session): Date {
-  return session.lastOpenedAt ?? session.updatedAt ?? session.createdAt;
 }
 
 async function selectWorkspaceWithNotice(path: string): Promise<string | null> {

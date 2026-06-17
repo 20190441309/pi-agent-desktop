@@ -23,9 +23,6 @@ import { TerminalPanel } from "./components/Terminal/TerminalPanel";
 import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
-import { GitPanel } from "./components/GitPanel/GitPanel";
-import { SessionCenter } from "./components/SessionCenter/SessionCenter";
-import { FileWorkspace } from "./components/FileWorkspace/FileWorkspace";
 import { SearchHistory } from "./components/SearchHistory/SearchHistory";
 import {
     MiniMaxCodeLayout,
@@ -50,17 +47,12 @@ import type { TerminalCommandMode } from "./utils/terminal-command";
 import { isIpcError } from "@shared";
 import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 
-type MainPanel = "chat" | "skills" | "git" | "sessions" | "files";
-type FileWorkspaceTarget = { path: string; mode?: "edit" | "diff"; nonce: number };
-type GitPanelTarget = { file: string; nonce: number };
+type MainPanel = "chat" | "skills";
 type TerminalCommandTarget = { command: string; mode: TerminalCommandMode; nonce: number };
 type PaletteCommandStatus = { message: string; tone: "success" | "error" };
 
 function panelForSection(section: string): MainPanel {
     if (section === "skills") return "skills";
-    if (section === "sessions") return "sessions";
-    if (section === "git") return "git";
-    if (section === "files" || section === "workspace") return "files";
     return "chat";
 }
 
@@ -102,8 +94,6 @@ function AppShell(): React.ReactElement {
     const [showSearchHistory, setShowSearchHistory] = useState(false);
     const [leftCollapsed, setLeftCollapsed] = useState(false);
     const [rightCollapsed, setRightCollapsed] = useState(false);
-    const [fileWorkspaceTarget, setFileWorkspaceTarget] = useState<FileWorkspaceTarget | null>(null);
-    const [gitPanelTarget, setGitPanelTarget] = useState<GitPanelTarget | null>(null);
     const [terminalCommandTarget, setTerminalCommandTarget] = useState<TerminalCommandTarget | null>(null);
     const sessions = useSessionStore((s) => s.sessions);
     const currentSessionId = useSessionStore((s) => s.currentSessionId);
@@ -262,18 +252,6 @@ function AppShell(): React.ReactElement {
             const detail = (e as CustomEvent<{ section: string }>).detail;
             if (detail?.section) setActiveSection(detail.section);
         };
-        const onOpenFile = (e: Event): void => {
-            const detail = (e as CustomEvent<{ path?: string; mode?: "edit" | "diff" }>).detail;
-            if (!detail?.path) return;
-            setFileWorkspaceTarget({ path: detail.path, mode: detail.mode, nonce: Date.now() });
-            setActiveSection("files");
-        };
-        const onOpenGitDiff = (e: Event): void => {
-            const detail = (e as CustomEvent<{ file?: string }>).detail;
-            if (!detail?.file) return;
-            setGitPanelTarget({ file: detail.file, nonce: Date.now() });
-            setActiveSection("git");
-        };
         const onRunTerminalCommand = (e: Event): void => {
             const detail = (e as CustomEvent<{ command?: string; mode?: TerminalCommandMode }>).detail;
             const command = detail?.command?.trim();
@@ -283,14 +261,10 @@ function AppShell(): React.ReactElement {
         };
         window.addEventListener("chatpanel:prefill", onPrefill);
         window.addEventListener("app:switch-section", onSwitchSection);
-        window.addEventListener("workspace:open-file", onOpenFile);
-        window.addEventListener("workspace:open-git-diff", onOpenGitDiff);
         window.addEventListener("terminal:run-command", onRunTerminalCommand);
         return () => {
             window.removeEventListener("chatpanel:prefill", onPrefill);
             window.removeEventListener("app:switch-section", onSwitchSection);
-            window.removeEventListener("workspace:open-file", onOpenFile);
-            window.removeEventListener("workspace:open-git-diff", onOpenGitDiff);
             window.removeEventListener("terminal:run-command", onRunTerminalCommand);
         };
     }, []);
@@ -346,15 +320,6 @@ function AppShell(): React.ReactElement {
         switch (cmdId) {
             case "new_chat":
                 routeSection("new-task");
-                return;
-            case "open_files":
-                routeSection("files");
-                return;
-            case "open_git":
-                routeSection("git");
-                return;
-            case "open_sessions":
-                routeSection("sessions");
                 return;
             case "open_skills":
                 routeSection("skills");
@@ -416,17 +381,14 @@ function AppShell(): React.ReactElement {
                 window.dispatchEvent(new CustomEvent("settings:select-tab", { detail }));
             }, 0);
         };
-        const onOpenSessions = (): void => routeSection("sessions");
         const onOpenHotkeys = (): void => setShowCheatsheet(true);
         const onNewTask = (): void => routeSection("new-task");
 
         window.addEventListener("slash-command:open-settings-tab", onOpenSettingsTab);
-        window.addEventListener("slash-command:open-sessions", onOpenSessions);
         window.addEventListener("slash-command:open-hotkeys", onOpenHotkeys);
         window.addEventListener("slash-command:new-task", onNewTask);
         return () => {
             window.removeEventListener("slash-command:open-settings-tab", onOpenSettingsTab);
-            window.removeEventListener("slash-command:open-sessions", onOpenSessions);
             window.removeEventListener("slash-command:open-hotkeys", onOpenHotkeys);
             window.removeEventListener("slash-command:new-task", onNewTask);
         };
@@ -462,7 +424,6 @@ function AppShell(): React.ReactElement {
 
     // 解析当前 section → 决定中间内容
     // v1.0.17: "settings" 只通过 openSettings() 打开模态框，不再在主内容区占位
-    // v1.1: "git" 渲染 GitPanel
     const activePanel = panelForSection(activeSection);
 
     const panelFallback = (name: string) => (error: Error, reset: () => void) => (
@@ -516,27 +477,6 @@ function AppShell(): React.ReactElement {
                             <ErrorBoundary fallback={panelFallback("技能")}>
                                 <div className="flex-1 overflow-hidden">
                                     <SkillsPanel />
-                                </div>
-                            </ErrorBoundary>
-                        )}
-                        {activePanel === "sessions" && (
-                            <ErrorBoundary fallback={panelFallback("会话")}>
-                                <div className="flex-1 overflow-hidden">
-                                    <SessionCenter onOpenChat={() => setActiveSection("chat")} />
-                                </div>
-                            </ErrorBoundary>
-                        )}
-                        {activePanel === "git" && currentWorkspace && (
-                            <ErrorBoundary fallback={panelFallback("Git")}>
-                                <div className="flex-1 overflow-hidden">
-                                    <GitPanel workspacePath={currentWorkspace.path} initialTarget={gitPanelTarget} />
-                                </div>
-                            </ErrorBoundary>
-                        )}
-                        {activePanel === "files" && currentWorkspace && (
-                            <ErrorBoundary fallback={panelFallback("文件")}>
-                                <div className="flex-1 overflow-hidden">
-                                    <FileWorkspace workspacePath={currentWorkspace.path} workspaceId={currentWorkspace.id} initialTarget={fileWorkspaceTarget} />
                                 </div>
                             </ErrorBoundary>
                         )}
