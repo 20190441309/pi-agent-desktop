@@ -15,60 +15,62 @@ pi-desktop/
 │   ├── src/preload/       # Secure IPC bridge (contextBridge)
 │   └── src/renderer/      # React UI (Vite + Tailwind CSS 4)
 ├── packages/shared-types/ # Cross-process TypeScript types (@shared alias)
+│   └── src/              # index.ts, events.ts, approval.ts, command-risk.ts
 └── docs/                  # Specs, plans, spike notes
 ```
 
-## Critical Path Aliases
+## Path Aliases — Update in THREE Places
 
-These aliases are defined in **both** `tsconfig.base.json` and `electron.vite.config.ts`:
+Adding a new alias? It must be defined in **all** files where it's used or things break silently:
 
-- `@shared` → `packages/shared-types/src`
-- `@/` → `apps/desktop/src/renderer/src/`
-- `@pi-desktop/*` → `packages/*/src`
+| Alias | tsconfig.base.json | electron.vite.config.ts | vitest.config.ts |
+|-------|:---:|:---:|:---:|
+| `@shared` | ✅ | ✅ (3 sections: main, preload, renderer) | ✅ |
+| `@` (→ renderer/src) | ❌ not in tsconfig | ✅ (renderer section only) | ✅ |
+| `@pi-desktop/*` | ✅ | ❌ not in vite config | ❌ not in vitest |
 
-**Gotcha**: Vite doesn't read tsconfig paths. When adding new aliases, update both files.
+**Gotcha**: Vite doesn't read tsconfig paths. Each alias must be manually duplicated into `electron.vite.config.ts` (all 3 process sections where used) and `vitest.config.ts`.
+
+### Sub-path imports from `@shared`
+
+The `@shared` alias supports sub-path imports used throughout the codebase:
+- `@shared` → `packages/shared-types/src/index.ts` (re-exports everything)
+- `@shared/events` → `packages/shared-types/src/events.ts` (Pi RPC event types)
+- `@shared/command-risk` → `packages/shared-types/src/command-risk.ts` (shell command risk classification)
+
+These resolve via TypeScript `paths` glob (`@shared/*`). Vite aliases only `@shared` (bare) — sub-paths work because they resolve to real files under the aliased directory.
 
 ## Commands
 
-### Root Level (run all packages)
-
 ```bash
-pnpm install --frozen-lockfile  # Install deps (use --frozen-lockfile in CI)
-pnpm -r build                   # Build all packages
-pnpm -r typecheck               # Typecheck all packages
-pnpm -r lint                    # Lint all packages
-pnpm -r test                    # Run all tests
-```
+# Root level (all packages)
+pnpm install --frozen-lockfile       # Install deps (use --frozen-lockfile in CI)
+pnpm -r build                        # Build all packages
+pnpm -r typecheck                    # Typecheck all packages
+pnpm -r lint                         # Lint all packages
+pnpm -r test                         # Run all tests
 
-### Desktop App Only
-
-```bash
+# Desktop app only
 pnpm --filter @pi-desktop/desktop dev          # Start dev mode (hot reload)
 pnpm --filter @pi-desktop/desktop build        # Build for production
-pnpm --filter @pi-desktop/desktop test         # Run tests (vitest)
-pnpm --filter @pi-desktop/desktop typecheck    # Typecheck
+pnpm --filter @pi-desktop/desktop test         # Run unit tests (vitest)
+pnpm --filter @pi-desktop/desktop test src/path/to/file.test.ts  # Single test file
+pnpm --filter @pi-desktop/desktop typecheck    # Typecheck only
 pnpm --filter @pi-desktop/desktop lint         # ESLint 9 flat config
-pnpm --filter @pi-desktop/desktop e2e          # Playwright E2E tests
-pnpm --filter @pi-desktop/desktop package      # Build Windows installer
+pnpm --filter @pi-desktop/desktop e2e          # Playwright E2E (requires prior build)
+pnpm --filter @pi-desktop/desktop e2e:build   # Build + E2E in one command
+pnpm --filter @pi-desktop/desktop package      # Build NSIS Windows installer
 ```
 
-### Run Single Test File
+## Verification Order (Mandatory)
+
+**Before pushing, run in this exact order** — typecheck and lint are parallelizable but must both pass before test:
 
 ```bash
-pnpm --filter @pi-desktop/desktop test src/path/to/file.test.ts
+pnpm -r typecheck && pnpm -r lint && pnpm -r test
 ```
 
-## CI Pipeline Order
-
-GitHub Actions (`.github/workflows/ci.yml`) runs on `windows-latest`:
-
-1. `pnpm install --frozen-lockfile`
-2. `pnpm -r typecheck` (fail-fast)
-3. `pnpm -r lint` (fail-fast)
-4. `pnpm -r test` (fail-fast)
-5. `pnpm --filter @pi-desktop/desktop build`
-
-**Always verify locally in this order before pushing**: typecheck → lint → test
+CI runs the same sequence on `windows-latest` (see `.github/workflows/ci.yml`). Lefthook pre-commit runs typecheck + lint in parallel (no test).
 
 ## Architecture: Three Processes
 
@@ -76,52 +78,95 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on `windows-latest`:
 ┌─────────────────────────────────────────┐
 │ Renderer (React 19 + Zustand 5)         │
 │  - Components, stores, hooks             │
-│  - Communicates via window.piAPI         │
+│  - Communicates via window.piAPI / window.nodeAPI
 └────────────────┬────────────────────────┘
                  │ typed IPC (contextBridge)
 ┌────────────────┴────────────────────────┐
 │ Main Process (Electron + Node.js)        │
-│  - IPC handlers in src/main/ipc/*.ipc.ts │
-│  - Services in src/main/services/        │
-│  - Pi CLI integration via pi-driver.ts    │
+│  - IPC handlers: src/main/ipc/*.ipc.ts    │
+│  - Services: src/main/services/           │
+│  - Pi CLI integration: pi-driver.ts       │
 └────────────────┬────────────────────────┘
                  │ in-process
 ┌────────────────┴────────────────────────┐
-│ Pi CLI (via @earendil-works/pi-coding-agent) │
+│ Pi CLI (@earendil-works/pi-coding-agent)  │
 └─────────────────────────────────────────┘
 ```
+
+### IPC Patterns
+
+- **Request-response**: `ipcMain.handle()` / `ipcRenderer.invoke()` — returns `Promise<T>`
+- **Fire-and-forget**: `ipcRenderer.send()` / `ipcMain.on()` — no return value
+- **Preload bridge**: Two globals via `contextBridge.exposeInMainWorld`: `window.piAPI` (app API) and `window.nodeAPI` (platform info)
+- **Error pattern**: IPC handlers return `ipcError()` from `@shared` (structured error object), not thrown exceptions
+- **Validation**: High-risk IPC args validated with Zod schemas in `src/main/ipc/schemas.ts`
+
+### Adding a New IPC Handler
+
+1. Define types in `packages/shared-types/src/index.ts`
+2. Add Zod schema in `apps/desktop/src/main/ipc/schemas.ts` (if high-risk)
+3. Add handler in `apps/desktop/src/main/ipc/*.ipc.ts`
+4. Expose in preload: `apps/desktop/src/preload/index.ts`
+5. Use in renderer via `window.piAPI`
+
+There are 16 IPC handler files. Each exports a `setup*()` function taking dependencies via typed opts object.
+
+### Multi-workspace Session Architecture
+
+Sessions run in-process (not child processes). The `WorkspaceRegistry` (`services/pi-session/registry.ts`) maps workspaceId → `WorkspaceSession`, each containing an `AgentSession` from the Pi CLI SDK. The `factory.ts` creates sessions; `event-bridge.ts` translates Pi native events into renderer-friendly IPC payloads. All writes are serialized through an async mutex (`withLock`) to prevent race conditions from concurrent `text_delta` + `turn_end` events.
+
+### Session Persistence
+
+Two backends coexist:
+- **electron-store** (JSON): original backend, stores sessions as `Session[]` — see `session-store.ts`
+- **better-sqlite3** (SQLite): v1.2 baseline, stores sessions in `sessions.db` under `app.getPath('userData')` — see `session-sqlite.ts`
+
+The SQLite schema supports tree-structured conversations (Pi JSONL v3) via `parent_id` on messages.
+
+### Approval Flow
+
+`services/approval/classifier.ts` assigns risk levels (high/edit/read) to tool calls. `interceptor.ts` intercepts Pi CLI tool calls and routes high-risk ones through the approval IPC flow. `pending-edits.ts` manages deferred file edits shown to the user after execution.
 
 ## Key Files
 
 - **Main entry**: `apps/desktop/src/main/index.ts`
 - **Preload bridge**: `apps/desktop/src/preload/index.ts`
 - **Renderer entry**: `apps/desktop/src/renderer/src/App.tsx`
-- **Shared types**: `packages/shared-types/src/index.ts`
+- **Shared types**: `packages/shared-types/src/index.ts` — all IPC payload types defined here first
+- **Main process types**: `apps/desktop/src/main/types.ts` — `PiAgentConfig`, `PiAgentModel`, `PiAgentProvider`
 - **IPC Zod schemas**: `apps/desktop/src/main/ipc/schemas.ts`
 - **Vitest config**: `apps/desktop/vitest.config.ts`
+- **Playwright config**: `apps/desktop/playwright.config.ts`
 - **Electron Vite config**: `apps/desktop/electron.vite.config.ts`
+- **Electron Builder config**: `apps/desktop/electron-builder.yml`
+- **ESLint flat config**: `apps/desktop/eslint.config.js`
 - **Smoke test**: `scripts/smoke-main-runtime.cjs` — verifies main process IPC setup without launching full app
 
-## Testing Conventions
+## Testing
 
 - **Framework**: Vitest 4 + @testing-library/react
 - **Test location**: `__tests__/` directories next to source files
 - **File naming**: `*.test.ts` or `*.test.tsx`
-- **Setup**: `apps/desktop/src/test/setup.ts` sets `NODE_ENV=test` and locale to `zh-CN`
-- **I18n**: Tests assume `zh-CN` locale (hardcoded in setup). Use `zh-CN.json` locale strings in assertions.
+- **Environment**: `node` (not jsdom) — configured in `vitest.config.ts`
+- **Config**: `globals: true`, `css: false`
+- **Setup**: `apps/desktop/src/test/setup.ts` sets `NODE_ENV=test` and localStorage locale to `zh-CN`
+- **i18n in tests**: Tests default to `zh-CN` locale. Use `zh-CN.json` locale strings in assertions. The app also supports `en-US`.
 - **tsconfig excludes `__tests__`** from typecheck, but vitest includes them via its own config
 
-### Test Aliases (vitest.config.ts)
+### E2E Tests
 
-```typescript
-"@": resolve(__dirname, "src/renderer/src"),
-"@shared": resolve(__dirname, "../../packages/shared-types/src"),
-```
+- **Framework**: Playwright with `_electron` API (drives compiled Electron directly, no browser)
+- **Prerequisite**: Must build first (`pnpm --filter @pi-desktop/desktop build`) — specs run against `out/main/index.js`
+- **Single worker only** (`fullyParallel: false, workers: 1`) — Electron is single-instance
+- **Timeout**: 60s per test, 10s for assertions (Electron cold start on Windows)
+- **Output**: traces/screenshots go to `apps/desktop/e2e-output/`
+- **Global setup**: `apps/desktop/e2e/global-setup.ts` verifies built main entry exists
+- **Shorthand**: `pnpm --filter @pi-desktop/desktop e2e:build` runs build + E2E
 
 ## Code Style
 
-- **TypeScript**: Strict mode enabled (`noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`)
-- **ESLint**: ESLint 9 flat config, `@typescript-eslint/no-explicit-any` is error (except tests)
+- **TypeScript**: Strict mode (`noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`)
+- **ESLint 9 flat config** (`eslint.config.js`): `@typescript-eslint/no-explicit-any` is error (except in `__tests__/` and `src/test/`)
 - **Imports**: ESM, no `.js` extensions needed
 - **Styling**: Tailwind CSS 4 (utility-first, no CSS modules)
 - **State**: Zustand 5 stores in `src/renderer/src/stores/`
@@ -129,84 +174,34 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on `windows-latest`:
 
 ## Electron Specifics
 
-- **Electron version**: 41 (Node.js runtime)
-- **Build tool**: electron-vite 5
+- **Electron 41.2.0** with **electron-vite 5** for building
 - **Package manager**: pnpm 9
-- **Native modules**: `node-pty` for terminal, `sharp` for images
-- **Auto-update**: electron-updater (GitHub Releases)
+- **Native modules**: `node-pty` (terminal), `sharp` (images), `better-sqlite3` (persistence) — require node-gyp + Python + Visual Studio on Windows
+- **Bundled modules**: `@pi-desktop/shared-types` and `@earendil-works/pi-coding-agent` are explicitly excluded from externalization in electron-vite config (bundled into main/preload)
+- **`npmRebuild: false`** in electron-builder.yml — native modules handled separately
+- **Electron download mirror**: npmmirror (`https://npmmirror.com/mirrors/electron/`) with local `.electron-cache`
 - **`__APP_VERSION__`**: Injected from `package.json` version into renderer via electron-vite `define`
-
-## IPC Communication
-
-- **Main → Renderer**: `ipcMain.handle()` + `ipcRenderer.invoke()`
-- **Renderer → Main**: `ipcRenderer.send()` + `ipcMain.on()`
-- **Preload**: Exposes `window.piAPI` and `window.nodeAPI` via `contextBridge`
-- **Types**: All IPC payloads typed in `packages/shared-types/src/index.ts`
-- **Error pattern**: IPC handlers return `ipcError()` from `@shared` (structured error object), not thrown exceptions
-- **Validation**: IPC args validated with Zod schemas in `apps/desktop/src/main/ipc/schemas.ts`
-
-## Common Patterns
-
-### Adding a New IPC Handler
-
-1. Define types in `packages/shared-types/src/index.ts`
-2. Add handler in `apps/desktop/src/main/ipc/*.ipc.ts`
-3. Expose in preload: `apps/desktop/src/preload/index.ts`
-4. Use in renderer via `window.piAPI`
-
-### Adding a New Zustand Store
-
-1. Create store in `apps/desktop/src/renderer/src/stores/`
-2. Export `use*Store` hook
-3. Import in components
-
-### Adding a New Service
-
-1. Create in `apps/desktop/src/main/services/`
-2. Follow existing patterns (class-based or functional)
-3. Add IPC handlers to expose to renderer
+- **Auto-update**: electron-updater (GitHub Releases)
 
 ## Environment
 
 - **Node.js**: >= 22.19.0
 - **pnpm**: >= 9.0.0
-- **OS**: Windows 10/11 (v1.0)
-- **Pi CLI**: Must be installed and on PATH
+- **OS**: Windows 10/11 (v1.0, macOS/Linux planned for v1.1+)
+- **Pi CLI**: Must be installed and on PATH (`@earendil-works/pi-coding-agent`)
+- **Pre-commit hooks**: Lefthook runs `typecheck` and `lint` in parallel on commit (see `lefthook.yml`)
 
-## Commit Convention
+## Commit & Branch Conventions
 
-[Conventional Commits](https://www.conventionalcommits.org/):
+[Conventional Commits](https://www.conventionalcommits.org/): `feat(scope):`, `fix(scope):`, `chore(scope):`, `refactor(scope):`, `test(scope):`, `docs(scope):`
 
-- `feat(scope):` new feature
-- `fix(scope):` bug fix
-- `chore(scope):` tooling/cleanup
-- `refactor(scope):` no behavior change
-- `test(scope):` tests only
-- `docs(scope):` docs only
+Branches: `master` (stable), `feature/mN-*` (milestones), `fix/<issue>`, `chore/<topic>`
 
-## Branch Naming
-
-- `master` — stable, always green
-- `feature/mN-*` — per-milestone work
-- `fix/<issue>` — bug fixes
-- `chore/<topic>` — maintenance
-
-## Important Notes
-
-1. **Windows-only**: v1.0 targets Windows only. macOS/Linux planned for v1.1+
-2. **Pi CLI dependency**: App requires Pi CLI installed globally (`@earendil-works/pi-coding-agent`)
-3. **i18n**: Currently zh-CN only, but i18next is set up for easy addition. Two locale files: `src/renderer/src/i18n/locales/{zh-CN,en}.json`
-4. **E2E tests**: Playwright tests require built app (`e2e:build` script)
-5. **Native modules**: `node-pty` requires build tools (node-gyp, Python, Visual Studio on Windows)
-6. **Pre-commit hooks**: Lefthook runs `typecheck` and `lint` in parallel on commit (see `lefthook.yml`). Run `typecheck → lint → test` manually before pushing if hooks are skipped.
-7. **Release**: Triggered by pushing a `v*.*.*` tag. Builds NSIS Windows installer via `.github/workflows/release.yml`
+Release: push a `v*.*.*` tag → `.github/workflows/release.yml` builds NSIS installer.
 
 ## Quick Verification
 
-Before claiming work is done:
-
 ```bash
-# From repo root
 pnpm -r typecheck && pnpm -r lint && pnpm -r test
 ```
 
