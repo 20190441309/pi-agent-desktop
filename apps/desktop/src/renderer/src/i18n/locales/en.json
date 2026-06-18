@@ -433,6 +433,14 @@
       "scanFailed": "File scan failed at {{path}}: {{message}}"
     }
   },
+  "topbar": {
+    "chat": "Chat",
+    "tasks": "Tasks",
+    "memory": "Memory",
+    "tools": "Tools",
+    "settings": "Settings",
+    "ariaLabel": "Top tab bar"
+  },
   "app": {
     "shellAria": "Pi Desktop application",
     "headerAria": "Top action bar",

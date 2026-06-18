@@ -431,6 +431,14 @@
       "scanFailed": "{{path}} 文件扫描失败: {{message}}"
     }
   },
+  "topbar": {
+    "chat": "对话",
+    "tasks": "任务",
+    "memory": "记忆",
+    "tools": "工具",
+    "settings": "设置",
+    "ariaLabel": "顶部标签栏"
+  },
   "app": {
     "shellAria": "Pi 桌面应用",
     "headerAria": "顶部操作栏",
