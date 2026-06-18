@@ -55,22 +55,22 @@ const seedWorkspaceAndSessions = (): void => {
 };
 
 describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
-    it("草稿态只高亮新建任务", () => {
+    it("草稿态只高亮新建对话", () => {
         seedWorkspaceAndSessions();
         useSessionStore.setState({ currentSessionId: null });
 
         renderWithI18n(<MiniMaxCodeSidebar currentSection="new-task" currentWorkspaceId="w1" onSectionChange={appRoute} />);
 
-        expect(screen.getByRole("button", { name: "新建任务" }).getAttribute("aria-current")).toBe("page");
+        expect(screen.getByRole("button", { name: "新建对话" }).getAttribute("aria-current")).toBe("page");
     });
 
-    it("提供显式搜索入口", () => {
+    it("提供新建对话入口", () => {
         let selected = "";
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={(section) => { selected = section; }} />);
 
-        fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+        fireEvent.click(screen.getByRole("button", { name: "新建对话" }));
 
-        expect(selected).toBe("search");
+        expect(selected).toBe("new-task");
     });
 
     it("左下角展示 pi-agent 在线状态", () => {
@@ -106,14 +106,14 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
             currentSessionId: "s_w1",
         });
 
-        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         expect(screen.getByRole("button", { name: "当前项目任务" })).toBeTruthy();
     });
 
     it("点击会话项 → onSectionChange('session:<id>') 被调 + store.currentSessionId 切换", () => {
         seedWorkspaceAndSessions();
-        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         const newItem = screen.getByRole("button", { name: "了解项目" });
         expect(newItem.getAttribute("aria-current")).toBeNull();
@@ -125,7 +125,7 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
 
     it("点击后:aria-current 从 'old' 翻转到 'new' (用户视觉信号)", () => {
         seedWorkspaceAndSessions();
-        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         const oldItem = screen.getByRole("button", { name: "对项目的看法" });
         const newItem = screen.getByRole("button", { name: "了解项目" });
@@ -154,7 +154,7 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
             ],
             currentSessionId: "s_new",
         });
-        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         const oldItem = screen.getByRole("button", { name: "对项目的看法" });
         fireEvent.click(oldItem);
@@ -164,7 +164,7 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
 
     it("归档会话后从任务历史移到已归档", () => {
         seedWorkspaceAndSessions();
-        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         fireEvent.click(screen.getByRole("button", { name: "归档 了解项目" }));
 
@@ -207,7 +207,7 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
 
     it("点击删除 → 显示确认对话框，取消后不删除", () => {
         seedWorkspaceAndSessions();
-        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         fireEvent.click(screen.getByRole("button", { name: "删除 了解项目" }));
 
@@ -222,7 +222,7 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
 
     it("点击删除 → 确认后真正删除", () => {
         seedWorkspaceAndSessions();
-        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         fireEvent.click(screen.getByRole("button", { name: "删除 了解项目" }));
 
@@ -258,7 +258,7 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
             currentSessionId: "s1",
         });
 
-        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         fireEvent.click(screen.getByText("项目二"));
 
@@ -282,7 +282,7 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
             currentSessionId: "s1",
         });
 
-        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} />);
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         expect(screen.getByText("项目一")).toBeTruthy();
         expect(screen.getByText("项目二")).toBeTruthy();

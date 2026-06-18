@@ -1,7 +1,6 @@
 // MiniMaxCodeSidebar — MiniMax Code 参考风格左侧导航栏
 //
-// 当前只展示真实可用入口: 新建任务、搜索、会话中心、插件、Git、设置，以及当前
-// workspace 的真实任务历史。没有对应 Pi CLI/API 的入口不渲染。
+// 当前只展示会话列表和设置入口,导航功能已移至 TopTabBar。
 //
 // 视觉规格:
 //  - 字号: 主 13px / 次 12px / 分组标题 11px letter-spacing 0.5px 浅灰
@@ -14,7 +13,9 @@
 //
 // Props:
 //  - currentSection: 当前激活项的 section id
-//  - onSectionChange: 点击某项时回调,父级决定路由/视图切换(本期 T5 集成时接入)
+//  - onSectionChange: 点击某项时回调,父级决定路由/视图切换
+//  - groupMode: 会话列表分组模式 (date/workspace)
+//  - onGroupModeChange: 切换分组模式回调
 //
 // A11y:
 //  - 每个可点击项是 <button> + aria-label,激活态用 aria-current="page"
@@ -23,11 +24,12 @@
 //
 // 不持有路由状态: 父级通过 currentSection/onSectionChange 控制激活。
 
-import React from "react";
+import React, { useState } from "react";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { useI18n } from "../../i18n";
 import { ProjectGroupedSessionList } from "./ProjectGroupedSessionList";
+import { DateGroupedSessionList } from "./DateGroupedSessionList";
 
 // ----------------------------------------------------------------------
 // 类型
@@ -51,58 +53,16 @@ export interface MiniMaxCodeSidebarProps {
     piAgentStatus?: "online" | "offline" | "checking";
     /** 点击某项时回调,父级决定路由切换 */
     onSectionChange: (section: string) => void;
+    /** 会话列表分组模式 */
+    groupMode?: "date" | "workspace";
+    /** 切换分组模式回调 */
+    onGroupModeChange?: (mode: "date" | "workspace") => void;
 }
 
 // ----------------------------------------------------------------------
 // Icons (inline SVG, stroke 1.5, 14x14 视觉)
 // 选用 lucide-react 风格的 outline icon,内联避免新增依赖。
 // ----------------------------------------------------------------------
-
-function IconPlus(): React.JSX.Element {
-    return (
-        <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
-        >
-            <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M12 5v14m-7-7h14"
-            />
-        </svg>
-    );
-}
-
-function IconPuzzle(): React.JSX.Element {
-    return (
-        <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
-        >
-            <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
-            />
-        </svg>
-    );
-}
-
-function IconSearch(): React.JSX.Element {
-    return (
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m21 21-4.35-4.35M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14z" />
-        </svg>
-    );
-}
 
 function IconSettings(): React.JSX.Element {
     return (
@@ -129,56 +89,37 @@ function IconSettings(): React.JSX.Element {
     );
 }
 
-function IconGit(): React.JSX.Element {
+function IconPlus(): React.JSX.Element {
     return (
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <circle cx="6" cy="6" r="2.5" strokeWidth={1.5} />
-            <circle cx="6" cy="18" r="2.5" strokeWidth={1.5} />
-            <circle cx="18" cy="12" r="2.5" strokeWidth={1.5} />
-            <path strokeLinecap="round" strokeWidth={1.5} d="M6 8.5v7M6 12h7a2 2 0 0 0 2-2V8.5" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v14m-7-7h14" />
+        </svg>
+    );
+}
+
+function IconChevronDown(): React.JSX.Element {
+    return (
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 9l-7 7-7-7" />
         </svg>
     );
 }
 
 // ----------------------------------------------------------------------
-// 静态配置 — 只保留 id + icon,label 由组件内 t() 驱动
-// ----------------------------------------------------------------------
-
-interface SectionDef {
-    id: string;
-    icon: React.ReactNode;
-    labelKey: string;
-}
-
-const SECTION_DEFS: SectionDef[] = [
-    { id: "new-task", icon: <IconPlus />, labelKey: "sidebar.newTask" },
-    { id: "search", icon: <IconSearch />, labelKey: "sidebar.search" },
-    { id: "skills", icon: <IconPuzzle />, labelKey: "sidebar.plugins" },
-    { id: "git", icon: <IconGit />, labelKey: "sidebar.git" },
-];
-
-// ----------------------------------------------------------------------
-// 子组件: 导航项 (主操作 + 分组项复用)
+// 子组件: 导航项 (设置按钮复用)
 // ----------------------------------------------------------------------
 
 interface NavItemProps {
-    section: MiniMaxCodeSection;
+    section: { id: string; label: string; icon: React.ReactNode };
     active: boolean;
     onClick: () => void;
     trailing?: React.ReactNode;
 }
 
 function NavItem({ section, active, onClick, trailing }: NavItemProps): React.JSX.Element {
-    // 激活态: 浅灰底 + 2px 左侧色条(--mm-bg-active = #1a1a1a 黑) + font-medium
-    //   3 重视觉信号,确保在 sidebar 浅灰底上肉眼能立刻看出
-    //   (历史 bug: 早期只靠 bg-[--mm-bg-selected] (#efefef) vs sidebar (#f7f7f7)
-    //    亮度差仅 3%, 用户反映"点了没反应"——其实是切了但看不出来)
-    // hover: 轻灰背景
-    // 行高 32px,左右 padding 12px(用 pl-[10px] 补偿 2px 左边条,active/inactive 宽度一致)
     const baseClasses =
         "flex w-full items-center gap-3 rounded-[var(--mm-radius-sm)] py-0 pl-[10px] pr-3 text-[13px] leading-relaxed transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-bg-active)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--mm-bg-sidebar)]";
     const heightClasses = "h-10";
-    // border-l-2 + border-l-transparent 占位 (inactive 时透明, 仍占 2px 宽度, 不抖动)
     const stateClasses = active
         ? "border-l-2 border-l-[var(--mm-bg-active)] bg-[var(--mm-bg-selected)] font-medium text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-selected)]"
         : "border-l-2 border-l-transparent bg-transparent font-normal text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]";
@@ -211,12 +152,13 @@ function NavItem({ section, active, onClick, trailing }: NavItemProps): React.JS
 // ----------------------------------------------------------------------
 
 /**
- * MiniMax Code 风格左侧导航栏(1:1 还原目标 UI 截图).
+ * MiniMax Code 风格左侧导航栏.
  *
  * 排版结构:
- *   - 顶部 logo (12x12 圆角黑底,内嵌 "M")
- *   - 主操作列表(无分组标题,4 个一级入口)
- *   - 中间 scroll 区: 当前 workspace 的真实会话历史
+ *   - 顶部 logo
+ *   - 新建对话按钮 + 分组模式切换
+ *   - 中间 scroll 区: 会话历史列表
+ *   - 底部设置按钮
  *
  * 设计约束:
  *   - 所有颜色/字号/圆角走 --mm-* token
@@ -228,11 +170,14 @@ export function MiniMaxCodeSidebar({
     currentWorkspaceId,
     piAgentStatus = "checking",
     onSectionChange,
+    groupMode = "date",
+    onGroupModeChange,
 }: MiniMaxCodeSidebarProps): React.JSX.Element {
     const { t } = useI18n();
     const currentSessionId = useSessionStore((state) => state.currentSessionId);
     const archiveSession = useSessionStore((state) => state.archiveSession);
     const deleteSession = useSessionStore((state) => state.deleteSession);
+    const [showGroupMenu, setShowGroupMenu] = useState(false);
     const agentOnline = piAgentStatus === "online";
     const agentChecking = piAgentStatus === "checking";
     const agentStatusLabel = agentChecking
@@ -251,7 +196,7 @@ export function MiniMaxCodeSidebar({
             className="flex h-full w-full flex-col bg-[var(--mm-bg-sidebar)] text-[var(--mm-text-primary)]"
             data-mmcode-component="sidebar"
         >
-            {/* ============== 顶部折叠占位 (固定,不滚动) ============== */}
+            {/* ============== 顶部 logo (固定,不滚动) ============== */}
             <div
                 className="flex h-14 shrink-0 items-center gap-2 px-3"
                 data-mmcode-region="logo"
@@ -269,33 +214,81 @@ export function MiniMaxCodeSidebar({
             </div>
 
             {/* ============== 中间 scroll 区 ============== */}
-            {/* v1.0.16: aria-label 改回 "主导航" — 兼容 a11y.spec.ts 等老测试 selector
-                (v1.0.16 sweep 删了 IconBar/ 整个目录,新 MiniMaxCodeSidebar 接管导航;
-                原 IconBar 用 aria-label="主导航",新 Sidebar 一开始用 "MiniMax Code primary navigation"
-                导致 a11y.spec.ts 找主导航 15s timeout fail, 改回 "主导航" 修复回归) */}
             <nav
-                className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2 pb-4 pt-2"
-                aria-label="主导航"
+                className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-2 pb-4 pt-2"
+                aria-label="会话列表"
             >
-                {/* 主操作分组(无标题) */}
-                <div className="flex flex-col gap-1">
-                    <h2 className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
-                        {t("sidebar.actions")}
-                    </h2>
-                    {SECTION_DEFS.map((def) => (
-                        <NavItem
-                            key={def.id}
-                            section={{ id: def.id, label: t(def.labelKey), icon: def.icon }}
-                            active={currentSection === def.id}
-                            onClick={() => onSectionChange(def.id)}
-                        />
-                    ))}
+                {/* 新建对话按钮 */}
+                <button
+                    type="button"
+                    onClick={() => onSectionChange("new-task")}
+                    aria-current={currentSection === "new-task" ? "page" : undefined}
+                    className={`flex h-9 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] border px-3 text-[13px] transition-colors focus:outline-none ${
+                        currentSection === "new-task"
+                            ? "border-[var(--mm-bg-active)] bg-[var(--mm-bg-selected)] font-medium text-[var(--mm-text-primary)]"
+                            : "border-[var(--mm-border)] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+                    }`}
+                    data-mmcode-section="new-task"
+                >
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true">
+                        <IconPlus />
+                    </span>
+                    <span>{t("sidebar.newConversation")}</span>
+                </button>
+
+                {/* 分组模式切换 */}
+                <div className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setShowGroupMenu(!showGroupMenu)}
+                        className="flex h-7 w-full items-center gap-1.5 rounded-[var(--mm-radius-sm)] px-2 text-[11px] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-secondary)] focus:outline-none"
+                        aria-haspopup="true"
+                        aria-expanded={showGroupMenu}
+                    >
+                        <span className="flex-1 text-left">
+                            {groupMode === "date" ? t("sidebar.groupByDate") : t("sidebar.groupByWorkspace")}
+                        </span>
+                        <IconChevronDown />
+                    </button>
+                    {showGroupMenu && (
+                        <div className="absolute left-0 top-full z-10 mt-1 w-full rounded-[var(--mm-radius-sm)] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] py-1 shadow-lg">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onGroupModeChange?.("date");
+                                    setShowGroupMenu(false);
+                                }}
+                                className={`flex h-7 w-full items-center px-2 text-[12px] transition-colors hover:bg-[var(--mm-bg-hover)] ${
+                                    groupMode === "date" ? "font-medium text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"
+                                }`}
+                            >
+                                {t("sidebar.groupByDate")}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onGroupModeChange?.("workspace");
+                                    setShowGroupMenu(false);
+                                }}
+                                className={`flex h-7 w-full items-center px-2 text-[12px] transition-colors hover:bg-[var(--mm-bg-hover)] ${
+                                    groupMode === "workspace" ? "font-medium text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"
+                                }`}
+                            >
+                                {t("sidebar.groupByWorkspace")}
+                            </button>
+                        </div>
+                    )}
                 </div>
 
-                <div className="flex flex-col gap-1">
-                    <h3 className="px-3 pt-3 pb-2 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
-                        {t("sidebar.project")}
-                    </h3>
+                {/* 会话列表 */}
+                {groupMode === "date" ? (
+                    <DateGroupedSessionList
+                        currentSessionId={currentSessionId}
+                        onSelectSession={(id) => onSectionChange(`session:${id}`)}
+                        onArchiveSession={archiveSession}
+                        onDeleteSession={deleteSession}
+                    />
+                ) : (
                     <ProjectGroupedSessionList
                         currentWorkspaceId={currentWorkspaceId ?? null}
                         currentSessionId={currentSessionId}
@@ -304,9 +297,10 @@ export function MiniMaxCodeSidebar({
                         onDeleteSession={deleteSession}
                         onSwitchWorkspace={(wid) => useWorkspaceStore.getState().setCurrentWorkspace(wid)}
                     />
-                </div>
+                )}
             </nav>
 
+            {/* ============== 底部设置 (固定,不滚动) ============== */}
             <div className="shrink-0 border-t border-[var(--mm-border)] px-2 py-2">
                 <div className="flex items-center gap-2">
                     <NavItem

@@ -74,6 +74,9 @@
     "settings": "设置",
     "git": "Git",
     "subtitle": "桌面工作台",
+    "newConversation": "新建对话",
+    "groupByDate": "按时间分组",
+    "groupByWorkspace": "按工作区分组",
     "status": {
       "checking": "pi-agent 检测中",
       "online": "pi-agent 在线",
@@ -86,7 +89,14 @@
       "delete": "删除",
       "archived": "已归档",
       "empty": "还没有会话。",
-      "deleteConfirm": "确定删除「{{name}}」？此操作不可恢复。"
+      "deleteConfirm": "确定删除「{{name}}」？此操作不可恢复。",
+      "dateGroup": {
+        "today": "今天",
+        "yesterday": "昨天",
+        "thisWeek": "本周",
+        "thisMonth": "本月",
+        "earlier": "更早"
+      }
     }
   },
   "iconBar": {

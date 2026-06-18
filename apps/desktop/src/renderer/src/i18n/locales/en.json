@@ -74,6 +74,9 @@
     "settings": "Settings",
     "git": "Git",
     "subtitle": "Desktop workspace",
+    "newConversation": "New conversation",
+    "groupByDate": "Group by date",
+    "groupByWorkspace": "Group by workspace",
     "status": {
       "checking": "pi-agent checking",
       "online": "pi-agent online",
@@ -86,7 +89,14 @@
       "delete": "Delete",
       "archived": "Archived",
       "empty": "No sessions yet.",
-      "deleteConfirm": "Delete \"{{name}}\"? This cannot be undone."
+      "deleteConfirm": "Delete \"{{name}}\"? This cannot be undone.",
+      "dateGroup": {
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "thisWeek": "This week",
+        "thisMonth": "This month",
+        "earlier": "Earlier"
+      }
     }
   },
   "iconBar": {
