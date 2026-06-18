@@ -25,6 +25,7 @@ import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
 import { SearchHistory } from "./components/SearchHistory/SearchHistory";
+import { TopTabBar } from "./components/TopTabBar/TopTabBar";
 import {
     MiniMaxCodeLayout,
     MiniMaxCodeSidebar,
@@ -95,7 +96,6 @@ function AppShell(): React.ReactElement {
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [showSearchHistory, setShowSearchHistory] = useState(false);
     const [leftCollapsed, setLeftCollapsed] = useState(false);
-    const [rightCollapsed, setRightCollapsed] = useState(false);
     const [terminalCommandTarget, setTerminalCommandTarget] = useState<TerminalCommandTarget | null>(null);
     const sessions = useSessionStore((s) => s.sessions);
     const currentSessionId = useSessionStore((s) => s.currentSessionId);
@@ -108,7 +108,8 @@ function AppShell(): React.ReactElement {
     const { getCurrentWorkspace, workspaces } = useWorkspaceStore();
     const workspaceError = useWorkspaceStore((state) => state.lastError);
     const clearWorkspaceError = useWorkspaceStore((state) => state.clearError);
-    const { loadPiConfig, openSettings, settings } = useSettingsStore();
+    const { loadPiConfig, openSettings, settings, rightRailCollapsed, sidebarGroupMode } = useSettingsStore();
+    const { toggleRightRail, setSidebarGroupMode } = useSettingsStore();
     const { status, loading: piStatusLoading, refreshStatus } = usePiStatusStore();
     const pendingApprovalCount = useApprovalStore(
         (s) => s.changes.filter((c) => c.status === "pending").length,
@@ -171,12 +172,13 @@ function AppShell(): React.ReactElement {
     // v2.0: 自动右栏 — 空对话页隐藏右栏, 有消息后显示
     useEffect(() => {
         const hasMessages = (currentSession?.messages?.length ?? 0) > 0;
-        setRightCollapsed((prev) => {
-            if (hasMessages && prev) return false;
-            if (!hasMessages && !prev) return true;
-            return prev;
-        });
-    }, [currentSession?.messages?.length]);
+        const current = useSettingsStore.getState().rightRailCollapsed;
+        if (hasMessages && current) {
+            toggleRightRail();
+        } else if (!hasMessages && !current) {
+            toggleRightRail();
+        }
+    }, [currentSession?.messages?.length, toggleRightRail]);
 
     useEffect(() => {
         if (activeSection === "new-task" && currentSession) {
@@ -291,6 +293,14 @@ function AppShell(): React.ReactElement {
             return;
         }
         if (section === "search") {
+            setPaletteOpen(true);
+            return;
+        }
+        if (section === "tasks") {
+            setActiveSection("chat");
+            return;
+        }
+        if (section === "memory") {
             setPaletteOpen(true);
             return;
         }
@@ -455,16 +465,24 @@ function AppShell(): React.ReactElement {
             <WorkspaceNoticeBanner />
             <MiniMaxCodeLayout
                 title="Pi Agent"
+                topBarSlot={
+                    <TopTabBar
+                        activeTab={activeSection === "new-task" ? "chat" : activeSection}
+                        onTabChange={routeSection}
+                    />
+                }
                 leftCollapsed={leftCollapsed}
-                rightCollapsed={rightCollapsed}
+                rightCollapsed={rightRailCollapsed}
                 onCollapseLeft={() => setLeftCollapsed((v) => !v)}
-                onCollapseRight={activePanel === "chat" ? () => setRightCollapsed((v) => !v) : undefined}
+                onCollapseRight={activePanel === "chat" ? toggleRightRail : undefined}
                 leftSlot={
                     <MiniMaxCodeSidebar
                         currentSection={activeSection}
                         currentWorkspaceId={currentWorkspace?.id}
                         piAgentStatus={piAgentStatus}
                         onSectionChange={routeSection}
+                        groupMode={sidebarGroupMode}
+                        onGroupModeChange={setSidebarGroupMode}
                     />
                 }
                 centerSlot={

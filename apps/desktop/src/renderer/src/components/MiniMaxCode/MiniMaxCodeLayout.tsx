@@ -37,6 +37,8 @@ export interface MiniMaxCodeLayoutProps {
     onCollapseLeft?: () => void;
     /** 折叠右栏回调 */
     onCollapseRight?: () => void;
+    /** 标题栏下方的 tab 栏 slot */
+    topBarSlot?: React.ReactNode;
     /** 整体容器的额外 className */
     className?: string;
 }
@@ -81,6 +83,7 @@ export function MiniMaxCodeLayout({
     leftSlot,
     centerSlot,
     rightSlot,
+    topBarSlot,
     leftCollapsed = false,
     rightCollapsed = false,
     onCollapseLeft,
@@ -98,6 +101,7 @@ export function MiniMaxCodeLayout({
                 statusLabel={statusLabel}
                 statusTone={statusTone}
             />
+            {topBarSlot}
 
             <div className="relative flex min-h-0 flex-1 w-full">
                 <FloatingToggleButton
