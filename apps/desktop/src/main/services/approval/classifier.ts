@@ -17,6 +17,19 @@ export interface Classification {
     preview: string;
 }
 
+// 高危 shell 命令追加 pattern (补充 @shared/command-risk 中未覆盖的)
+const EXTRA_HIGH_RISK_PATTERNS: RegExp[] = [
+    /\bsc\s+delete\b/i,
+    /\bbcdedit\b/i,
+    /\bnet\s+user\b/i,
+    /\bInvoke-Expression\b/i,
+    /\bStop-Process\s+.*-Force\b/i,
+];
+
+function isExtraHighRiskCommand(cmd: string): boolean {
+    return EXTRA_HIGH_RISK_PATTERNS.some((p) => p.test(cmd));
+}
+
 // 高危写路径 (支持 Unix / Windows / ~ 前缀)
 const HIGH_RISK_PATH_PATTERNS: RegExp[] = [
     /^~?\/?\.ssh\//,
@@ -69,7 +82,7 @@ export function classifyToolCall(call: ToolCall): Classification {
         const cmd = String(args.command ?? args.cmd ?? "").trim();
         if (!cmd) return { risk: "read", preview: "(empty)" };
 
-        if (isHighRiskCommand(cmd)) return { risk: "high", preview: cmd };
+        if (isHighRiskCommand(cmd) || isExtraHighRiskCommand(cmd)) return { risk: "high", preview: cmd };
         for (const pat of EDIT_BASH_PATTERNS) {
             if (pat.test(cmd)) return { risk: "edit", preview: cmd };
         }

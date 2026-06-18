@@ -62,6 +62,25 @@ describe("classifyToolCall", () => {
         });
     });
 
+    describe("classifier hardening", () => {
+        it.each([
+            ["echo rm -rf /", "high"],
+            ["sudo --user root bash", "high"],
+            ["`rm -rf /`", "high"],
+            ["$(rm -rf /)", "high"],
+            ["sc delete MyService", "high"],
+            ["bcdedit /set", "high"],
+            ["net user admin pass /add", "high"],
+            ["powershell Invoke-Expression 'rm -rf /'", "high"],
+            ["Stop-Process -Force -Name explorer", "high"],
+            ["git log --oneline", "read"],
+            ["ls -la", "read"],
+        ])("classifies %s as %s", (cmd, expected) => {
+            const result = classifyToolCall(t("bash", { command: cmd }));
+            expect(result.risk).toBe(expected);
+        });
+    });
+
     describe("preview", () => {
         it("includes command in preview", () => {
             const r = classifyToolCall(t("bash", { command: "rm -rf /tmp" }));
