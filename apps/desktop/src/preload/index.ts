@@ -298,6 +298,10 @@ const piAPI: PiAPI = {
     setWorkbenchContext: (workspaceId, filePath) => {
         ipcRenderer.send("workbench:set-active-file", workspaceId, filePath);
     },
+
+    // Settings independent window
+    openSettingsWindow: () => ipcRenderer.invoke("settings:open-window"),
+    closeSettingsWindow: () => ipcRenderer.invoke("settings:close-window"),
 };
 
 const nodeAPI: NodeAPI = {

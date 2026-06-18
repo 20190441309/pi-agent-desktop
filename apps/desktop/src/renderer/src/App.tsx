@@ -286,7 +286,7 @@ function AppShell(): React.ReactElement {
     }, []);
     const routeSection = useCallback((section: string) => {
         if (section === "settings") {
-            openSettings();
+            window.piAPI?.openSettingsWindow();
             return;
         }
         if (section === "search") {
@@ -326,7 +326,7 @@ function AppShell(): React.ReactElement {
             return;
         }
         setActiveSection(section);
-    }, [currentWorkspace, openSettings]);
+    }, [currentWorkspace]);
     const handleRunCommand = useCallback((cmdId: string) => {
         switch (cmdId) {
             case "new_chat":

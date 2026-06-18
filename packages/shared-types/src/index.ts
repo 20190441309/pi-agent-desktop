@@ -903,6 +903,10 @@ export interface PiAPI {
     // v1.2: Workbench context — renderer pushes currently-viewed file to main
     setWorkbenchContext(workspaceId: string, filePath: string | null): void;
 
+    // Settings independent window
+    openSettingsWindow(): Promise<void>;
+    closeSettingsWindow(): Promise<void>;
+
     // v1.1.0: 识图功能 (vision)
     describeImages?(images: Array<{
         name: string;

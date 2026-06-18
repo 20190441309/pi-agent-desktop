@@ -24,6 +24,7 @@ import { setupClaudeSessionsIpc } from './ipc/claude-sessions.ipc';
 import { setupGitIpc } from './ipc/git.ipc';
 import { setupPiDriverIpc } from './ipc/pi-driver.ipc';
 import { setupSettingsIpc } from './ipc/settings.ipc';
+import { setupSettingsWindowIpc } from './ipc/settings-window.ipc';
 import { setupWindowIpc, setupWindowEvents } from './ipc/window.ipc';
 import { setupWorkspaceIpc } from './ipc/workspace.ipc';
 import { setupProjectShellIpc } from './ipc/project-shell.ipc';
@@ -365,6 +366,8 @@ function setupIPC(): void {
     getPiAgentConfig: () => piAgentConfig,
     piAgentDir: PI_AGENT_DIR,
   });
+
+  setupSettingsWindowIpc();
 
   // Terminal (node-pty)
   setupTerminalIpc();
