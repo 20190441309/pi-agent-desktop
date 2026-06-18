@@ -913,6 +913,9 @@ export interface PiAPI {
         dataUrl: string;
         mimeType?: string;
     }>): Promise<{ text: string }>;
+
+    // v2.0: Generic invoke for low-frequency channels (converged from 60+ direct methods)
+    invoke(channel: string, ...args: unknown[]): Promise<unknown>;
 }
 
 export interface NodeAPI {
