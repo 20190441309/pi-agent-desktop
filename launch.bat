@@ -1,7 +1,8 @@
 @echo off
 setlocal
 set "ROOT=%~dp0"
-cd /d "%ROOT%apps\desktop"
+set "APP_DIR=%ROOT%apps\desktop"
+cd /d "%APP_DIR%"
 echo [Pi Agent] Closing existing local instance...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { ($_.Name -in @('electron.exe','node.exe')) -and ($_.CommandLine -like '*pi-agent-desktop*') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 echo [Pi Agent] Building...
@@ -12,5 +13,5 @@ if errorlevel 1 (
   exit /b 1
 )
 echo [Pi Agent] Starting...
-start "" "%ROOT%apps\desktop\node_modules\.bin\electron.CMD" .
+start "" "%APP_DIR%\node_modules\electron\dist\electron.exe" "%APP_DIR%"
 endlocal
