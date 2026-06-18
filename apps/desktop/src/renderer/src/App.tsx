@@ -19,6 +19,7 @@ import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import { CommandPalette } from "./components/CommandPalette/CommandPalette";
 import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet/ShortcutsCheatsheet";
 import { SkillsPanel } from "./components/SkillsPanel/SkillsPanel";
+import { GitPanel } from "./components/GitPanel/GitPanel";
 import { TerminalPanel } from "./components/Terminal/TerminalPanel";
 import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
@@ -47,12 +48,13 @@ import type { TerminalCommandMode } from "./utils/terminal-command";
 import { isIpcError } from "@shared";
 import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 
-type MainPanel = "chat" | "skills";
+type MainPanel = "chat" | "skills" | "git";
 type TerminalCommandTarget = { command: string; mode: TerminalCommandMode; nonce: number };
 type PaletteCommandStatus = { message: string; tone: "success" | "error" };
 
 function panelForSection(section: string): MainPanel {
     if (section === "skills") return "skills";
+    if (section === "git") return "git";
     return "chat";
 }
 
@@ -453,11 +455,10 @@ function AppShell(): React.ReactElement {
             <WorkspaceNoticeBanner />
             <MiniMaxCodeLayout
                 title="Pi Agent"
-                subtitle={currentWorkspace ? currentWorkspace.path : "未选择工作区"}
                 leftCollapsed={leftCollapsed}
                 rightCollapsed={rightCollapsed}
                 onCollapseLeft={() => setLeftCollapsed((v) => !v)}
-                onCollapseRight={() => setRightCollapsed((v) => !v)}
+                onCollapseRight={activePanel === "chat" ? () => setRightCollapsed((v) => !v) : undefined}
                 leftSlot={
                     <MiniMaxCodeSidebar
                         currentSection={activeSection}
@@ -480,14 +481,21 @@ function AppShell(): React.ReactElement {
                                 </div>
                             </ErrorBoundary>
                         )}
+                        {activePanel === "git" && currentWorkspace && (
+                            <ErrorBoundary fallback={panelFallback("Git")}>
+                                <GitPanel workspacePath={currentWorkspace.path} />
+                            </ErrorBoundary>
+                        )}
                     </>
                 }
                 rightSlot={
-                    <RightRail
-                        workspacePath={currentWorkspace?.path}
-                        workspaceId={currentWorkspace?.id}
-                        tasks={taskProgress.tasks}
-                    />
+                    activePanel === "chat" ? (
+                        <RightRail
+                            workspacePath={currentWorkspace?.path}
+                            workspaceId={currentWorkspace?.id}
+                            tasks={taskProgress.tasks}
+                        />
+                    ) : null
                 }
             />
 

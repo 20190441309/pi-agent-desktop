@@ -6,6 +6,7 @@ import { useSettingsStore } from "../../stores/settings-store";
 import { useQueueStore, type QueueTaskStatus } from "../../stores/queue-store";
 import { ToolPermissionsPanel } from "../ToolPermissions/ToolPermissionsPanel";
 import { UsageStatsPanel } from "../UsageStats/UsageStatsPanel";
+import { useAgentStore } from "../../stores/agent-store";
 import { classifyTerminalCommand } from "../../utils/terminal-command";
 import { projectScriptCommand } from "../../utils/project-scripts";
 import type { TaskProgressItem } from "./TaskProgressPanel";
@@ -150,6 +151,62 @@ function ProgressStatusIcon({ status }: { status: string }): React.JSX.Element {
 function formatToken(value?: number): string {
   if (value === undefined) return "unknown";
   return value >= 1000 ? `${Math.round(value / 100) / 10}K` : String(value);
+}
+
+const THINKING_LEVELS = ["none", "low", "medium", "high"] as const;
+const THINKING_LABELS: Record<string, string> = {
+  none: "关闭",
+  low: "低",
+  medium: "中",
+  high: "高",
+};
+
+function ThinkingControlPanel(): React.JSX.Element {
+  const settings = useSettingsStore((state) => state.settings);
+  const updateSettings = useSettingsStore((state) => state.updateSettings);
+  const currentAgentId = useAgentStore((state) => state.currentAgentId);
+  const runtimeByAgent = useAgentStore((state) => state.runtimeByAgent);
+  const currentRuntime = currentAgentId ? runtimeByAgent[currentAgentId] : null;
+  const activeLevel = currentRuntime?.thinkingLevel ?? settings.thinkingLevel ?? "medium";
+  const showThinking = settings.showThinking ?? true;
+
+  const cycleLevel = useCallback(() => {
+    const currentIndex = THINKING_LEVELS.indexOf(activeLevel as typeof THINKING_LEVELS[number]);
+    const nextLevel = THINKING_LEVELS[(currentIndex + 1) % THINKING_LEVELS.length];
+    updateSettings({ thinkingLevel: nextLevel });
+    if (currentAgentId && window.piAPI?.agentsSetThinking) {
+      void window.piAPI.agentsSetThinking(currentAgentId, nextLevel).catch(() => {});
+    }
+  }, [activeLevel, currentAgentId, updateSettings]);
+
+  const toggleShowThinking = useCallback(() => {
+    updateSettings({ showThinking: !showThinking });
+  }, [showThinking, updateSettings]);
+
+  return (
+    <section className="rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="m-0 text-[13px] font-medium">思考</h2>
+        <button
+          type="button"
+          onClick={toggleShowThinking}
+          aria-label="切换思考显示"
+          aria-pressed={showThinking}
+          className={`flex h-5 w-9 items-center rounded-full transition-colors ${showThinking ? "bg-[var(--mm-bg-active)]" : "bg-[var(--mm-bg-sidebar)]"}`}
+        >
+          <span className={`h-4 w-4 rounded-full bg-white transition-transform ${showThinking ? "translate-x-4" : "translate-x-0.5"}`} />
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={cycleLevel}
+        className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-2 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
+        aria-label="切换思考级别"
+      >
+        级别: <span className="font-medium text-[var(--mm-text-primary)]">{THINKING_LABELS[activeLevel] ?? activeLevel}</span>
+      </button>
+    </section>
+  );
 }
 
 export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailProps): React.JSX.Element {
@@ -487,6 +544,8 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
       </section>
 
       <ToolPermissionsPanel workspaceId={workspaceId} />
+
+      <ThinkingControlPanel />
 
       <section className="rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">

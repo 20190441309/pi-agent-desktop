@@ -20,6 +20,7 @@ import { setupTerminalIpc } from './ipc/terminal.ipc';
 import { setupAgentsIpc } from './ipc/agents.ipc';
 import { setupConfigIpc } from './ipc/config.ipc';
 import { setupCodexSessionsIpc } from './ipc/codex-sessions.ipc';
+import { setupClaudeSessionsIpc } from './ipc/claude-sessions.ipc';
 import { setupGitIpc } from './ipc/git.ipc';
 import { setupPiDriverIpc } from './ipc/pi-driver.ipc';
 import { setupSettingsIpc } from './ipc/settings.ipc';
@@ -36,6 +37,7 @@ import type { AppSettings, Session } from '@shared';
 import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
 import { ConfigManager } from './services/config/config-manager';
 import { CodexSessionImporter } from './services/codex-session/importer';
+import { ClaudeSessionImporter } from './services/claude-session/importer';
 import type { PiAgentConfig, PiAgentModel } from './types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -242,6 +244,7 @@ const agentRegistry = new AgentRuntimeRegistry({
 });
 const configManager = new ConfigManager(PI_AGENT_DIR);
 const codexSessionImporter = new CodexSessionImporter();
+const claudeSessionImporter = new ClaudeSessionImporter();
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -325,6 +328,7 @@ function setupIPC(): void {
     },
   });
   setupCodexSessionsIpc(codexSessionImporter);
+  setupClaudeSessionsIpc(claudeSessionImporter);
 
   // File search (for @ references and CommandPalette)
   setupFilesIpc();
@@ -377,8 +381,9 @@ function setupIPC(): void {
 }
 
 // App lifecycle
-registerLocalFileProtocol();
 app.whenReady().then(() => {
+  registerLocalFileProtocol();
+
   // 先加载 Pi 配置，再初始化
   piAgentConfig = loadPiAgentConfig();
   if (piAgentConfig) {

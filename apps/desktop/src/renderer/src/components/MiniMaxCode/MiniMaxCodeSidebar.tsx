@@ -26,6 +26,7 @@
 import React from "react";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
+import { useI18n } from "../../i18n";
 import { ProjectGroupedSessionList } from "./ProjectGroupedSessionList";
 
 // ----------------------------------------------------------------------
@@ -128,14 +129,32 @@ function IconSettings(): React.JSX.Element {
     );
 }
 
+function IconGit(): React.JSX.Element {
+    return (
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <circle cx="6" cy="6" r="2.5" strokeWidth={1.5} />
+            <circle cx="6" cy="18" r="2.5" strokeWidth={1.5} />
+            <circle cx="18" cy="12" r="2.5" strokeWidth={1.5} />
+            <path strokeLinecap="round" strokeWidth={1.5} d="M6 8.5v7M6 12h7a2 2 0 0 0 2-2V8.5" />
+        </svg>
+    );
+}
+
 // ----------------------------------------------------------------------
-// 静态配置 (本期纯占位,后续可改由 props/数据驱动)
+// 静态配置 — 只保留 id + icon,label 由组件内 t() 驱动
 // ----------------------------------------------------------------------
 
-const MAIN_SECTIONS: MiniMaxCodeSection[] = [
-    { id: "new-task", label: "新建任务", icon: <IconPlus /> },
-    { id: "search", label: "搜索", icon: <IconSearch /> },
-    { id: "skills", label: "插件", icon: <IconPuzzle /> },
+interface SectionDef {
+    id: string;
+    icon: React.ReactNode;
+    labelKey: string;
+}
+
+const SECTION_DEFS: SectionDef[] = [
+    { id: "new-task", icon: <IconPlus />, labelKey: "sidebar.newTask" },
+    { id: "search", icon: <IconSearch />, labelKey: "sidebar.search" },
+    { id: "skills", icon: <IconPuzzle />, labelKey: "sidebar.plugins" },
+    { id: "git", icon: <IconGit />, labelKey: "sidebar.git" },
 ];
 
 // ----------------------------------------------------------------------
@@ -210,12 +229,17 @@ export function MiniMaxCodeSidebar({
     piAgentStatus = "checking",
     onSectionChange,
 }: MiniMaxCodeSidebarProps): React.JSX.Element {
+    const { t } = useI18n();
     const currentSessionId = useSessionStore((state) => state.currentSessionId);
     const archiveSession = useSessionStore((state) => state.archiveSession);
     const deleteSession = useSessionStore((state) => state.deleteSession);
     const agentOnline = piAgentStatus === "online";
     const agentChecking = piAgentStatus === "checking";
-    const agentStatusLabel = agentChecking ? "pi-agent 检测中" : agentOnline ? "pi-agent 在线" : "pi-agent 不在线";
+    const agentStatusLabel = agentChecking
+        ? t("sidebar.status.checking")
+        : agentOnline
+            ? t("sidebar.status.online")
+            : t("sidebar.status.offline");
     const agentDotClass = agentChecking
         ? "bg-[var(--mm-text-tertiary)]"
         : agentOnline
@@ -240,7 +264,7 @@ export function MiniMaxCodeSidebar({
                 </div>
                 <div className="min-w-0">
                     <div className="truncate text-[13px] font-medium">Pi Agent</div>
-                    <div className="truncate text-[11px] text-[var(--mm-text-tertiary)]">桌面工作台</div>
+                    <div className="truncate text-[11px] text-[var(--mm-text-tertiary)]">{t("sidebar.subtitle")}</div>
                 </div>
             </div>
 
@@ -256,21 +280,21 @@ export function MiniMaxCodeSidebar({
                 {/* 主操作分组(无标题) */}
                 <div className="flex flex-col gap-1">
                     <h2 className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
-                        操作
+                        {t("sidebar.actions")}
                     </h2>
-                    {MAIN_SECTIONS.map((section) => (
+                    {SECTION_DEFS.map((def) => (
                         <NavItem
-                            key={section.id}
-                            section={section}
-                            active={currentSection === section.id}
-                            onClick={() => onSectionChange(section.id)}
+                            key={def.id}
+                            section={{ id: def.id, label: t(def.labelKey), icon: def.icon }}
+                            active={currentSection === def.id}
+                            onClick={() => onSectionChange(def.id)}
                         />
                     ))}
                 </div>
 
                 <div className="flex flex-col gap-1">
                     <h3 className="px-3 pt-3 pb-2 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
-                        项目
+                        {t("sidebar.project")}
                     </h3>
                     <ProjectGroupedSessionList
                         currentWorkspaceId={currentWorkspaceId ?? null}
@@ -283,23 +307,22 @@ export function MiniMaxCodeSidebar({
                 </div>
             </nav>
 
-            <div className="shrink-0 px-2 pb-1 pt-2 border-t border-[var(--mm-border)]">
-                <NavItem
-                    section={{ id: "settings", label: "设置", icon: <IconSettings /> }}
-                    active={false}
-                    onClick={() => onSectionChange("settings")}
-                />
-            </div>
-
-            <div className="shrink-0 border-t border-[var(--mm-border)] px-3 py-3">
-                <div
-                    className="flex h-9 items-center gap-2 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-[12px] text-[var(--mm-text-secondary)]"
-                    role="status"
-                    aria-label={agentStatusLabel}
-                    title={agentStatusLabel}
-                >
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${agentDotClass}`} aria-hidden="true" />
-                    <span className="truncate">{agentStatusLabel}</span>
+            <div className="shrink-0 border-t border-[var(--mm-border)] px-2 py-2">
+                <div className="flex items-center gap-2">
+                    <NavItem
+                        section={{ id: "settings", label: t("sidebar.settings"), icon: <IconSettings /> }}
+                        active={currentSection === "settings"}
+                        onClick={() => onSectionChange("settings")}
+                    />
+                    <div
+                        className="flex items-center gap-1.5 shrink-0 px-2"
+                        role="status"
+                        aria-label={agentStatusLabel}
+                        title={agentStatusLabel}
+                    >
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${agentDotClass}`} aria-hidden="true" />
+                        <span className="text-[11px] text-[var(--mm-text-tertiary)] whitespace-nowrap">{agentStatusLabel}</span>
+                    </div>
                 </div>
             </div>
         </div>

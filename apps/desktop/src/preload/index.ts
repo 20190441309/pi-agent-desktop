@@ -22,6 +22,8 @@ import type {
     AgentTab,
     CodexImportReport,
     CodexSessionSummary,
+    ClaudeImportReport,
+    ClaudeSessionSummary,
     ConfigValidationResult,
     ManagedModelDeleteInput,
     ManagedModelSaveInput,
@@ -34,6 +36,7 @@ import type {
     GitStatus,
     GitLogEntry,
     GitBranch,
+    GitChangedFile,
     Workspace,
 } from "@shared";
 
@@ -128,6 +131,8 @@ const piAPI: PiAPI = {
     agentsMessages: (agentId) => ipcRenderer.invoke("agents:messages", agentId) as Promise<AgentMessage[]>,
     agentsRuntimeState: (agentId) =>
         ipcRenderer.invoke("agents:runtime-state", agentId) as Promise<AgentRuntimeState>,
+    agentsSetThinking: (agentId, level) =>
+        ipcRenderer.invoke("agents:set-thinking", agentId, level) as Promise<void>,
     onAgentsState: (cb) => subscribe<AgentTab[]>("agents:state", cb),
     onAgentMessages: (cb) =>
         subscribe<{ agentId: string; messages: AgentMessage[] }>("agents:message", cb),
@@ -167,6 +172,10 @@ const piAPI: PiAPI = {
     gitCommit: (workspacePath, message) => ipcRenderer.invoke("git:commit", workspacePath, message) as Promise<string | IpcError>,
     gitLog: (workspacePath, count) => ipcRenderer.invoke("git:log", workspacePath, count) as Promise<GitLogEntry[] | IpcError>,
     gitBranches: (workspacePath) => ipcRenderer.invoke("git:branches", workspacePath) as Promise<GitBranch[] | IpcError>,
+    gitCheckout: (workspacePath, branch) => ipcRenderer.invoke("git:checkout", workspacePath, branch) as Promise<GitBranch[] | IpcError>,
+    gitCreateBranch: (workspacePath, branchName) => ipcRenderer.invoke("git:create-branch", workspacePath, branchName) as Promise<GitBranch[] | IpcError>,
+    gitOriginalContent: (workspacePath, filePath) => ipcRenderer.invoke("git:original-content", workspacePath, filePath) as Promise<string | IpcError>,
+    gitChangedFiles: (workspacePath) => ipcRenderer.invoke("git:changed-files", workspacePath) as Promise<GitChangedFile[] | IpcError>,
 
     // Project detection
     detectProject: (workspacePath) => ipcRenderer.invoke("project:detect", workspacePath),
@@ -215,6 +224,12 @@ const piAPI: PiAPI = {
         ipcRenderer.invoke("codex-sessions:scan", workspacePath) as Promise<CodexSessionSummary[]>,
     codexSessionsImport: (workspacePath, sourcePaths) =>
         ipcRenderer.invoke("codex-sessions:import", workspacePath, sourcePaths) as Promise<CodexImportReport>,
+
+    // Claude session import
+    claudeSessionsScan: (workspacePath) =>
+        ipcRenderer.invoke("claude-sessions:scan", workspacePath) as Promise<ClaudeSessionSummary[]>,
+    claudeSessionsImport: (workspacePath, sourcePaths) =>
+        ipcRenderer.invoke("claude-sessions:import", workspacePath, sourcePaths) as Promise<ClaudeImportReport>,
 
     // Skills
     listSkills: () => ipcRenderer.invoke("pi:list-skills"),

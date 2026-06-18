@@ -1,7 +1,7 @@
 // DiffViewer 组件 - 用于显示代码变更的 diff 视图
 
 import React, { useState, useMemo } from 'react';
-import { parseDiff, extractDiffFromOutput, type DiffFile, type DiffLine } from './diff-parser';
+import { parseDiff, extractDiffFromOutput, type DiffFile, type DiffLine, type DiffHunk } from './diff-parser';
 import { FileChangeItem } from './FileChangeItem';
 
 interface DiffViewerProps {
@@ -71,6 +71,70 @@ function HunkHeader({ header }: { header: string }): React.JSX.Element {
   );
 }
 
+const CONTEXT_EXPAND = 3;
+
+function splitHunkLines(lines: DiffLine[]): Array<{ type: 'lines'; lines: DiffLine[] } | { type: 'fold'; count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null }> {
+  const result: Array<{ type: 'lines'; lines: DiffLine[] } | { type: 'fold'; count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null }> = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].type !== 'context') {
+      result.push({ type: 'lines', lines: [lines[i]] });
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < lines.length && lines[j].type === 'context') j++;
+    const contextCount = j - i;
+    if (contextCount <= CONTEXT_EXPAND * 2 + 1) {
+      result.push({ type: 'lines', lines: lines.slice(i, j) });
+    } else {
+      const head = lines.slice(i, i + CONTEXT_EXPAND);
+      const tail = lines.slice(j - CONTEXT_EXPAND, j);
+      const folded = j - CONTEXT_EXPAND - (i + CONTEXT_EXPAND);
+      result.push({ type: 'lines', lines: head });
+      result.push({ type: 'fold', count: folded, oldStart: head[head.length - 1].oldLine, newStart: head[head.length - 1].newLine, oldEnd: tail[0]?.oldLine ?? null, newEnd: tail[0]?.newLine ?? null });
+      result.push({ type: 'lines', lines: tail });
+    }
+    i = j;
+  }
+  return result;
+}
+
+function FoldRow({ count, oldStart, newStart, oldEnd, newEnd }: { count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null }): React.JSX.Element | null {
+  const [expanded, setExpanded] = useState(false);
+  if (expanded) {
+    return null;
+  }
+  const label = `展开 ${count} 行未变更`;
+  return (
+    <tr className="bg-[var(--mm-bg-sidebar)] hover:bg-[var(--mm-bg-hover)] cursor-pointer transition-colors"
+        onClick={() => setExpanded(true)}>
+      <td colSpan={4} className="px-3 py-1 text-center text-[11px] text-[var(--mm-text-tertiary)] select-none"
+          style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" }}
+          title={label}
+          aria-label={label}>
+        ⋯ {oldStart ?? '?'}→{oldEnd ?? '?'} · {newStart ?? '?'}→{newEnd ?? '?'} · {label} ⋯
+      </td>
+    </tr>
+  );
+}
+
+function HunkContent({ hunk }: { hunk: DiffHunk }): React.JSX.Element[] {
+  const segments = splitHunkLines(hunk.lines);
+  const rows: React.JSX.Element[] = [];
+  let lineIndex = 0;
+  for (const segment of segments) {
+    if (segment.type === 'lines') {
+      for (const line of segment.lines) {
+        rows.push(<DiffLineRow key={`line-${lineIndex++}`} line={line} />);
+      }
+    } else {
+      rows.push(<FoldRow key={`fold-${lineIndex++}`} count={segment.count} oldStart={segment.oldStart} newStart={segment.newStart} oldEnd={segment.oldEnd} newEnd={segment.newEnd} />);
+    }
+  }
+  return rows;
+}
+
 function FileDiffView({ file }: { file: DiffFile }): React.JSX.Element {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -93,9 +157,7 @@ function FileDiffView({ file }: { file: DiffFile }): React.JSX.Element {
               {file.hunks.map((hunk, hunkIndex) => (
                 <React.Fragment key={hunkIndex}>
                   {hunk.header && <HunkHeader header={`@@ ${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@ ${hunk.header}`} />}
-                  {hunk.lines.map((line, lineIndex) => (
-                    <DiffLineRow key={`${hunkIndex}-${lineIndex}`} line={line} />
-                  ))}
+                  {HunkContent({ hunk })}
                 </React.Fragment>
               ))}
             </tbody>

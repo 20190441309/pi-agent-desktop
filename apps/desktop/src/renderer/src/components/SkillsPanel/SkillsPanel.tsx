@@ -6,14 +6,12 @@
 //  - "GitHub 导入": 调 piAPI.skillsGithubImport(url),显示主进程返回的说明(目前是 git clone 引导)
 
 import React, { useEffect, useState } from "react";
-import { SkillsMarketplace } from "./SkillsMarketplace";
 import { InstalledAddons } from "./InstalledAddons";
 import { PiPackagesMarketplace } from "./PiPackagesMarketplace";
 import { SkillCreateDropdown } from "./SkillCreateDropdown";
-import { useSkillsStore } from "../../stores/skills-store";
 import { usePiPackagesStore } from "../../stores/pi-packages-store";
 
-type Tab = "pi" | "skillhub" | "installed";
+type Tab = "pi" | "installed";
 
 /** SKILL.md 模板 — 用户在"编写技能"modal 里基于此填写 */
 // v1.0.15: 不再用 'TODO: ...' 假占位 — 空字段就空着,让 SKILL.md frontmatter
@@ -59,18 +57,17 @@ export function SkillsPanel(): React.JSX.Element {
         copied: boolean;
         error: string | null;
     }>({ open: false, name: "", description: "", body: "", copied: false, error: null });
-    const { marketQuery, setMarketQuery } = useSkillsStore();
     const { query: packageQuery, setQuery: setPackageQuery } = usePiPackagesStore();
 
     // 子组件(MySkills) 可通过自定义事件请求切 tab
     useEffect(() => {
         const onSetTab = (e: Event) => {
             const detail = (e as CustomEvent<Tab | "market" | "mine">).detail;
-            if (detail === "market") {
-                setTab("skillhub");
+            if (detail === "market" || detail === "pi") {
+                setTab("pi");
             } else if (detail === "mine") {
                 setTab("installed");
-            } else if (detail === "pi" || detail === "skillhub" || detail === "installed") {
+            } else if (detail === "installed") {
                 setTab(detail);
             }
         };
@@ -176,7 +173,7 @@ export function SkillsPanel(): React.JSX.Element {
                     <p className="m-0 text-[11px] text-[var(--mm-text-tertiary)]">安装 Pi packages，管理本地 skills</p>
                 </div>
                 <div className="flex items-center gap-1 rounded-lg bg-[var(--mm-bg-sidebar)] p-1" role="tablist" aria-label="插件面板分类">
-                    {([["pi", "Pi 插件"], ["skillhub", "SkillHub"], ["installed", "已安装"]] as const).map(([id, label]) => {
+                    {([["pi", "Pi 插件"], ["installed", "已安装"]] as const).map(([id, label]) => {
                         const isActive = tab === id;
                         return (
                             <button
@@ -209,16 +206,6 @@ export function SkillsPanel(): React.JSX.Element {
                         className="pl-3 pr-3 py-1.5 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-md text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus:border-[#1a1a1a] w-64"
                     />
                 )}
-                {tab === "skillhub" && (
-                    <input
-                        type="text"
-                        placeholder="搜索 SkillHub skills..."
-                        value={marketQuery}
-                        onChange={(e) => setMarketQuery(e.target.value)}
-                        aria-label="搜索 SkillHub"
-                        className="pl-3 pr-3 py-1.5 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-md text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus:border-[#1a1a1a] w-64"
-                    />
-                )}
                 <SkillCreateDropdown
                     onBuildWithPi={handleBuildWithPi}
                     onWriteDirect={handleWriteDirect}
@@ -233,7 +220,6 @@ export function SkillsPanel(): React.JSX.Element {
                 aria-labelledby={`skills-tab-${tab}`}
             >
                 {tab === "pi" && <PiPackagesMarketplace />}
-                {tab === "skillhub" && <SkillsMarketplace />}
                 {tab === "installed" && <InstalledAddons />}
             </div>
 

@@ -65,6 +65,30 @@
       "ariaLabel": "Onboarding steps"
     }
   },
+  "sidebar": {
+    "newTask": "New task",
+    "search": "Search",
+    "plugins": "Plugins",
+    "actions": "Actions",
+    "project": "Projects",
+    "settings": "Settings",
+    "git": "Git",
+    "subtitle": "Desktop workspace",
+    "status": {
+      "checking": "pi-agent checking",
+      "online": "pi-agent online",
+      "offline": "pi-agent offline"
+    },
+    "sessions": {
+      "unnamed": "Untitled session",
+      "archive": "Archive",
+      "restore": "Restore",
+      "delete": "Delete",
+      "archived": "Archived",
+      "empty": "No sessions yet.",
+      "deleteConfirm": "Delete \"{{name}}\"? This cannot be undone."
+    }
+  },
   "iconBar": {
     "nav": {
       "chat": "Chat",

@@ -195,6 +195,40 @@ export interface CodexImportReport {
     results: CodexImportResult[];
 }
 
+export type ClaudeImportStatus = "new" | "current" | "outdated";
+
+export interface ClaudeSessionSummary {
+    id: string;
+    sourcePath: string;
+    targetPath: string;
+    cwd: string;
+    title: string;
+    preview: string;
+    createdAt: number;
+    updatedAt: number;
+    messageCount: number;
+    sourceSize: number;
+    status: ClaudeImportStatus;
+    importedSourceMtime?: number;
+}
+
+export interface ClaudeImportResult {
+    id: string;
+    sourcePath: string;
+    targetPath?: string;
+    title?: string;
+    success: boolean;
+    overwritten?: boolean;
+    messageCount?: number;
+    error?: string;
+}
+
+export interface ClaudeImportReport {
+    imported: number;
+    failed: number;
+    results: ClaudeImportResult[];
+}
+
 export interface PiModelItem {
     id: string;
     name?: string;
@@ -330,6 +364,10 @@ export interface AppSettings {
     visionProvider?: string;
     /** 识图功能: 视觉模型名称 */
     visionModel?: string;
+    /** 是否展示 agent 思考过程 */
+    showThinking?: boolean;
+    /** 思考级别: none / low / medium / high */
+    thinkingLevel?: "none" | "low" | "medium" | "high";
 }
 
 export type ToolPermissionKey =
@@ -538,6 +576,11 @@ export interface GitLogEntry {
     message: string;
 }
 
+export interface GitChangedFile {
+    path: string;
+    status: "modified" | "added" | "deleted" | "renamed";
+}
+
 // ── Skills + Pi Agent config ──────────────────────────────────────
 
 export interface InstalledSkillInfo {
@@ -727,6 +770,7 @@ export interface PiAPI {
     agentsRestart(agentId: string): Promise<AgentTab>;
     agentsMessages(agentId: string): Promise<AgentMessage[]>;
     agentsRuntimeState(agentId: string): Promise<AgentRuntimeState>;
+    agentsSetThinking(agentId: string, level: "none" | "low" | "medium" | "high"): Promise<void>;
     onAgentsState(cb: (agents: AgentTab[]) => void): Unsubscribe;
     onAgentMessages(cb: (payload: { agentId: string; messages: AgentMessage[] }) => void): Unsubscribe;
     onAgentEvent(cb: (payload: { agentId: string; workspaceId: string; event: PiEvent }) => void): Unsubscribe;
@@ -755,6 +799,10 @@ export interface PiAPI {
     gitCommit(workspacePath: string, message: string): Promise<string | IpcError>;
     gitLog(workspacePath: string, count?: number): Promise<GitLogEntry[] | IpcError>;
     gitBranches(workspacePath: string): Promise<GitBranch[] | IpcError>;
+    gitCheckout(workspacePath: string, branch: string): Promise<GitBranch[] | IpcError>;
+    gitCreateBranch(workspacePath: string, branchName: string): Promise<GitBranch[] | IpcError>;
+    gitOriginalContent(workspacePath: string, filePath: string): Promise<string | IpcError>;
+    gitChangedFiles(workspacePath: string): Promise<GitChangedFile[] | IpcError>;
 
     // Project detection & file tree
     detectProject(workspacePath: string): Promise<ProjectInfo | IpcError>;
@@ -792,6 +840,8 @@ export interface PiAPI {
     // Codex session import
     codexSessionsScan(workspacePath: string): Promise<CodexSessionSummary[]>;
     codexSessionsImport(workspacePath: string, sourcePaths: string[]): Promise<CodexImportReport>;
+    claudeSessionsScan(workspacePath: string): Promise<ClaudeSessionSummary[]>;
+    claudeSessionsImport(workspacePath: string, sourcePaths: string[]): Promise<ClaudeImportReport>;
 
     // Skills
     listSkills(): Promise<InstalledSkillInfo[]>;

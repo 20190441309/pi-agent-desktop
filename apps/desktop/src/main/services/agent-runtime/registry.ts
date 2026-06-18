@@ -29,6 +29,7 @@ interface AgentRuntime {
     session: WorkspaceSession;
     messages: AgentMessage[];
     isStreaming: boolean;
+    thinkingLevel?: "none" | "low" | "medium" | "high";
 }
 
 export class AgentRuntimeRegistry {
@@ -164,7 +165,13 @@ export class AgentRuntimeRegistry {
             status: runtime.tab.status,
             isStreaming: runtime.isStreaming,
             sessionPath: runtime.tab.sessionPath,
+            thinkingLevel: runtime.thinkingLevel,
         };
+    }
+
+    setThinking(agentId: string, level: "none" | "low" | "medium" | "high"): void {
+        const runtime = this.requireRuntime(agentId);
+        runtime.thinkingLevel = level;
     }
 
     getWorkspaceSession(agentId: string): WorkspaceSession {

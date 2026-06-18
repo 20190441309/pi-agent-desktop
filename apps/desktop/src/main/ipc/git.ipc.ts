@@ -2,9 +2,9 @@ import { ipcMain } from 'electron';
 import { execFileSync } from 'child_process';
 import log from 'electron-log/main';
 import { ipcError } from '@shared';
-import { gitAdd, gitCommit, gitDiff, gitDiffStaged, getGitStatus, gitUnstage } from '../services/git-service';
+import { gitAdd, gitCommit, gitDiff, gitDiffStaged, getGitStatus, gitUnstage, gitCheckout, gitCreateBranch, gitOriginalContent, gitChangedFiles } from '../services/git-service';
 import { getProtectedPathReason } from '../services/protected-paths';
-import { gitAddSchema, gitCommitSchema, gitDiffSchema, gitDiffStagedSchema } from './schemas';
+import { gitAddSchema, gitCommitSchema, gitDiffSchema, gitDiffStagedSchema, gitCheckoutSchema, gitCreateBranchSchema, gitOriginalContentSchema, gitChangedFilesSchema } from './schemas';
 
 export function setupGitIpc(): void {
   ipcMain.handle('git:status', async (_, workspacePath: string) => {
@@ -166,6 +166,77 @@ export function setupGitIpc(): void {
         "ipcErrors.git.branchesFailed",
         `读取 git branches 失败: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+  });
+
+  ipcMain.handle('git:checkout', async (_, workspacePath: string, branch: string) => {
+    try {
+      gitCheckoutSchema.parse([workspacePath, branch]);
+    } catch (err) {
+      return ipcError("ipcErrors.git.invalidArgs", `git checkout 参数无效: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      const result = gitCheckout(workspacePath, branch);
+      if (result && typeof result === 'object' && 'code' in result) return result;
+      // 重新获取分支列表
+      const output = execFileSync('git', ['branch', '-a'], { cwd: workspacePath, encoding: 'utf-8' });
+      return output.split('\n').filter(l => l.trim()).map(l => ({
+        name: l.replace(/^\*?\s+/, '').trim(),
+        isCurrent: l.startsWith('*'),
+        isRemote: l.includes('remotes/')
+      }));
+    } catch (err) {
+      log.error("[git.ipc] git:checkout failed:", err);
+      return ipcError("ipcErrors.git.checkoutFailed", `切换分支失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+
+  ipcMain.handle('git:create-branch', async (_, workspacePath: string, branchName: string) => {
+    try {
+      gitCreateBranchSchema.parse([workspacePath, branchName]);
+    } catch (err) {
+      return ipcError("ipcErrors.git.invalidArgs", `git create-branch 参数无效: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      const result = gitCreateBranch(workspacePath, branchName);
+      if (result && typeof result === 'object' && 'code' in result) return result;
+      const output = execFileSync('git', ['branch', '-a'], { cwd: workspacePath, encoding: 'utf-8' });
+      return output.split('\n').filter(l => l.trim()).map(l => ({
+        name: l.replace(/^\*?\s+/, '').trim(),
+        isCurrent: l.startsWith('*'),
+        isRemote: l.includes('remotes/')
+      }));
+    } catch (err) {
+      log.error("[git.ipc] git:create-branch failed:", err);
+      return ipcError("ipcErrors.git.createBranchFailed", `创建分支失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+
+  ipcMain.handle('git:original-content', async (_, workspacePath: string, filePath: string) => {
+    try {
+      gitOriginalContentSchema.parse([workspacePath, filePath]);
+    } catch (err) {
+      return ipcError("ipcErrors.git.invalidArgs", `git original-content 参数无效: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      return gitOriginalContent(workspacePath, filePath);
+    } catch (err) {
+      log.error("[git.ipc] git:original-content failed:", err);
+      return ipcError("ipcErrors.git.originalContentFailed", `读取 HEAD 原始内容失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+
+  ipcMain.handle('git:changed-files', async (_, workspacePath: string) => {
+    try {
+      gitChangedFilesSchema.parse([workspacePath]);
+    } catch (err) {
+      return ipcError("ipcErrors.git.invalidArgs", `git changed-files 参数无效: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      return gitChangedFiles(workspacePath);
+    } catch (err) {
+      log.error("[git.ipc] git:changed-files failed:", err);
+      return ipcError("ipcErrors.git.changedFilesFailed", `读取改动文件列表失败: ${err instanceof Error ? err.message : String(err)}`);
     }
   });
 }

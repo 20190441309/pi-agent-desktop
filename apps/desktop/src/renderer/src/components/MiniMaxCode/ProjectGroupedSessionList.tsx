@@ -80,6 +80,7 @@ interface SessionRowProps {
   onSelect: () => void;
   onArchive: (archived: boolean) => void;
   onDelete: () => void;
+  t: (key: string, opts?: Record<string, unknown>) => string;
 }
 
 function SessionRow({
@@ -91,13 +92,44 @@ function SessionRow({
   onSelect,
   onArchive,
   onDelete,
+  t,
 }: SessionRowProps): React.JSX.Element {
-  const title = session.title || "未命名会话";
+  const [confirming, setConfirming] = useState(false);
+  const title = session.title || t("sidebar.sessions.unnamed");
   const baseClasses =
     "flex w-full items-center gap-2 rounded-[var(--mm-radius-sm)] py-0 pr-2 text-[13px] leading-relaxed transition-colors focus:outline-none";
   const stateClasses = active
     ? "border-l-2 border-l-[var(--mm-bg-active)] bg-[var(--mm-bg-selected)] font-medium text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-selected)]"
     : "border-l-2 border-l-transparent bg-transparent font-normal text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]";
+
+  if (confirming) {
+    return (
+      <div
+        className="flex flex-col gap-1.5 rounded-[var(--mm-radius-sm)] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-[12px]"
+        role="dialog"
+        aria-label={t("sidebar.sessions.deleteConfirm", { name: title })}
+      >
+        <span className="text-[var(--mm-text-secondary)]">{t("sidebar.sessions.deleteConfirm", { name: title })}</span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            className="rounded px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
+          >
+            {t("common.cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded bg-[var(--color-error)] px-2 py-1 text-[11px] text-white hover:opacity-90"
+          >
+            {t("common.confirm")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="group flex items-center gap-1" style={{ paddingLeft: 8 + depth * 14 }}>
       <button
@@ -115,15 +147,15 @@ function SessionRow({
       </button>
       <div className="flex items-center">
         {archived ? (
-          <SmallActionButton label={`恢复 ${title}`} onClick={() => onArchive(false)}>
+          <SmallActionButton label={`${t("sidebar.sessions.restore")} ${title}`} onClick={() => onArchive(false)}>
             <RestoreIcon />
           </SmallActionButton>
         ) : (
           <>
-            <SmallActionButton label={`归档 ${title}`} onClick={() => onArchive(true)}>
+            <SmallActionButton label={`${t("sidebar.sessions.archive")} ${title}`} onClick={() => onArchive(true)}>
               <ArchiveIcon />
             </SmallActionButton>
-            <SmallActionButton label={`删除 ${title}`} onClick={onDelete}>
+            <SmallActionButton label={`${t("sidebar.sessions.delete")} ${title}`} onClick={() => setConfirming(true)}>
               <DeleteIcon />
             </SmallActionButton>
           </>
@@ -146,10 +178,7 @@ function GroupHeader({ workspace, count, expanded, onToggle, onSwitch }: GroupHe
     <div className="group flex items-center">
       <button
         type="button"
-        onClick={() => {
-          onToggle();
-          onSwitch();
-        }}
+        onClick={onToggle}
         aria-expanded={expanded}
         title={workspace.path}
         className="flex h-8 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-3 text-[12px] font-medium text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none"
@@ -157,7 +186,15 @@ function GroupHeader({ workspace, count, expanded, onToggle, onSwitch }: GroupHe
         <span className="text-[10px] text-[var(--mm-text-tertiary)]" aria-hidden="true">
           {expanded ? "▾" : "▸"}
         </span>
-        <span className="min-w-0 flex-1 truncate text-left">{workspace.name}</span>
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); onSwitch(); }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); onSwitch(); } }}
+          className="min-w-0 flex-1 truncate text-left hover:underline"
+        >
+          {workspace.name}
+        </span>
         <span className="ml-auto shrink-0 rounded bg-[var(--mm-bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
           {count}
         </span>
@@ -215,7 +252,7 @@ export function ProjectGroupedSessionList({
   if (groups.length === 0 && archivedSessions.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-[var(--mm-border)] px-3 py-3 text-[11px] leading-5 text-[var(--mm-text-tertiary)]">
-        还没有会话。
+        {t("sidebar.sessions.empty")}
       </div>
     );
   }
@@ -245,6 +282,7 @@ export function ProjectGroupedSessionList({
                   onSelect={() => onSelectSession(session.id)}
                   onArchive={(archived) => onArchiveSession(session.id, archived)}
                   onDelete={() => onDeleteSession(session.id)}
+                  t={t}
                 />
               ))}
           </div>
@@ -262,7 +300,7 @@ export function ProjectGroupedSessionList({
             <span className="text-[10px] text-[var(--mm-text-tertiary)]" aria-hidden="true">
               {archivedExpanded ? "▾" : "▸"}
             </span>
-            <span className="min-w-0 flex-1 truncate text-left">已归档</span>
+            <span className="min-w-0 flex-1 truncate text-left">{t("sidebar.sessions.archived")}</span>
             <span className="ml-auto shrink-0 rounded bg-[var(--mm-bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
               {archivedSessions.length}
             </span>
@@ -282,6 +320,7 @@ export function ProjectGroupedSessionList({
                 }}
                 onArchive={(archived) => onArchiveSession(session.id, archived)}
                 onDelete={() => onDeleteSession(session.id)}
+                t={t}
               />
             ))}
         </div>

@@ -65,6 +65,30 @@
       "ariaLabel": "引导步骤"
     }
   },
+  "sidebar": {
+    "newTask": "新建任务",
+    "search": "搜索",
+    "plugins": "插件",
+    "actions": "操作",
+    "project": "项目",
+    "settings": "设置",
+    "git": "Git",
+    "subtitle": "桌面工作台",
+    "status": {
+      "checking": "pi-agent 检测中",
+      "online": "pi-agent 在线",
+      "offline": "pi-agent 不在线"
+    },
+    "sessions": {
+      "unnamed": "未命名会话",
+      "archive": "归档",
+      "restore": "恢复",
+      "delete": "删除",
+      "archived": "已归档",
+      "empty": "还没有会话。",
+      "deleteConfirm": "确定删除「{{name}}」？此操作不可恢复。"
+    }
+  },
   "iconBar": {
     "nav": {
       "chat": "对话",

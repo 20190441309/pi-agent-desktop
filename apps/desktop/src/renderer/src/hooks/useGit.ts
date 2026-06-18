@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isIpcError } from "@shared";
 import type { BranchInfo, CommitInfo } from "../types";
+import type { GitChangedFile } from "@shared";
 
 export interface GitStatus {
     branch: string;
@@ -41,6 +42,10 @@ export interface UseGitReturn {
     stageFiles: (files: string[]) => Promise<void>;
     loadBranches: () => Promise<BranchInfo[]>;
     loadCommits: (count?: number) => Promise<CommitInfo[]>;
+    checkout: (branch: string) => Promise<BranchInfo[]>;
+    createBranch: (branchName: string) => Promise<BranchInfo[]>;
+    getOriginalContent: (filePath: string) => Promise<string>;
+    getChangedFiles: () => Promise<GitChangedFile[]>;
     getBranchDisplay: () => string;
     getChangeCount: () => number;
     getStatusColor: () => string;
@@ -150,6 +155,34 @@ export function useGit(workspacePath?: string): UseGitReturn {
         setLog(cs);
         return cs;
     }, [path]);
+    const checkout = useCallback(async (branch: string) => {
+        if (!window.piAPI?.gitCheckout || !path) return [];
+        const result = await window.piAPI.gitCheckout(path, branch);
+        if (isIpcError(result)) throw new Error(result.fallback);
+        setBranches(result);
+        await refresh();
+        return result;
+    }, [path, refresh]);
+    const createBranch = useCallback(async (branchName: string) => {
+        if (!window.piAPI?.gitCreateBranch || !path) return [];
+        const result = await window.piAPI.gitCreateBranch(path, branchName);
+        if (isIpcError(result)) throw new Error(result.fallback);
+        setBranches(result);
+        await refresh();
+        return result;
+    }, [path, refresh]);
+    const getOriginalContent = useCallback(async (filePath: string) => {
+        if (!window.piAPI?.gitOriginalContent || !path) return "";
+        const result = await window.piAPI.gitOriginalContent(path, filePath);
+        if (isIpcError(result)) throw new Error(result.fallback);
+        return result;
+    }, [path]);
+    const getChangedFiles = useCallback(async () => {
+        if (!window.piAPI?.gitChangedFiles || !path) return [];
+        const result = await window.piAPI.gitChangedFiles(path);
+        if (isIpcError(result)) throw new Error(result.fallback);
+        return result;
+    }, [path]);
     const getBranchDisplay = useCallback(() => status?.branch ?? "main", [status]);
     const getChangeCount = useCallback(() => {
         if (!status) return 0;
@@ -160,16 +193,21 @@ export function useGit(workspacePath?: string): UseGitReturn {
     return useMemo(() => ({
         status, branches, log, isLoading, error, refresh, diff, add, unstage, commit, undo,
         commits, stagedDiff, refreshStatus, loadDiff, loadStagedDiff, stageFiles,
-        loadBranches, loadCommits, getBranchDisplay, getChangeCount, getStatusColor,
+        loadBranches, loadCommits, checkout, createBranch, getOriginalContent, getChangedFiles,
+        getBranchDisplay, getChangeCount, getStatusColor,
     }), [
         add,
         branches,
+        checkout,
         commit,
         commits,
+        createBranch,
         diff,
         error,
         getBranchDisplay,
         getChangeCount,
+        getChangedFiles,
+        getOriginalContent,
         getStatusColor,
         isLoading,
         loadBranches,

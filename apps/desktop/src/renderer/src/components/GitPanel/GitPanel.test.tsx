@@ -23,6 +23,7 @@ vi.mock("../../hooks/useGit", () => ({
       ahead: 0,
       behind: 0,
     },
+    branches: [],
     commits: [],
     isLoading: false,
     error: null,
@@ -33,6 +34,10 @@ vi.mock("../../hooks/useGit", () => ({
     undo,
     commit,
     refresh,
+    checkout: vi.fn(async () => []),
+    createBranch: vi.fn(async () => []),
+    getOriginalContent: vi.fn(async () => ""),
+    getChangedFiles: vi.fn(async () => []),
   }),
 }));
 

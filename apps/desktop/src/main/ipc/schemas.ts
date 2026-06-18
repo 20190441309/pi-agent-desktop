@@ -87,6 +87,25 @@ export const gitUndoSchema = z.tuple([
     z.string().min(1, "filePath must be a non-empty string"),
 ]);
 
+export const gitCheckoutSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+    z.string().min(1, "branch must be a non-empty string"),
+]);
+
+export const gitCreateBranchSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+    z.string().min(1, "branchName must be a non-empty string"),
+]);
+
+export const gitOriginalContentSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+    z.string().min(1, "filePath must be a non-empty string"),
+]);
+
+export const gitChangedFilesSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+]);
+
 // terminal:input — 验证 id 和 data 都是 string (ptyManager.write 需要这两个)
 export const terminalCreateSchema = z.tuple([
     z
@@ -320,6 +339,11 @@ export const agentsIdSchema = z.tuple([
     z.string().min(1, "agentId must be a non-empty string"),
 ]);
 
+export const agentsSetThinkingSchema = z.tuple([
+    z.string().min(1, "agentId must be a non-empty string"),
+    z.enum(["none", "low", "medium", "high"]),
+]);
+
 // ── Codex session import schemas ──────────────────────────
 
 export const codexScanSchema = z.tuple([
@@ -327,6 +351,15 @@ export const codexScanSchema = z.tuple([
 ]);
 
 export const codexImportSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+    z.array(z.string().min(1), { message: "sourcePaths must be an array of non-empty strings" }),
+]);
+
+export const claudeScanSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+]);
+
+export const claudeImportSchema = z.tuple([
     z.string().min(1, "workspacePath must be a non-empty string"),
     z.array(z.string().min(1), { message: "sourcePaths must be an array of non-empty strings" }),
 ]);

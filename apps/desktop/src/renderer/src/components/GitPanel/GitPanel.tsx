@@ -181,6 +181,9 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
         unstage: unstageFiles,
         undo,
         commit: commitChanges,
+        branches,
+        checkout,
+        createBranch,
     } = git;
     const [selected, setSelected] = useState<ChangeItem | null>(null);
     const [diffContent, setDiffContent] = useState("");
@@ -195,6 +198,9 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
     const [commitSummary, setCommitSummary] = useState<CommitSummary | null>(null);
     const [copiedSummary, setCopiedSummary] = useState(false);
     const [discardCandidate, setDiscardCandidate] = useState<ChangeItem | null>(null);
+    const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
+    const [newBranchName, setNewBranchName] = useState("");
+    const [branchBusy, setBranchBusy] = useState(false);
 
     const stagedChanges = useMemo(() => parseStagedChanges(stagedDiff), [stagedDiff]);
     const unstagedChanges = useMemo(() => {
@@ -424,6 +430,39 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
         window.setTimeout(() => setCopiedSummary(false), 1400);
     }, [commitSummary]);
 
+    const localBranches = useMemo(() => branches.filter((b) => !b.isRemote), [branches]);
+
+    const handleCheckout = useCallback(async (branchName: string) => {
+        setBranchDropdownOpen(false);
+        setBranchBusy(true);
+        setNotice(null);
+        try {
+            await checkout(branchName);
+            setNotice(`已切换到分支 ${branchName}`);
+        } catch (err) {
+            setNotice(`切换分支失败: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+            setBranchBusy(false);
+        }
+    }, [checkout]);
+
+    const handleCreateBranch = useCallback(async () => {
+        const name = newBranchName.trim();
+        if (!name) return;
+        setBranchDropdownOpen(false);
+        setBranchBusy(true);
+        setNotice(null);
+        try {
+            await createBranch(name);
+            setNewBranchName("");
+            setNotice(`已创建并切换到分支 ${name}`);
+        } catch (err) {
+            setNotice(`创建分支失败: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+            setBranchBusy(false);
+        }
+    }, [createBranch, newBranchName]);
+
     if (isLoading && !status) {
         return <div className="flex h-full items-center justify-center text-sm text-[var(--mm-text-secondary)]">加载 Git 状态...</div>;
     }
@@ -449,7 +488,59 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
                                 <h1 className="m-0 text-sm font-semibold">Source Control</h1>
-                                <span className="rounded-md bg-[var(--mm-bg-sidebar)] px-2 py-0.5 font-mono text-[11px] text-[var(--mm-text-secondary)]">{status.branch}</span>
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        disabled={branchBusy}
+                                        onClick={() => setBranchDropdownOpen((v) => !v)}
+                                        className="flex items-center gap-1 rounded-md bg-[var(--mm-bg-sidebar)] px-2 py-0.5 font-mono text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:opacity-45"
+                                        aria-label="切换分支"
+                                        aria-expanded={branchDropdownOpen}
+                                    >
+                                        <span className="truncate max-w-[120px]">{status.branch}</span>
+                                        <span className="text-[9px]">{branchDropdownOpen ? "▴" : "▾"}</span>
+                                    </button>
+                                    {branchDropdownOpen && (
+                                        <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-lg" role="listbox" aria-label="分支列表">
+                                            <div className="max-h-48 overflow-auto py-1">
+                                                {localBranches.length === 0 ? (
+                                                    <div className="px-3 py-2 text-xs text-[var(--mm-text-tertiary)]">无本地分支</div>
+                                                ) : localBranches.map((b) => (
+                                                    <button
+                                                        key={b.name}
+                                                        type="button"
+                                                        onClick={() => void handleCheckout(b.name)}
+                                                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--mm-bg-sidebar)] ${b.isCurrent ? "font-medium text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"}`}
+                                                        role="option"
+                                                        aria-selected={b.isCurrent}
+                                                    >
+                                                        <span className="w-3 shrink-0">{b.isCurrent ? "●" : ""}</span>
+                                                        <span className="min-w-0 flex-1 truncate">{b.name}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <div className="border-t border-[var(--mm-border)] p-2">
+                                                <input
+                                                    type="text"
+                                                    value={newBranchName}
+                                                    onChange={(e) => setNewBranchName(e.target.value)}
+                                                    onKeyDown={(e) => { if (e.key === "Enter") void handleCreateBranch(); }}
+                                                    placeholder="新分支名..."
+                                                    className="w-full rounded border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-2 py-1 text-xs text-[var(--mm-text-primary)] focus:outline-none focus:border-[#999]"
+                                                    aria-label="新分支名"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleCreateBranch()}
+                                                    disabled={!newBranchName.trim() || branchBusy}
+                                                    className="mt-1.5 w-full rounded bg-[#1f1f1f] px-2 py-1 text-xs text-white disabled:opacity-35"
+                                                >
+                                                    创建并切换
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                             <p className="m-0 mt-1 text-[11px] text-[var(--mm-text-tertiary)]">
                                 {stagedChanges.length} staged / {unstagedChanges.length} changes · ahead {status.ahead} / behind {status.behind}

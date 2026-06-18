@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import type { CreateAgentInput, SendAgentPromptInput } from "@shared";
 import type { AgentRuntimeRegistry } from "../services/agent-runtime/registry";
-import { agentsCreateSchema, agentsPromptSchema, agentsIdSchema } from "./schemas";
+import { agentsCreateSchema, agentsPromptSchema, agentsIdSchema, agentsSetThinkingSchema } from "./schemas";
 
 export function setupAgentsIpc(registry: AgentRuntimeRegistry): void {
     ipcMain.handle("agents:list", async () => registry.list());
@@ -32,5 +32,9 @@ export function setupAgentsIpc(registry: AgentRuntimeRegistry): void {
     ipcMain.handle("agents:runtime-state", async (_event, agentId: string) => {
         agentsIdSchema.parse([agentId]);
         return registry.getRuntimeState(agentId);
+    });
+    ipcMain.handle("agents:set-thinking", async (_event, agentId: string, level: "none" | "low" | "medium" | "high") => {
+        agentsSetThinkingSchema.parse([agentId, level]);
+        registry.setThinking(agentId, level);
     });
 }

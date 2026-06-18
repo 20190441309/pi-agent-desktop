@@ -52,7 +52,6 @@ interface SettingsState {
 const defaultSettings: AppSettings = {
   theme: 'light',
   fontSize: 14,
-  // v1.0.15: 不 hardcode 'gpt-4' / 'openai' — 空串启动,由 loadPiConfig 真读 Pi CLI 配置覆盖
   model: '',
   provider: '',
   temperature: 0.7,
@@ -64,6 +63,8 @@ const defaultSettings: AppSettings = {
   runtimeChannel: 'stable',
   autoCompactionEnabled: false,
   workspaceToolDefaults: {},
+  showThinking: true,
+  thinkingLevel: 'medium',
 };
 
 const SETTINGS_WRITE_DEBOUNCE_MS = 120;

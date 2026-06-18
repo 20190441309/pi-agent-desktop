@@ -1,6 +1,6 @@
 import { execFileSync } from "child_process";
-import { isAbsolute, relative, resolve } from "path";
-import { ipcError, type GitStatus, type IpcError } from "@shared";
+import { isAbsolute, join, relative, resolve } from "path";
+import { ipcError, type GitStatus, type GitChangedFile, type IpcError } from "@shared";
 import { getProtectedPathReason } from "./protected-paths";
 
 export function protectedGitPathError(path: string, reason: string): IpcError {
@@ -155,4 +155,88 @@ export function gitCommit(workspacePath: string, message: string): string | IpcE
         cwd: workspacePath,
         encoding: "utf-8",
     });
+}
+
+export function gitCheckout(workspacePath: string, branch: string): void | IpcError {
+    const workspaceError = assertWorkspaceAllowed(workspacePath);
+    if (workspaceError) return workspaceError;
+    if (!/^[a-zA-Z0-9._\-/]+$/.test(branch)) {
+        return ipcError("ipcErrors.git.invalidArgs", `分支名包含非法字符: ${branch}`);
+    }
+    execFileSync("git", ["checkout", branch], { cwd: workspacePath, encoding: "utf-8" });
+    return undefined;
+}
+
+export function gitCreateBranch(workspacePath: string, branchName: string): void | IpcError {
+    const workspaceError = assertWorkspaceAllowed(workspacePath);
+    if (workspaceError) return workspaceError;
+    if (!/^[a-zA-Z0-9._\-/]+$/.test(branchName)) {
+        return ipcError("ipcErrors.git.invalidArgs", `分支名包含非法字符: ${branchName}`);
+    }
+    execFileSync("git", ["checkout", "-b", branchName], { cwd: workspacePath, encoding: "utf-8" });
+    return undefined;
+}
+
+export function gitOriginalContent(workspacePath: string, filePath: string): string | IpcError {
+    const workspaceError = assertWorkspaceAllowed(workspacePath);
+    if (workspaceError) return workspaceError;
+    const gitRoot = findGitRoot(workspacePath);
+    if (!gitRoot) return "";
+    const gitPath = toGitPath(workspacePath, filePath);
+    if (typeof gitPath !== "string") return gitPath;
+    try {
+        return execFileSync("git", ["-C", gitRoot, "show", `HEAD:${gitPath}`], {
+            encoding: "utf-8",
+            maxBuffer: 32 * 1024 * 1024,
+        });
+    } catch {
+        return "";
+    }
+}
+
+export function gitChangedFiles(workspacePath: string): GitChangedFile[] | IpcError {
+    const workspaceError = assertWorkspaceAllowed(workspacePath);
+    if (workspaceError) return workspaceError;
+    const gitRoot = findGitRoot(workspacePath);
+    if (!gitRoot) return [];
+
+    const run = (args: string[]): string => {
+        try {
+            return execFileSync("git", args, { cwd: gitRoot, encoding: "utf-8" });
+        } catch {
+            return "";
+        }
+    };
+
+    const staged = run(["diff", "--cached", "--name-status", "--diff-filter=ACDMR"]);
+    const unstaged = run(["diff", "--name-status", "--diff-filter=ACDMR"]);
+    const untracked = run(["ls-files", "--others", "--exclude-standard"]);
+
+    const files: GitChangedFile[] = [];
+    const seen = new Set<string>();
+    const addFile = (relPath: string, status: GitChangedFile["status"]): void => {
+        if (!relPath || seen.has(relPath)) return;
+        seen.add(relPath);
+        files.push({ path: join(gitRoot, relPath).replace(/\\/g, "/"), status });
+    };
+
+    const mapStatus = (ch: string): GitChangedFile["status"] =>
+        ch === "A" ? "added" : ch === "D" ? "deleted" : ch === "R" ? "renamed" : "modified";
+
+    for (const line of staged.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const [statusChar, ...pathParts] = trimmed.split(/\s+/);
+        addFile(pathParts.join(" "), mapStatus(statusChar ?? "M"));
+    }
+    for (const line of unstaged.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const [statusChar, ...pathParts] = trimmed.split(/\s+/);
+        addFile(pathParts.join(" "), mapStatus(statusChar ?? "M"));
+    }
+    for (const line of untracked.split(/\r?\n/)) {
+        addFile(line.trim(), "added");
+    }
+    return files;
 }
