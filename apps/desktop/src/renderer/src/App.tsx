@@ -108,7 +108,7 @@ function AppShell(): React.ReactElement {
     const { getCurrentWorkspace, workspaces } = useWorkspaceStore();
     const workspaceError = useWorkspaceStore((state) => state.lastError);
     const clearWorkspaceError = useWorkspaceStore((state) => state.clearError);
-    const { loadPiConfig, openSettings, settings, rightRailCollapsed, sidebarGroupMode } = useSettingsStore();
+    const { loadPiConfig, settings, rightRailCollapsed, sidebarGroupMode } = useSettingsStore();
     const { toggleRightRail, setSidebarGroupMode } = useSettingsStore();
     const { status, loading: piStatusLoading, refreshStatus } = usePiStatusStore();
     const pendingApprovalCount = useApprovalStore(
@@ -387,7 +387,7 @@ function AppShell(): React.ReactElement {
     useEffect(() => {
         const onOpenSettingsTab = (event: Event): void => {
             const detail = (event as CustomEvent<{ tab?: string }>).detail;
-            openSettings();
+            window.piAPI?.openSettingsWindow();
             window.setTimeout(() => {
                 window.dispatchEvent(new CustomEvent("settings:select-tab", { detail }));
             }, 0);
@@ -403,14 +403,14 @@ function AppShell(): React.ReactElement {
             window.removeEventListener("slash-command:open-hotkeys", onOpenHotkeys);
             window.removeEventListener("slash-command:new-task", onNewTask);
         };
-    }, [openSettings, routeSection]);
+        }, [routeSection]);
 
     // 全局快捷键
     const shortcutHandlers = useMemo(
         () => ({
             "open-command-palette": () => setPaletteOpen((v) => !v),
             "toggle-terminal": () => setShowTerminal((v) => !v),
-            "open-settings": () => openSettings(),
+            "open-settings": () => window.piAPI?.openSettingsWindow(),
             "new-chat": () => {
                 useSessionStore.setState({ currentSessionId: null });
                 setActiveSection("new-task");
@@ -429,12 +429,12 @@ function AppShell(): React.ReactElement {
                 }
             },
         }),
-        [openSettings, paletteOpen, showCheatsheet, showTerminal, showSearchHistory],
+        [paletteOpen, showCheatsheet, showTerminal, showSearchHistory],
     );
     useShortcuts(shortcutHandlers);
 
     // 解析当前 section → 决定中间内容
-    // v1.0.17: "settings" 只通过 openSettings() 打开模态框，不再在主内容区占位
+    // v1.0.17: "settings" 通过 openSettingsWindow() 打开独立窗口，不再在主内容区占位
     const activePanel = panelForSection(activeSection);
 
     const panelFallback = (name: string) => (error: Error, reset: () => void) => (
