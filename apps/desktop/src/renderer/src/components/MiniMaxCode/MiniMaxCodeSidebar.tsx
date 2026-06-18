@@ -24,7 +24,7 @@
 //
 // 不持有路由状态: 父级通过 currentSection/onSectionChange 控制激活。
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { useI18n } from "../../i18n";
@@ -34,15 +34,6 @@ import { DateGroupedSessionList } from "./DateGroupedSessionList";
 // ----------------------------------------------------------------------
 // 类型
 // ----------------------------------------------------------------------
-
-export interface MiniMaxCodeSection {
-    /** 唯一 id(传给 onSectionChange) */
-    id: string;
-    /** 显示文案 */
-    label: string;
-    /** inline SVG icon (16x16 推荐) */
-    icon: React.ReactNode;
-}
 
 export interface MiniMaxCodeSidebarProps {
     /** 当前激活的 section id */
@@ -178,6 +169,19 @@ export function MiniMaxCodeSidebar({
     const archiveSession = useSessionStore((state) => state.archiveSession);
     const deleteSession = useSessionStore((state) => state.deleteSession);
     const [showGroupMenu, setShowGroupMenu] = useState(false);
+    const groupMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!showGroupMenu) return;
+        const handleDocClick = (e: MouseEvent) => {
+            if (groupMenuRef.current && !groupMenuRef.current.contains(e.target as Node)) {
+                setShowGroupMenu(false);
+            }
+        };
+        document.addEventListener("mousedown", handleDocClick);
+        return () => document.removeEventListener("mousedown", handleDocClick);
+    }, [showGroupMenu]);
+
     const agentOnline = piAgentStatus === "online";
     const agentChecking = piAgentStatus === "checking";
     const agentStatusLabel = agentChecking
@@ -237,7 +241,7 @@ export function MiniMaxCodeSidebar({
                 </button>
 
                 {/* 分组模式切换 */}
-                <div className="relative">
+                <div className="relative" ref={groupMenuRef}>
                     <button
                         type="button"
                         onClick={() => setShowGroupMenu(!showGroupMenu)}
