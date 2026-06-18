@@ -3,9 +3,7 @@
 import { app, BrowserWindow } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
-import { existsSync, readFileSync } from 'fs';
 import { homedir } from 'os';
-import yaml from 'js-yaml';
 import log from 'electron-log/main';
 import Store from 'electron-store';
 import { PiDriver, type PiInstallProgress } from './pi-driver';
@@ -39,7 +37,7 @@ import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
 import { ConfigManager } from './services/config/config-manager';
 import { CodexSessionImporter } from './services/codex-session/importer';
 import { ClaudeSessionImporter } from './services/claude-session/importer';
-import type { PiAgentConfig, PiAgentModel } from './types';
+import type { PiAgentConfig } from './types';
 
 let mainWindow: BrowserWindow | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
@@ -53,144 +51,6 @@ const PI_AGENT_DIR = join(homedir(), '.pi', 'agent');
 
 // Startup banner for electron-log diagnostics
 log.info(`[Main] Pi Desktop starting (electron ${process.versions.electron}, node ${process.versions.node})`);
-
-// 从本地 Pi Agent 配置目录加载配置
-function loadPiAgentConfig(): PiAgentConfig | null {
-  try {
-    if (!existsSync(PI_AGENT_DIR)) return null;
-
-    // 读取 settings.json
-    const settingsPath = join(PI_AGENT_DIR, 'settings.json');
-    let defaultProvider = 'google';
-    let defaultModel = '';
-    if (existsSync(settingsPath)) {
-      const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
-      defaultProvider = settings.defaultProvider || defaultProvider;
-      defaultModel = settings.defaultModel || '';
-    }
-
-    // 读取 models.json (优先) 和 models.yml (补充)
-    const providers: PiAgentConfig['providers'] = [];
-
-    // 解析 models.json
-    const modelsJsonPath = join(PI_AGENT_DIR, 'models.json');
-    if (existsSync(modelsJsonPath)) {
-      const modelsData = JSON.parse(readFileSync(modelsJsonPath, 'utf-8'));
-      if (modelsData.providers) {
-        for (const [providerId, providerData] of Object.entries(modelsData.providers)) {
-          const pd = providerData as {
-            name?: string;
-            baseUrl?: string;
-            apiType?: string;
-            api?: string;
-            models?: Array<Record<string, unknown>>;
-            _piDesktopDeletedModels?: string[];
-          };
-          const models: PiAgentModel[] = (pd.models || []).map((m) => ({
-            id: String(m.id),
-            name: typeof m.name === 'string' ? m.name : String(m.id),
-            provider: providerId,
-            providerName: pd.name || providerId,
-            contextWindow: typeof m.contextWindow === 'number' ? m.contextWindow : undefined,
-            maxTokens: typeof m.maxTokens === 'number' ? m.maxTokens : undefined,
-            reasoning: Boolean(m.reasoning),
-            input: Array.isArray(m.input) ? m.input as string[] : undefined
-          }));
-          providers.push({
-            id: providerId,
-            name: pd.name || providerId,
-            baseUrl: pd.baseUrl,
-            apiType: pd.apiType,
-            api: pd.api,
-            _piDesktopDeletedModels: Array.isArray(pd._piDesktopDeletedModels) ? pd._piDesktopDeletedModels : undefined,
-            models,
-          });
-        }
-      }
-    }
-
-    // 解析 models.yml (补充 models.json 中不存在的 provider)
-    const modelsYmlPath = join(PI_AGENT_DIR, 'models.yml');
-    if (existsSync(modelsYmlPath)) {
-      const ymlContent = readFileSync(modelsYmlPath, 'utf-8');
-      const ymlProviders = loadYamlProviders(ymlContent);
-      for (const yp of ymlProviders) {
-        if (!providers.find(p => p.id === yp.id)) {
-          providers.push(yp);
-        } else {
-          // 合并模型中不存在的模型
-          const existing = providers.find(p => p.id === yp.id);
-          if (!existing) continue;
-          const deletedModels = new Set(existing._piDesktopDeletedModels ?? []);
-          for (const ym of yp.models) {
-            if (deletedModels.has(ym.id)) continue;
-            if (!existing.models.find(m => m.id === ym.id)) {
-              existing.models.push(ym);
-            }
-          }
-        }
-      }
-    }
-
-    return { defaultProvider, defaultModel, providers };
-  } catch (e) {
-    log.error('Failed to load Pi Agent config:', e);
-    return null;
-  }
-}
-
-// Parse Pi models.yml into PiAgentConfig['providers'] using js-yaml.
-// (replaces an earlier 60-line hand-written regex parser)
-function loadYamlProviders(content: string): PiAgentConfig['providers'] {
-  const data = yaml.load(content) as { providers?: Record<string, unknown> } | null;
-  if (!data || typeof data !== 'object' || !data.providers) return [];
-
-  const result: PiAgentConfig['providers'] = [];
-  for (const [providerId, raw] of Object.entries(data.providers)) {
-    const pd = raw as {
-      name?: string;
-      baseUrl?: string;
-      apiType?: string;
-      api?: string;
-      _piDesktopDeletedModels?: string[];
-      models?: Array<Record<string, unknown>>;
-    };
-    if (!pd || typeof pd !== 'object') continue;
-
-    const models: PiAgentModel[] = Array.isArray(pd.models)
-      ? pd.models
-          .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && typeof m.id === 'string')
-          .map((m) => {
-            const ctxRaw = m.contextWindow;
-            const tokensRaw = m.maxTokens;
-            return {
-              id: m.id as string,
-              name: typeof m.name === 'string' ? m.name : (m.id as string),
-              provider: providerId,
-              providerName: typeof pd.name === 'string' ? pd.name : providerId,
-              contextWindow: typeof ctxRaw === 'number' ? ctxRaw : undefined,
-              maxTokens: typeof tokensRaw === 'number' ? tokensRaw : undefined,
-              reasoning: Boolean(m.reasoning),
-              input: Array.isArray(m.input) ? (m.input as string[]) : undefined
-            };
-          })
-      : [];
-
-    result.push({
-      id: providerId,
-      name: typeof pd.name === 'string' ? pd.name : providerId,
-      baseUrl: typeof pd.baseUrl === 'string' ? pd.baseUrl : undefined,
-      apiType: typeof pd.apiType === 'string' ? pd.apiType : undefined,
-      api: typeof pd.api === 'string' ? pd.api : undefined,
-      _piDesktopDeletedModels: Array.isArray(pd._piDesktopDeletedModels)
-        ? pd._piDesktopDeletedModels.filter((id): id is string => typeof id === 'string')
-        : undefined,
-      models
-    });
-  }
-
-  return result;
-}
 
 interface Workspace {
   id: string;
@@ -317,7 +177,7 @@ function setupIPC(): void {
   setupAgentsIpc(agentRegistry);
   setupConfigIpc(configManager, {
     onManagedModelsChanged: () => {
-      piAgentConfig = loadPiAgentConfig();
+      piAgentConfig = configManager.loadPiAgentConfig();
       if (piAgentConfig) {
         const currentSettings = store.get('settings');
         store.set('settings', {
@@ -388,7 +248,7 @@ app.whenReady().then(() => {
   registerLocalFileProtocol();
 
   // 先加载 Pi 配置，再初始化
-  piAgentConfig = loadPiAgentConfig();
+  piAgentConfig = configManager.loadPiAgentConfig();
   if (piAgentConfig) {
     log.info(`Pi config loaded: provider=${piAgentConfig.defaultProvider}, model=${piAgentConfig.defaultModel}, ${piAgentConfig.providers.length} providers`);
     // 更新 electron-store 默认设置与 Pi 配置同步

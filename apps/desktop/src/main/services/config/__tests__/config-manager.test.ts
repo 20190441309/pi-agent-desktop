@@ -192,4 +192,59 @@ describe("ConfigManager", () => {
         expect(list.models[0]).toMatchObject({ source: "json", modelName: "Keep Edited" });
         await expect(readFile(join(dir, "models.json"), "utf8")).resolves.toContain("\"_piDesktopDeletedModels\"");
     });
+
+    describe("loadPiAgentConfig", () => {
+        it("returns null when config dir does not exist", () => {
+            const mgr = new ConfigManager(join(tmpdir(), "nonexistent-dir-" + Date.now()));
+            expect(mgr.loadPiAgentConfig()).toBeNull();
+        });
+
+        it("parses models.json providers", async () => {
+            await writeFile(
+                join(dir, "models.json"),
+                JSON.stringify({
+                    providers: {
+                        openai: {
+                            name: "OpenAI",
+                            baseUrl: "https://api.openai.com/v1",
+                            models: [{ id: "gpt-4o", name: "GPT-4o", contextWindow: 128000 }],
+                        },
+                    },
+                }),
+                "utf8",
+            );
+
+            const config = manager.loadPiAgentConfig();
+
+            expect(config).not.toBeNull();
+            expect(config!.defaultProvider).toBe("google");
+            expect(config!.providers).toHaveLength(1);
+            expect(config!.providers[0].id).toBe("openai");
+            expect(config!.providers[0].models[0].id).toBe("gpt-4o");
+            expect(config!.providers[0].models[0].contextWindow).toBe(128000);
+        });
+
+        it("falls back to models.yml via js-yaml", async () => {
+            await writeFile(
+                join(dir, "models.yml"),
+                [
+                    "providers:",
+                    "  anthropic:",
+                    "    name: Anthropic",
+                    "    baseUrl: https://api.anthropic.com",
+                    "    models:",
+                    "      - id: claude-sonnet-4-20250514",
+                    "        name: Claude Sonnet 4",
+                ].join("\n"),
+                "utf8",
+            );
+
+            const config = manager.loadPiAgentConfig();
+
+            expect(config).not.toBeNull();
+            expect(config!.providers).toHaveLength(1);
+            expect(config!.providers[0].id).toBe("anthropic");
+            expect(config!.providers[0].models[0].id).toBe("claude-sonnet-4-20250514");
+        });
+    });
 });
