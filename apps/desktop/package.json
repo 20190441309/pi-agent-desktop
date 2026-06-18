@@ -5,7 +5,7 @@
   "description": "Pi Agent Desktop Application",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/dev-check.mjs && electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "electron-builder build --win --publish never",
