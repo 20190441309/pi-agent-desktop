@@ -172,13 +172,10 @@ function AppShell(): React.ReactElement {
     // v2.0: 自动右栏 — 空对话页隐藏右栏, 有消息后显示
     useEffect(() => {
         const hasMessages = (currentSession?.messages?.length ?? 0) > 0;
-        const current = useSettingsStore.getState().rightRailCollapsed;
-        if (hasMessages && current) {
-            toggleRightRail();
-        } else if (!hasMessages && !current) {
-            toggleRightRail();
-        }
-    }, [currentSession?.messages?.length, toggleRightRail]);
+        useSettingsStore.setState((s) => ({
+            rightRailCollapsed: hasMessages ? false : s.rightRailCollapsed,
+        }));
+    }, [currentSession?.messages?.length]);
 
     useEffect(() => {
         if (activeSection === "new-task" && currentSession) {
@@ -296,10 +293,12 @@ function AppShell(): React.ReactElement {
             setPaletteOpen(true);
             return;
         }
+        // TODO: Implement dedicated tasks panel route
         if (section === "tasks") {
             setActiveSection("chat");
             return;
         }
+        // TODO: Implement dedicated memory panel route
         if (section === "memory") {
             setPaletteOpen(true);
             return;
