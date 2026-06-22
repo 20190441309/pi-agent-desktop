@@ -344,6 +344,8 @@ export const writeTextFileSchema = z.union([
 export const agentsCreateSchema = z.object({
     workspaceId: z.string().min(1),
     title: z.string().min(1).optional(),
+    sessionId: z.string().min(1).optional(),
+    sessionPath: z.string().min(1).optional(),
     model: z.string().optional(),
     provider: z.string().optional(),
 });

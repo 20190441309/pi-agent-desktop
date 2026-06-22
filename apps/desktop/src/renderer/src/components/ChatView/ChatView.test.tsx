@@ -116,6 +116,18 @@ describe("ChatView", () => {
           messages: [],
         })),
         renameSession: vi.fn(async () => undefined),
+        appendMessage: vi.fn(async () => undefined),
+        agentsCreate: vi.fn(async (input: { workspaceId: string; title?: string; sessionId?: string }) => ({
+          id: `agent_${input.sessionId ?? input.workspaceId}`,
+          workspaceId: input.workspaceId,
+          title: input.title ?? "Agent",
+          status: "idle",
+          sessionId: input.sessionId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })),
+        agentsMessages: vi.fn(async () => []),
+        agentsRuntimeState: vi.fn(async (agentId: string) => ({ agentId, status: "idle", isStreaming: false })),
       },
       configurable: true,
     });
@@ -300,7 +312,7 @@ describe("ChatView", () => {
     expect(useSessionStore.getState().sessions).toHaveLength(0);
   });
 
-  it("creates the draft session only when the first message is sent", async () => {
+  it("creates and binds the draft session only when the first message is sent", async () => {
     useSessionStore.setState({ sessions: [], currentSessionId: null });
 
     render(
@@ -314,8 +326,17 @@ describe("ChatView", () => {
     await waitFor(() => {
       expect(useSessionStore.getState().sessions).toHaveLength(1);
     });
-    expect(useSessionStore.getState().currentSessionId).toBeTruthy();
-    await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws1", "draft hello"));
+    const createdSessionId = useSessionStore.getState().currentSessionId;
+    expect(createdSessionId).toBeTruthy();
+    expect(window.piAPI.agentsCreate).toHaveBeenCalledWith({
+      workspaceId: "ws1",
+      title: "未命名会话 Agent",
+      sessionId: createdSessionId,
+    });
+    expect(useSessionStore.getState().sessions[0]?.messages[0]?.content).toBe("draft hello");
+    await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws1", "draft hello", {
+      agentId: `agent_${createdSessionId}`,
+    }));
   });
 
   it("uses the agent that belongs to the current workspace", async () => {
@@ -374,7 +395,9 @@ describe("ChatView", () => {
 
     fireEvent.click(screen.getByTestId("chat-input"));
 
-    await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws2", "draft hello"));
+    await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws2", "draft hello", {
+      agentId: expect.stringMatching(/^agent_/),
+    }));
   });
 
   it("shows an inline error when continuing a read-only session fails", async () => {
@@ -503,6 +526,7 @@ describe("ChatView", () => {
 
     await waitFor(() => {
       expect(startStreaming).toHaveBeenCalledWith("ws1", "/execute_plan test-plan.md", {
+        agentId: "agent_s1",
         visibleContent: "执行计划：test-plan.md",
       });
     });

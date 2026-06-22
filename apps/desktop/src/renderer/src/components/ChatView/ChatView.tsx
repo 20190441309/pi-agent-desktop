@@ -13,6 +13,7 @@ import { ChatInput } from './ChatInput';
 import { useI18n } from '../../i18n';
 import { usePlanStore } from '../../stores/plan-store';
 import { useSettingsStore } from '../../stores/settings-store';
+import { WorkspaceSwitcher } from '../TopTabBar/WorkspaceSwitcher';
 import { formatUsageCost, formatUsageNumber } from '../UsageStats/usage-aggregation';
 import type { Message } from '../../stores/session-store';
 import type { AgentMessage } from '@shared';
@@ -50,24 +51,24 @@ function visibleText(message: Message): string {
 }
 
 function EmptyConversationIntro({
-  workspaceName,
+  workspaceControl,
   modelSummary,
   permissionLabel,
   thinkingLabel,
 }: {
-  workspaceName: string;
+  workspaceControl: React.ReactNode;
   modelSummary: string;
   permissionLabel: string;
   thinkingLabel: string;
 }): React.JSX.Element {
   return (
-    <div className="mx-auto flex w-full max-w-[456px] flex-1 flex-col px-5 pb-2 pt-8 text-left">
-      <div className="relative -left-[20px] w-[461px] rounded-[6px] border border-[#f5f6f8] bg-[#f5f6f8] px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
+    <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col px-6 pb-2 pt-8 text-left">
+      <div className="w-full rounded-[6px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
         <div className="text-[14px] font-medium leading-5 text-[var(--mm-text-primary)]">新对话</div>
         <div className="mt-1 text-[12px] text-[#8a939c]">输入消息后，Pi Agent 会在当前工作区开始运行。</div>
-        <div className="mt-4 grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-2 text-[11px] leading-4">
+        <div className="mt-4 grid grid-cols-[72px_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-[11px] leading-4">
           <span className="text-[var(--mm-text-tertiary)]">工作区</span>
-          <span className="truncate text-[var(--mm-text-secondary)]">{workspaceName}</span>
+          {workspaceControl}
           <span className="text-[var(--mm-text-tertiary)]">模型</span>
           <span className="truncate text-[var(--mm-text-secondary)]">{modelSummary}</span>
           <span className="text-[var(--mm-text-tertiary)]">权限</span>
@@ -172,13 +173,20 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
   const agents = useAgentStore((state) => state.agents);
   const currentAgentId = useAgentStore((state) => state.currentAgentId);
+  const currentSessionId = useSessionStore((state) => state.currentSessionId);
+  const createAgent = useAgentStore((state) => state.createAgent);
   const currentAgent = useMemo(() => {
     if (!currentWorkspace) return null;
+    if (currentSessionId) {
+      const sessionAgent = agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === currentSessionId);
+      if (sessionAgent) return sessionAgent;
+    }
+    if (!currentSessionId) return null;
     const selectedAgent = currentAgentId
-      ? agents.find((agent) => agent.id === currentAgentId && agent.workspaceId === currentWorkspace.id)
+      ? agents.find((agent) => agent.id === currentAgentId && agent.workspaceId === currentWorkspace.id && !agent.sessionId)
       : undefined;
-    return selectedAgent ?? agents.find((agent) => agent.workspaceId === currentWorkspace.id) ?? null;
-  }, [agents, currentAgentId, currentWorkspace]);
+    return selectedAgent ?? agents.find((agent) => agent.workspaceId === currentWorkspace.id && !agent.sessionId) ?? null;
+  }, [agents, currentAgentId, currentSessionId, currentWorkspace]);
   const agentId = currentAgent?.id ?? null;
   const {
     isStreaming,
@@ -278,19 +286,35 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const handleSend = async (message: string, options?: { visibleContent?: string }) => {
     if (!currentWorkspace) return;
     try {
-      if (!hasAgent && getCurrentSession()?.readOnly) {
+      if (getCurrentSession()?.readOnly) {
         setSendError("当前会话是只读历史，请先从此会话继续。");
         return;
       }
-      if (!hasAgent && !getCurrentSession()) {
-        await createSession(currentWorkspace.id);
+      let sessionForSend = getCurrentSession();
+      if (!sessionForSend || sessionForSend.workspaceId !== currentWorkspace.id) {
+        sessionForSend = await createSession(currentWorkspace.id);
       }
       setSendError(null);
       setSessionActionError(null);
+      let agentIdForSend = currentAgent?.sessionId === sessionForSend.id
+        ? currentAgent.id
+        : agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === sessionForSend!.id)?.id;
+      if (!agentIdForSend) {
+        const agent = await createAgent(currentWorkspace.id, `${sessionForSend.title || "未命名会话"} Agent`, undefined, sessionForSend.id);
+        agentIdForSend = agent.id;
+      }
+      if (agentIdForSend && sessionForSend.messages.length === 0) {
+        useSessionStore.getState().addMessage(sessionForSend.id, {
+          id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          role: "user",
+          content: options?.visibleContent ?? message,
+          timestamp: new Date(),
+        });
+      }
       if (options) {
-        await startStreaming(currentWorkspace.id, message, options);
+        await startStreaming(currentWorkspace.id, message, agentIdForSend ? { ...options, agentId: agentIdForSend } : options);
       } else {
-        await startStreaming(currentWorkspace.id, message);
+        await startStreaming(currentWorkspace.id, message, agentIdForSend ? { agentId: agentIdForSend } : undefined);
       }
     } catch (err) {
       setSendError(err instanceof Error ? err.message : String(err));
@@ -368,7 +392,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
           ? "关闭"
           : "中";
   const modelSummary = [settings.provider, settings.model].filter(Boolean).join(" / ") || "未配置模型";
-  const workspaceName = currentWorkspace?.name ?? "未选择";
+  const workspaceControl = <WorkspaceSwitcher variant="inline" />;
   const usage = currentSession?.usage;
   const totalTokens = usage?.totalTokens ?? (
     usage?.inputTokens !== undefined || usage?.outputTokens !== undefined
@@ -518,11 +542,9 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
 
   return (
     <div data-testid="chat-view-root" className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)]">
-      <div className="flex min-h-[42px] shrink-0 items-center justify-between gap-3 border-b border-[#e5e5e5] bg-[var(--mm-bg-main)] px-4 text-[12px]">
+      <div className="flex min-h-[42px] shrink-0 items-center justify-between gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-4 text-[12px]">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[var(--mm-text-secondary)]">
-          <span className="min-w-0 truncate">
-            工作区: <span className="text-[var(--mm-text-primary)]">{workspaceName}</span>
-          </span>
+          <WorkspaceSwitcher variant="strip" />
           <span>权限: <span className="text-[var(--mm-text-primary)]">{permissionLabel}</span></span>
           <span className="font-mono text-[var(--mm-text-primary)]">{usageSummary}</span>
           {usage ? (
@@ -592,7 +614,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col px-0 pb-0 pt-0 text-center">
             <EmptyConversationIntro
-              workspaceName={workspaceName}
+              workspaceControl={workspaceControl}
               modelSummary={modelSummary}
               permissionLabel={permissionLabel}
               thinkingLabel={thinkingLabel}
@@ -628,7 +650,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         ) : (
           /* 消息列表 */
           <div
-            className="mx-auto flex max-w-[740px] flex-col space-y-5 px-0 py-5"
+            className="mx-auto flex w-full max-w-[780px] flex-col space-y-5 px-4 py-5 sm:px-6 lg:px-8"
             role="log"
             aria-live="polite"
             aria-label={t('chatView.messagesAria')}

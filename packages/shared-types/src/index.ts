@@ -117,6 +117,7 @@ export interface CreateAgentInput {
     workspaceId: string;
     title?: string;
     sessionPath?: string;
+    sessionId?: string;
 }
 
 export type AgentMode = "build" | "plan" | "compose" | "max";

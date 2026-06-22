@@ -10,6 +10,7 @@ import { CustomMessageCard } from './CustomMessageCard';
 import { ThinkingBlock } from './ThinkingBlock';
 import { PlanCard } from './PlanCard';
 import { usePlanStore } from '../../stores/plan-store';
+import { useSettingsStore } from '../../stores/settings-store';
 import { formatTime, formatIso } from '../../utils/format';
 
 type ChatMessage = Message & {
@@ -153,6 +154,9 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
   const thinkingParts = [message.thinking?.trim(), inlineThinking.thinking]
     .filter((part): part is string => Boolean(part))
   const thinkingContent = thinkingParts.join("\n\n");
+  const showThinking = useSettingsStore((state) =>
+    state.settings.showThinking !== false && state.settings.thinkingLevel !== "none"
+  );
   const thinkingCount = (message.thinkingCount ?? (message.thinking?.trim() ? 1 : 0)) + inlineThinking.count;
   const visibleContent = inlineThinking.content;
   const [copied, setCopied] = useState(false);
@@ -228,7 +232,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
               </div>
             ) : (
               <>
-                {thinkingContent && (
+                {showThinking && thinkingContent && (
                   <ThinkingBlock
                     content={thinkingContent}
                     count={thinkingCount}

@@ -94,7 +94,7 @@ export function MiniMaxCodeSidebar({
 
     return (
         <div
-            className="flex h-full w-full flex-col bg-[linear-gradient(180deg,#f0f0f2_0%,#f0f0f2_32%,#f9efeb_54%,#ececef_78%,#ececef_100%)] text-[var(--mm-text-primary)]"
+            className="pi-sidebar-surface flex h-full w-full flex-col bg-[linear-gradient(180deg,#f0f0f2_0%,#f0f0f2_32%,#f9efeb_54%,#ececef_78%,#ececef_100%)] text-[var(--mm-text-primary)]"
             data-mmcode-component="sidebar"
         >
             {/* ============== 中间 scroll 区 ============== */}

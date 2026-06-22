@@ -931,145 +931,84 @@ code {
 }
 
 .settings-window-titlebar {
-  background-color: #f3f3f3 !important;
+  background-color: var(--mm-bg-main) !important;
   border-bottom-color: var(--mm-border) !important;
 }
 
-/* ===== Dark Mode — 全局属性级覆盖 =====
- * Tailwind CSS 4 的 class 选择器匹配不稳定，无法通过 [data-theme="dark"] .bg-white
- * 等方式可靠覆盖硬编码颜色。以下使用 * 通配符直接设置 CSS 属性，
- * 然后通过恢复规则还原需要特殊颜色的元素（状态色、链接、按钮等）。
- */
-
-/* ── 第1层: 全局深色覆盖 ── */
-[data-theme="dark"] * {
-  background-color: var(--mm-bg-panel) !important;
+/* ===== Dark Mode — 定向覆盖 ===== */
+[data-theme="dark"] [data-mm-window-kind="main"],
+[data-theme="dark"] [data-mm-window-kind="settings"] {
+  --mm-bg-main: #17191c;
+  --mm-bg-sidebar: #1e2227;
+  --mm-bg-panel: #22262c;
+  --mm-bg-hover: #2b3138;
+  --mm-bg-selected: #28384c;
+  --mm-bg-active: #8ab4ff;
+  --mm-text-primary: #edf1f5;
+  --mm-text-secondary: #b3bcc7;
+  --mm-text-tertiary: #7f8996;
+  --mm-text-on-active: #101418;
+  --mm-border: #343b45;
+  background: var(--mm-bg-main) !important;
   border-color: var(--mm-border) !important;
-  color: var(--mm-text-primary) !important;
-  box-shadow: none !important;
 }
 
-/* ── 第2层: 恢复特殊元素 ── */
-[data-theme="dark"] html,
-[data-theme="dark"] body {
-  background-color: var(--mm-bg-main) !important;
+[data-theme="dark"] [data-mmcode-region="titlebar"],
+[data-theme="dark"] .settings-window-titlebar {
+  background: #191c20 !important;
+  border-color: var(--mm-border) !important;
 }
 
-[data-theme="dark"] main {
-  background-color: var(--mm-bg-main) !important;
+[data-theme="dark"] [data-testid="chat-view-root"] {
+  background: linear-gradient(180deg, #17191c 0%, #17191c 58%, #1b1e23 100%) !important;
 }
 
-[data-theme="dark"] aside,
-[data-theme="dark"] nav,
-[data-theme="dark"] header,
-[data-theme="dark"] footer {
-  background-color: var(--mm-bg-sidebar) !important;
+[data-theme="dark"] .pi-sidebar-surface {
+  background: linear-gradient(180deg, #20242a 0%, #20242a 42%, #1a1d22 100%) !important;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background-color: transparent;
+  color: var(--mm-text-primary);
 }
 
 [data-theme="dark"] pre {
-  background-color: #1e1e1e !important;
-  color: #e5e5e5 !important;
+  background: #111418;
+  border-color: var(--mm-border);
 }
 
-[data-theme="dark"] :not(pre) > code {
-  background-color: #333 !important;
+[data-theme="dark"] :not(pre) > code,
+[data-theme="dark"] kbd {
+  background-color: #2b3138;
+  color: var(--mm-text-primary);
+  border-color: var(--mm-border);
 }
 
-[data-theme="dark"] svg {
-  color: inherit !important;
-  fill: none !important;
+[data-theme="dark"] .markdown-body blockquote,
+[data-theme="dark"] .markdown-body th,
+[data-theme="dark"] .markdown-body tr:nth-child(even) {
+  background: #20242a;
 }
 
-[data-theme="dark"] img {
-  opacity: 0.9 !important;
-}
-
-/* ── 第2层: 恢复彩色元素 ── */
-[data-theme="dark"] [class*="bg-red"],
-[data-theme="dark"] [class*="bg-green"],
-[data-theme="dark"] [class*="bg-blue"],
-[data-theme="dark"] [class*="bg-yellow"],
-[data-theme="dark"] [class*="bg-orange"] {
-  background-color: inherit !important;
-}
-
-[data-theme="dark"] [class*="text-red"],
-[data-theme="dark"] [class*="text-green"],
-[data-theme="dark"] [class*="text-blue"],
-[data-theme="dark"] [class*="text-yellow"],
-[data-theme="dark"] [class*="text-orange"] {
-  color: inherit !important;
-}
-
-[data-theme="dark"] [class*="border-red"],
-[data-theme="dark"] [class*="border-green"],
-[data-theme="dark"] [class*="border-blue"],
-[data-theme="dark"] [class*="border-yellow"],
-[data-theme="dark"] [class*="border-orange"] {
-  border-color: inherit !important;
-}
-
-/* ── 第2层: 恢复交互元素 ── */
-[data-theme="dark"] [role="switch"][aria-checked="true"] {
-  background-color: #1795f6 !important;
-}
-
-[data-theme="dark"] [role="switch"] {
-  background-color: #555 !important;
-}
-
-[data-theme="dark"] [role="progressbar"] > * {
-  background-color: #1795f6 !important;
+[data-theme="dark"] .markdown-body tr:hover {
+  background: #2b3138;
 }
 
 [data-theme="dark"] a {
-  color: #60a5fa !important;
+  color: #8ab4ff;
 }
 
 [data-theme="dark"] ::selection {
-  background: rgba(255, 255, 255, 0.15) !important;
-}
-
-[data-theme="dark"] :focus-visible {
-  outline-color: #60a5fa !important;
-  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.3) !important;
+  background: rgba(138, 180, 255, 0.22);
+  color: var(--mm-text-primary);
 }
 
 [data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: #555 !important;
+  background: #4a5360;
 }
 
 [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: #777 !important;
-}
-
-/* ── 第2层: 恢复表格 ── */
-[data-theme="dark"] th {
-  background-color: var(--mm-bg-sidebar) !important;
-}
-
-[data-theme="dark"] tr:nth-child(even) {
-  background-color: var(--mm-bg-sidebar) !important;
-}
-
-/* ── 第2层: 恢复标记元素 ── */
-[data-theme="dark"] mark {
-  background-color: #3b2e1a !important;
-  color: #fbbf24 !important;
-}
-
-[data-theme="dark"] kbd {
-  background-color: #333 !important;
-  color: #e5e5e5 !important;
-  border-color: #555 !important;
-}
-
-[data-theme="dark"] blockquote {
-  background-color: #2a2a2a !important;
-  border-left-color: var(--mm-border) !important;
-}
-
-[data-theme="dark"] [role="tooltip"] {
-  background-color: #333 !important;
-  color: #e5e5e5 !important;
+  background: #66717f;
 }

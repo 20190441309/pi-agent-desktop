@@ -58,9 +58,7 @@ const FloatingToggleButton: React.FC<{
     onClick?: () => void;
 }> = ({ side, collapsed, onClick }) => {
     if (!onClick) return null;
-    const sideClass = side === "left"
-        ? collapsed ? "left-3" : "left-[calc(var(--mm-width-sidebar-left)-14px)]"
-        : collapsed ? "right-3" : "right-[calc(var(--mm-width-sidebar-right)-14px)]";
+    const sideClass = side === "left" ? "left-2" : "right-2";
     const label = side === "left"
         ? collapsed ? "展开左侧栏" : "折叠左侧栏"
         : collapsed ? "展开右侧栏" : "折叠右侧栏";
@@ -143,13 +141,13 @@ export function MiniMaxCodeLayout({
                         data-mmcode-region="left"
                         aria-label="primary navigation"
                     >
-                        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ minWidth: leftCollapsed ? 0 : undefined }}>
+                        <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto ${leftCollapsed ? "" : "pl-10"}`} style={{ minWidth: leftCollapsed ? 0 : undefined }}>
                             {leftSlot}
                         </div>
                     </aside>
 
                     <main
-                        className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)]"
+                        className={`flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)] ${leftCollapsed ? "pl-10" : ""} ${rightCollapsed ? "pr-10" : ""}`}
                         data-mmcode-region="center"
                         aria-label="main content"
                     >
@@ -163,7 +161,7 @@ export function MiniMaxCodeLayout({
                         data-mmcode-region="right"
                         aria-label="context panel"
                     >
-                        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ minWidth: rightCollapsed ? 0 : undefined }}>
+                        <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto ${rightCollapsed ? "" : "pr-10"}`} style={{ minWidth: rightCollapsed ? 0 : undefined }}>
                             {rightSlot}
                         </div>
                     </aside>

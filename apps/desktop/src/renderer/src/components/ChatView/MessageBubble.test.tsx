@@ -4,10 +4,18 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { Message, ToolCall } from "../../stores/session-store";
+import { useSettingsStore } from "../../stores/settings-store";
 import { MessageBubble } from "./MessageBubble";
 
 describe("MessageBubble", () => {
   beforeEach(() => {
+    useSettingsStore.setState({
+      settings: {
+        ...useSettingsStore.getState().settings,
+        showThinking: true,
+        thinkingLevel: "medium",
+      },
+    });
     Object.defineProperty(window, "piAPI", {
       value: {},
       configurable: true,
@@ -148,6 +156,58 @@ describe("MessageBubble", () => {
     expect(screen.getByText(/思考 1 次/)).toBeTruthy();
     expect(screen.queryByText(/<think>/)).toBeNull();
     expect(screen.queryByText("先分析一下")).toBeNull();
+  });
+
+  it("expands collapsed assistant thinking when requested", () => {
+    const message: Message = {
+      id: "m-expand-think",
+      role: "assistant",
+      content: "最终回答",
+      thinking: "可展开的思考内容",
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    const toggle = screen.getByRole("button", { name: /展开思考/ });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("可展开的思考内容")).toBeNull();
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("可展开的思考内容")).toBeTruthy();
+  });
+
+  it("hides assistant thinking when thinking display is disabled", () => {
+    useSettingsStore.setState({
+      settings: {
+        ...useSettingsStore.getState().settings,
+        showThinking: false,
+      },
+    });
+    const message: Message = {
+      id: "m-hidden-think",
+      role: "assistant",
+      content: "<think>不要展示</think>最终回答",
+      thinking: "也不要展示",
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("最终回答")).toBeTruthy();
+    expect(screen.queryByText(/思考/)).toBeNull();
+    expect(screen.queryByText("不要展示")).toBeNull();
+    expect(screen.queryByText("也不要展示")).toBeNull();
   });
 
   it("copies only visible assistant content when inline thinking is present", async () => {

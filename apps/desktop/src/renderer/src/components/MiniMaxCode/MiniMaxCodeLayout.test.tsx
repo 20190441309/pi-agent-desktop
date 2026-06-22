@@ -31,7 +31,7 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("pointer-events-auto");
     });
 
-    it("places sidebar collapse controls near the top edge and aligned with side content", () => {
+    it("pins sidebar collapse controls to the window edges and reserves content gutters", () => {
         render(
             <MiniMaxCodeLayout
                 leftSlot={<div>对话</div>}
@@ -44,9 +44,30 @@ describe("MiniMaxCode window chrome interactivity", () => {
 
         expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("top-4");
         expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("top-4");
+        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("left-2");
+        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("right-2");
         expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).not.toContain("top-1/2");
         expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).not.toContain("top-1/2");
         expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).not.toContain("-translate-y-1/2");
         expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).not.toContain("-translate-y-1/2");
+        expect(document.querySelector('[data-mmcode-region="left"]')?.firstElementChild?.className ?? "").toContain("pl-10");
+        expect(document.querySelector('[data-mmcode-region="right"]')?.firstElementChild?.className ?? "").toContain("pr-10");
+    });
+
+    it("reserves center gutters when a sidebar is collapsed and omits unavailable right toggle", () => {
+        render(
+            <MiniMaxCodeLayout
+                leftSlot={<div>对话</div>}
+                centerSlot={<div>主内容</div>}
+                rightSlot={null}
+                leftCollapsed
+                rightCollapsed
+                onCollapseLeft={() => undefined}
+            />,
+        );
+
+        expect(screen.getByRole("button", { name: "展开左侧栏" }).className).toContain("left-2");
+        expect(screen.queryByRole("button", { name: "展开右侧栏" })).toBeNull();
+        expect(document.querySelector('[data-mmcode-region="center"]')?.className ?? "").toContain("pl-10");
     });
 });

@@ -64,6 +64,7 @@ export class AgentRuntimeRegistry {
             workspaceId: workspace.id,
             title: input.title || `${workspace.name} Agent`,
             status: "starting",
+            sessionId: input.sessionId,
             sessionPath: input.sessionPath,
             createdAt: now,
             updatedAt: now,
@@ -238,6 +239,7 @@ export class AgentRuntimeRegistry {
         const input: CreateAgentInput = {
             workspaceId: runtime.workspace.id,
             title: runtime.tab.title,
+            sessionId: runtime.tab.sessionId,
             sessionPath: runtime.tab.sessionPath,
         };
         this.stop(agentId);

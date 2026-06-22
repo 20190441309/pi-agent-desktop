@@ -65,6 +65,7 @@ export interface UsePiStreamReturn extends PiStreamState {
 
 export interface StartStreamingOptions {
     visibleContent?: string;
+    agentId?: string;
 }
 
 type AssistantMessageEvent =
@@ -530,22 +531,26 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     // ref 类型是 ((event: PiEvent) => void) | null, 每次 render 同步到 current.
     const handleEventRef = useRef<((event: PiEvent) => void) | null>(null);
     useEffect(() => {
-        if (agentId && window.piAPI?.onAgentEvent) {
+        const unsubs: Array<() => void> = [];
+        if (window.piAPI?.onAgentEvent) {
             const unsub = window.piAPI.onAgentEvent((payload) => {
-                if (payload.agentId !== agentId) return;
+                const activeAgentId = agentIdRef.current;
+                if (!activeAgentId || payload.agentId !== activeAgentId) return;
                 handleEventRef.current?.(payload.event);
             });
-            return () => {
-                if (typeof unsub === "function") unsub();
-            };
+            if (typeof unsub === "function") unsubs.push(unsub);
         }
 
-        if (!window.piAPI?.onEvent) return;
-        const unsub = window.piAPI.onEvent((event: PiEvent) => {
-            handleEventRef.current?.(event);
-        });
+        if (!agentId && window.piAPI?.onEvent) {
+            const unsub = window.piAPI.onEvent((event: PiEvent) => {
+                if (agentIdRef.current) return;
+                handleEventRef.current?.(event);
+            });
+            if (typeof unsub === "function") unsubs.push(unsub);
+        }
+
         return () => {
-            if (typeof unsub === "function") unsub();
+            unsubs.forEach((unsub) => unsub());
         };
     }, [agentId]);
 
@@ -952,7 +957,10 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             return;
         }
         if (!content.trim()) return;
-        const aid = agentIdRef.current;
+        const aid = options.agentId ?? agentIdRef.current;
+        if (options.agentId) {
+            agentIdRef.current = options.agentId;
+        }
         const session = aid ? null : getCurrentSession();
         const selectedMode = useAgentModeStore.getState().getMode(workspaceId);
         const planEnabled = selectedMode === "plan" || (selectedMode === "build" && usePlanStore.getState().enabled);

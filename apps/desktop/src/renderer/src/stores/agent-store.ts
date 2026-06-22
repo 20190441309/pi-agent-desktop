@@ -10,7 +10,7 @@ interface AgentStore {
     runtimeByAgent: Record<string, AgentRuntimeState>;
     initialized: boolean;
     init: () => Promise<void>;
-    createAgent: (workspaceId: string, title?: string, sessionPath?: string) => Promise<AgentTab>;
+    createAgent: (workspaceId: string, title?: string, sessionPath?: string, sessionId?: string) => Promise<AgentTab>;
     setCurrentAgent: (agentId: string | null) => void;
     sendPrompt: (message: string) => Promise<void>;
     stopAgent: (agentId: string) => Promise<void>;
@@ -97,8 +97,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         }));
     },
 
-    createAgent: async (workspaceId, title, sessionPath) => {
-        const agent = await window.piAPI.agentsCreate({ workspaceId, title, sessionPath });
+    createAgent: async (workspaceId, title, sessionPath, sessionId) => {
+        const agent = await window.piAPI.agentsCreate({ workspaceId, title, sessionPath, sessionId });
         set((state) => ({
             agents: [...state.agents.filter((item) => item.id !== agent.id), agent],
             currentAgentId: agent.id,

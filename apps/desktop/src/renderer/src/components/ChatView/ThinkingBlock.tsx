@@ -22,12 +22,16 @@ export function ThinkingBlock({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   if (!content) return <></>;
+  const label = isExpanded ? '收起思考' : '展开思考';
 
   return (
     <div className="my-1">
       <button
+        type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full items-center justify-between py-1 text-left text-[#a0a0a0] transition-colors duration-150 hover:text-[var(--mm-text-tertiary)]"
+        aria-expanded={isExpanded}
+        aria-label={`${label}，${isStreaming ? '思考中' : `思考 ${Math.max(1, count)} 次 · ${content.length} 字符`}`}
+        className="flex w-full items-center justify-between py-1 text-left text-[var(--mm-text-tertiary)] transition-colors duration-150 hover:text-[var(--mm-text-secondary)]"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="text-xs">
