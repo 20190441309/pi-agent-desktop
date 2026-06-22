@@ -14,14 +14,27 @@ vi.mock("./components/MiniMaxCode", async () => {
             centerSlot,
             topBarSlot,
             rightCollapsed,
+            rightFloatingOpen,
+            onCollapseRight,
         }: {
             leftSlot: React.ReactNode;
             centerSlot: React.ReactNode;
             topBarSlot?: React.ReactNode;
             rightCollapsed?: boolean;
+            rightFloatingOpen?: boolean;
+            onCollapseRight?: () => void;
         }) => (
-            <div data-testid="layout-shell" data-right-collapsed={String(Boolean(rightCollapsed))}>
+            <div
+                data-testid="layout-shell"
+                data-right-collapsed={String(Boolean(rightCollapsed))}
+                data-right-floating-open={String(Boolean(rightFloatingOpen))}
+            >
                 {topBarSlot}
+                {onCollapseRight ? (
+                    <button type="button" onClick={onCollapseRight}>
+                        {rightCollapsed ? "展开右侧栏" : "折叠右侧栏"}
+                    </button>
+                ) : null}
                 <aside>{leftSlot}</aside>
                 <main>{centerSlot}</main>
             </div>
@@ -95,6 +108,11 @@ describe("App sidebar session navigation", () => {
             configurable: true,
         });
         window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
+        window.localStorage.removeItem("pi-desktop-left-sidebar-width");
+        Object.defineProperty(window, "innerWidth", {
+            value: 1400,
+            configurable: true,
+        });
 
         useWorkspaceStore.setState({
             workspaces: [
@@ -278,21 +296,44 @@ describe("App sidebar session navigation", () => {
             render(<App />);
         });
 
-        expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("false");
+        await waitFor(() => {
+            expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("false");
+        });
     });
 
-    it("切到非聊天功能页时隐藏右栏，避免空白栏挤压主内容", () => {
+    it("切到非聊天功能页时隐藏右栏，避免空白栏挤压主内容", async () => {
         useSettingsStore.setState({
             rightRailCollapsed: false,
         });
 
         render(<App />);
 
-        expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("false");
+        await waitFor(() => {
+            expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("false");
+        });
 
         fireEvent.click(screen.getByRole("tab", { name: "技能" }));
 
         expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("true");
         expect(screen.getByText("SkillsPanel")).toBeTruthy();
+    });
+
+    it("手动点击展开右栏时不受空间阈值限制", async () => {
+        Object.defineProperty(window, "innerWidth", {
+            value: 850,
+            configurable: true,
+        });
+        useSettingsStore.setState({
+            rightRailCollapsed: true,
+        });
+
+        render(<App />);
+
+        fireEvent.click(screen.getByRole("button", { name: "展开右侧栏" }));
+
+        await waitFor(() => {
+            expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("false");
+            expect(screen.getByTestId("layout-shell").getAttribute("data-right-floating-open")).toBe("true");
+        });
     });
 });

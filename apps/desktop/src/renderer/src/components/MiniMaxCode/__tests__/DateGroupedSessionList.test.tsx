@@ -186,6 +186,69 @@ describe("DateGroupedSessionList", () => {
         expect(onSelect).toHaveBeenCalledWith("s1");
     });
 
+    it("会话操作按钮浮在标题层上方且不挤占标题宽度", () => {
+        const longTitle = "了解一下这个项目并检查所有关键入口";
+        useSessionStore.setState({
+            sessions: [makeSession({ id: "s_long", title: longTitle, updatedAt: new Date() })],
+        });
+
+        const { container } = renderWithI18n(
+            <DateGroupedSessionList
+                currentSessionId="s_long"
+                onSelectSession={() => undefined}
+                onArchiveSession={() => undefined}
+                onDeleteSession={() => undefined}
+            />,
+        );
+
+        const titleButton = screen.getByRole("button", { name: longTitle });
+        const actions = container.querySelector('[data-session-actions="s_long"]');
+        expect(titleButton.className).toContain("pr-16");
+        expect(actions?.className ?? "").toContain("absolute");
+        expect(actions?.className ?? "").toContain("right-1");
+    });
+
+    it("会话行不显示相对时间", () => {
+        useSessionStore.setState({
+            sessions: [makeSession({ id: "s_no_time", title: "不显示时间", updatedAt: new Date() })],
+        });
+
+        renderWithI18n(
+            <DateGroupedSessionList
+                currentSessionId="s_no_time"
+                onSelectSession={() => undefined}
+                onArchiveSession={() => undefined}
+                onDeleteSession={() => undefined}
+            />,
+        );
+
+        expect(screen.getByRole("button", { name: "不显示时间" }).textContent).toBe("不显示时间");
+        expect(screen.queryByText(/分钟前|刚刚|小时前/)).toBeNull();
+    });
+
+    it("点击归档和删除悬浮按钮不会触发会话选择", () => {
+        const onSelect = vi.fn();
+        const onArchive = vi.fn();
+        useSessionStore.setState({
+            sessions: [makeSession({ id: "s1", title: "长标题会话", updatedAt: new Date() })],
+        });
+
+        renderWithI18n(
+            <DateGroupedSessionList
+                currentSessionId={null}
+                onSelectSession={onSelect}
+                onArchiveSession={onArchive}
+                onDeleteSession={() => undefined}
+            />,
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "归档 长标题会话" }));
+        fireEvent.click(screen.getByRole("button", { name: "删除 长标题会话" }));
+
+        expect(onArchive).toHaveBeenCalledWith("s1", true);
+        expect(onSelect).not.toHaveBeenCalled();
+    });
+
     it("当前选中会话标记 aria-current=page", () => {
         useSessionStore.setState({
             sessions: [makeSession({ id: "s1", updatedAt: new Date() })],

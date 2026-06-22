@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { useAttachmentsStore } from "../../stores/attachments-store";
@@ -102,6 +102,28 @@ describe("ChatInput", () => {
       "思考强度: 中",
       "发送",
     ]);
+  });
+
+  it("keeps the reference composer control row and send button vertically aligned", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const controls = screen.getByTestId("chat-input-reference-controls");
+    const sendButton = within(controls).getByRole("button", { name: "发送" });
+    expect(controls.className).toContain("items-center");
+    expect(sendButton.className).not.toContain("mt-[-6px]");
+    expect(sendButton.className).not.toContain("translate-x");
   });
 
   it("selects plan mode from the reference composer mode menu without enabling the old plan store", () => {
@@ -317,6 +339,35 @@ describe("ChatInput", () => {
     fireEvent.pointerUp(window, { pointerId: 1 });
 
     expect((shell as HTMLElement).style.height).toBe("155px");
+  });
+
+  it("keeps reference composer controls pinned to the bottom while resizing", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const shell = screen.getByTestId("chat-input-shell");
+    fireEvent.pointerDown(screen.getByRole("separator", { name: "调整输入框高度" }), {
+      clientY: 400,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(window, { clientY: 300, pointerId: 1 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+
+    expect((shell as HTMLElement).style.height).toBe("195px");
+    expect(shell.className).toContain("flex-col");
+    expect(screen.getByTestId("chat-input-reference-body").className).toContain("flex-1");
+    expect(screen.getByTestId("chat-input-reference-controls").className).toContain("shrink-0");
   });
 
   it("focuses the composer when the app requests a new chat focus", async () => {

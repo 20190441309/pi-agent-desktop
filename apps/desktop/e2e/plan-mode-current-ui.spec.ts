@@ -166,7 +166,7 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     }
   });
 
-  test("attachment button + plan mode uses inline clarification, then submits one /plan prompt", async () => {
+  test("attachment button + plan mode sends project exploration as one /plan prompt", async () => {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const workspacePath = test.info().outputPath("workspace");
     app = await _electron.launch({
@@ -220,19 +220,11 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     await textarea.fill("了解一下这个项目");
     await textarea.press("Enter");
     await expect(page.getByRole("article", { name: /你 ·/ })).toContainText("了解一下这个项目", { timeout: 10_000 });
-    await expect(page.getByText("计划模式需要目标")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("计划模式需要目标")).toHaveCount(0);
     await expect(page.getByText("PLAN QUESTION")).toHaveCount(0);
     await expect(page.locator("section textarea")).toHaveCount(0);
     await expect(page.getByText("从此消息继续")).toHaveCount(0);
     await expect(page.getByText("继续", { exact: true })).toHaveCount(0);
-    await expect.poll(async () => app.evaluate(() => {
-      const target = globalThis as typeof globalThis & { __currentUiPromptCalls?: unknown[] };
-      return target.__currentUiPromptCalls?.length ?? 0;
-    })).toBe(0);
-
-    await textarea.fill("请为聊天输入区的计划模式交互制定实现计划，包含 UI 状态和验证步骤");
-    await textarea.press("Enter");
-
     await expect.poll(async () => app.evaluate(() => {
       const target = globalThis as typeof globalThis & { __currentUiPromptCalls?: unknown[] };
       return target.__currentUiPromptCalls?.length ?? 0;
@@ -246,10 +238,12 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     const sentMessage = calls[0].kind === "agent" ? calls[0].input.message : calls[0].message;
     expect(sentMessage).toMatch(/^\/plan\n/);
     expect(sentMessage.match(/^\/plan/gm) ?? []).toHaveLength(1);
-    expect(sentMessage).toContain("原始请求:");
+    expect(sentMessage).toContain("用户请求:");
     expect(sentMessage).toContain("了解一下这个项目");
-    expect(sentMessage).toContain("补充目标:");
-    expect(sentMessage).toContain("聊天输入区的计划模式交互");
+    expect(sentMessage).toContain("先只读探索");
+    const visibleUserArticle = page.getByRole("article", { name: /你 ·/ }).filter({ hasText: "了解一下这个项目" });
+    await expect(visibleUserArticle).not.toContainText("用户请求:");
+    await expect(visibleUserArticle).not.toContainText("先只读探索");
 
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.webContents.send("plan:card", {

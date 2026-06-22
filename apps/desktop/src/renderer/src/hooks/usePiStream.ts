@@ -124,6 +124,39 @@ function createFallbackPlanCard(content: string): PlanCard | null {
     };
 }
 
+function isProjectExplorationPlanRequest(content: string): boolean {
+    const text = content
+        .replace(/图片识别结果:[\s\S]*?用户消息:/g, "")
+        .replace(/附加文件:[\s\S]*?用户消息:/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    if (!text) return false;
+    if (/^(你好|hi|hello|在吗|嗨)[?？!！。.\s]*$/i.test(text)) return false;
+    return /(?:了解|看看|看一下|分析|检查|梳理|审查).{0,20}(?:这个|当前|本地)?(?:项目|仓库|代码库|repo)|现在看看这个项目/i.test(text);
+}
+
+function createProjectExplorationPlanPrompt(content: string): string {
+    return [
+        "/plan",
+        "",
+        "用户请求:",
+        content,
+        "",
+        "要求:",
+        "- 先只读探索当前项目的真实文件、入口、配置和测试结构。",
+        "- 基于探索结果再提出计划，不要在缺少证据时直接泛泛提问。",
+        "- 计划必须包含目标、关键改动、验证方式和需要用户确认的高风险点。",
+    ].join("\n");
+}
+
+function visibleContentFromPrompt(content: string): string {
+    const text = content.trim();
+    if (!text.startsWith("/plan")) return content;
+    const match = text.match(/用户请求:\s*([\s\S]*?)(?:\n\s*(?:要求|原始请求|补充目标):|$)/);
+    const visible = match?.[1]?.trim();
+    return visible || content;
+}
+
 const CUSTOM_CARD_KINDS = new Set<CustomMessageCardKind>([
     "status-list",
     "approval-actions",
@@ -256,6 +289,10 @@ function assistantErrorFromMessageEnd(event: PiEvent): string {
     const model = typeof data.model === "string" && data.model.trim() ? data.model.trim() : "";
     const scope = [provider, model].filter(Boolean).join(" / ");
     return scope ? `${scope}: ${errorMessage}` : errorMessage;
+}
+
+function isSdkAbortMessage(message: string): boolean {
+    return /\bRequest was aborted\.?\b/i.test(message) || /\baborted\b/i.test(message);
 }
 
 function describePermissionsForPrompt(sessionId: string | null, workspaceId: string): string {
@@ -721,6 +758,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             case "message_end": {
                 const providerError = assistantErrorFromMessageEnd(event);
                 if (providerError) {
+                    if (lastProviderErrorRef.current && isSdkAbortMessage(providerError)) {
+                        break;
+                    }
                     lastProviderErrorRef.current = providerError;
                     setError(providerError);
                     break;
@@ -923,7 +963,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 break;
 
             case "extension_error":
-                setError(eventMessage(event, "Pi 扩展错误"));
+                lastProviderErrorRef.current = eventMessage(event, "Pi 扩展错误");
+                setError(lastProviderErrorRef.current);
                 flushStreamPersist();
                 setIsStreaming(false);
                 isStreamingRef.current = false;
@@ -967,7 +1008,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         const isFollowUpWhileStreaming = isStreamingRef.current || promptInFlightRef.current;
         const isSlashCommand = content.trimStart().startsWith("/");
         const shouldUsePlanMode = planEnabled && !isSlashCommand && !isFollowUpWhileStreaming;
-        const visibleContent = options.visibleContent ?? content;
+        const visibleContent = options.visibleContent ?? visibleContentFromPrompt(content);
         if (isFollowUpWhileStreaming) {
             if (planEnabled && isSlashCommand) {
                 pauseVisibleStreamingForPlanDecision();
@@ -1004,6 +1045,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         setError(null);
         textRef.current = "";
         thinkingRef.current = "";
+        lastProviderErrorRef.current = null;
         messageIdRef.current = null;
         sessionIdRef.current = null;
         streamPersistRef.current = null;
@@ -1031,8 +1073,11 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
         try {
             const pendingClarification = usePlanStore.getState().pendingPlanClarification;
+            const directExplorationPlanContent = shouldUsePlanMode && !pendingClarification && isProjectExplorationPlanRequest(visibleContent)
+                ? createProjectExplorationPlanPrompt(content)
+                : null;
 
-            if (shouldUsePlanMode && !pendingClarification) {
+            if (shouldUsePlanMode && !pendingClarification && !directExplorationPlanContent) {
                 usePlanStore.getState().setPendingPlanClarification({
                     workspaceId,
                     originalContent: visibleContent,
@@ -1078,7 +1123,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 usePlanStore.getState().setPendingPlanClarification(null);
             }
             const permissionPrefix = aid || isSlashCommand ? "" : describePermissionsForPrompt(sessionIdRef.current, workspaceId);
-            const guardedContent = `${permissionPrefix}${clarifiedPlanContent ?? content}`;
+            const guardedContent = `${permissionPrefix}${clarifiedPlanContent ?? directExplorationPlanContent ?? content}`;
             const outbound = guardedContent;
             if (aid) {
                 await window.piAPI.agentsPrompt({ agentId: aid, message: outbound, mode: selectedMode });

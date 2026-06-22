@@ -87,7 +87,7 @@ test.describe('Plan Mode Smoke Test', () => {
     try { await app?.close(); } catch { /* ignore */ }
   });
 
-  test('plan mode clarification flow blocks first message and merges on second', async () => {
+  test('plan mode sends project exploration directly as one /plan prompt', async () => {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}`);
     app = await _electron.launch({
       args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
@@ -130,50 +130,14 @@ test.describe('Plan Mode Smoke Test', () => {
     await modeMenu.getByRole('menuitemradio', { name: /Plan/ }).click();
     await expect(modeTrigger).toContainText('Plan');
 
-    // Send first message - should be blocked with clarification
+    // Send a project exploration request. This is concrete enough to plan from
+    // read-only repo exploration, so it should not be blocked by local guidance.
     await textarea.fill('了解一下这个项目');
     await textarea.press('Enter');
 
-    // Verify no prompt was sent to Pi yet
-    await page.waitForTimeout(500);
-    const callCount1 = await app.evaluate(() => {
-      const target = globalThis as typeof globalThis & { __promptCalls?: unknown[] };
-      return target.__promptCalls?.length ?? 0;
-    });
-    expect(callCount1).toBe(0);
+    await expect(page.getByText('计划模式需要目标')).toHaveCount(0);
 
-    // Verify clarification message appears in UI
-    await expect(page.getByText('计划模式需要目标')).toBeVisible({ timeout: 5_000 });
-
-    // Debug: check page content before second message
-    const pageContent = await page.content();
-    console.log('Page has 计划模式需要目标:', pageContent.includes('计划模式需要目标'));
-    console.log('Page has 了解一下这个项目:', pageContent.includes('了解一下这个项目'));
-
-    // Debug: check IPC call count before second message
-    const callCountBefore = await app.evaluate(() => {
-      const target = globalThis as typeof globalThis & { __promptCalls?: unknown[] };
-      return target.__promptCalls?.length ?? 0;
-    });
-    console.log('IPC call count before second message:', callCountBefore);
-
-    // Debug: check textarea state before second message
-    const textareaDisabled = await textarea.evaluate((el) => (el as HTMLTextAreaElement).disabled);
-    console.log('Textarea disabled before second message:', textareaDisabled);
-
-    // Send second message with clarification
-    await textarea.fill('我要重构聊天输入框的计划模式交互');
-    await textarea.press('Enter');
-
-    // Wait a bit and check again
-    await page.waitForTimeout(1000);
-    const callCountAfter = await app.evaluate(() => {
-      const target = globalThis as typeof globalThis & { __promptCalls?: unknown[] };
-      return target.__promptCalls?.length ?? 0;
-    });
-    console.log('IPC call count after second message:', callCountAfter);
-
-    // Verify prompt was sent with /plan prefix and merged content
+    // Verify prompt was sent with /plan prefix and read-only exploration instructions.
     await expect.poll(async () => {
       const calls = await app.evaluate(() => {
         const target = globalThis as typeof globalThis & { __promptCalls?: Array<{ message: string }> };
@@ -188,9 +152,8 @@ test.describe('Plan Mode Smoke Test', () => {
     });
 
     expect(sentMessage).toContain('/plan');
-    expect(sentMessage).toContain('原始请求:');
+    expect(sentMessage).toContain('用户请求:');
     expect(sentMessage).toContain('了解一下这个项目');
-    expect(sentMessage).toContain('补充目标:');
-    expect(sentMessage).toContain('我要重构聊天输入框的计划模式交互');
+    expect(sentMessage).toContain('先只读探索');
   });
 });

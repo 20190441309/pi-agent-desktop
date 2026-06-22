@@ -11,8 +11,16 @@
 // 不持有任何业务状态:全部由父级传入,layout 只负责排版与占位。
 // v2.0: 支持左右栏折叠 + CSS 动画过渡
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { MiniMaxCodeTitleBar } from "./MiniMaxCodeTitleBar";
+
+const DEFAULT_LEFT_WIDTH = 190;
+const MIN_LEFT_WIDTH = 160;
+const MAX_LEFT_WIDTH = 320;
+
+function clampLeftWidth(width: number): number {
+    return Math.max(MIN_LEFT_WIDTH, Math.min(MAX_LEFT_WIDTH, Math.round(width)));
+}
 
 export interface MiniMaxCodeLayoutProps {
     /** 顶部标题 */
@@ -33,10 +41,16 @@ export interface MiniMaxCodeLayoutProps {
     leftCollapsed?: boolean;
     /** 右栏是否折叠 */
     rightCollapsed?: boolean;
+    /** 左栏宽度 */
+    leftWidth?: number;
+    /** 右栏是否以工作区浮窗形式显示 */
+    rightFloatingOpen?: boolean;
     /** 折叠左栏回调 */
     onCollapseLeft?: () => void;
     /** 折叠右栏回调 */
     onCollapseRight?: () => void;
+    /** 左栏拖拽宽度变更 */
+    onLeftWidthChange?: (width: number) => void;
     /** 标题栏下方的 tab 栏 slot */
     topBarSlot?: React.ReactNode;
     /** 整体容器的额外 className */
@@ -58,7 +72,7 @@ const FloatingToggleButton: React.FC<{
     onClick?: () => void;
 }> = ({ side, collapsed, onClick }) => {
     if (!onClick) return null;
-    const sideClass = side === "left" ? "left-2" : "right-2";
+    const sideClass = side === "left" ? "left-3" : "right-3";
     const label = side === "left"
         ? collapsed ? "展开左侧栏" : "折叠左侧栏"
         : collapsed ? "展开右侧栏" : "折叠右侧栏";
@@ -68,7 +82,7 @@ const FloatingToggleButton: React.FC<{
             onClick={onClick}
             aria-label={label}
             title={label}
-            className={`absolute top-4 z-50 flex h-7 w-7 items-center justify-center rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-main)] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${sideClass}`}
+            className={`absolute top-4 z-[80] flex h-8 w-8 items-center justify-center rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-main)] text-[var(--mm-text-tertiary)] shadow-[0_2px_8px_rgba(15,23,42,0.08)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${sideClass}`}
         >
             <SidebarToggleIcon side={side} collapsed={collapsed} />
         </button>
@@ -86,11 +100,18 @@ export function MiniMaxCodeLayout({
     topBarSlot,
     leftCollapsed = false,
     rightCollapsed = false,
+    leftWidth = DEFAULT_LEFT_WIDTH,
+    rightFloatingOpen = false,
     onCollapseLeft,
     onCollapseRight,
+    onLeftWidthChange,
     className = "",
 }: MiniMaxCodeLayoutProps): React.JSX.Element {
     const [isMaximized, setIsMaximized] = useState(false);
+    const [isResizingLeft, setIsResizingLeft] = useState(false);
+    const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+    const resolvedLeftWidth = clampLeftWidth(leftWidth);
+    const showRightFloating = Boolean(rightSlot && rightFloatingOpen && !rightCollapsed);
 
     useEffect(() => {
         if (typeof window === "undefined" || !window.piAPI) return;
@@ -98,6 +119,56 @@ export function MiniMaxCodeLayout({
         const unsub = window.piAPI.onWindowMaximizeChanged?.((max) => setIsMaximized(max));
         return () => { if (typeof unsub === "function") unsub(); };
     }, []);
+
+    useEffect(() => {
+        const handleMove = (clientX: number): void => {
+            const state = resizeStateRef.current;
+            if (!state || !onLeftWidthChange) return;
+            onLeftWidthChange(clampLeftWidth(state.startWidth + clientX - state.startX));
+        };
+        const handlePointerMove = (event: PointerEvent): void => {
+            handleMove(event.clientX);
+        };
+        const handleMouseMove = (event: MouseEvent): void => {
+            handleMove(event.clientX);
+        };
+        const handleEnd = (): void => {
+            resizeStateRef.current = null;
+            setIsResizingLeft(false);
+        };
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("mousemove", handleMouseMove);
+        window.addEventListener("pointerup", handleEnd);
+        window.addEventListener("mouseup", handleEnd);
+        return () => {
+            window.removeEventListener("pointermove", handlePointerMove);
+            window.removeEventListener("mousemove", handleMouseMove);
+            window.removeEventListener("pointerup", handleEnd);
+            window.removeEventListener("mouseup", handleEnd);
+        };
+    }, [onLeftWidthChange]);
+
+    const startLeftResize = (clientX: number): void => {
+        if (!onLeftWidthChange) return;
+        resizeStateRef.current = {
+            startX: clientX,
+            startWidth: resolvedLeftWidth,
+        };
+        setIsResizingLeft(true);
+    };
+
+    const handleLeftResizePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
+        if (!onLeftWidthChange) return;
+        event.preventDefault();
+        startLeftResize(event.clientX);
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+    };
+
+    const handleLeftResizeMouseDown = (event: React.MouseEvent<HTMLDivElement>): void => {
+        if (!onLeftWidthChange) return;
+        event.preventDefault();
+        startLeftResize(event.clientX);
+    };
 
     return (
         <div
@@ -117,6 +188,7 @@ export function MiniMaxCodeLayout({
                     statusLabel={statusLabel}
                     statusTone={statusTone}
                     navigationSlot={topBarSlot}
+                    leftWidth={resolvedLeftWidth}
                 />
 
                 <div
@@ -136,8 +208,8 @@ export function MiniMaxCodeLayout({
 
                     {/* 左侧栏 */}
                     <aside
-                        className="flex shrink-0 flex-col border-r border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] animate-layout overflow-hidden"
-                        style={{ width: leftCollapsed ? 0 : "var(--mm-width-sidebar-left)", opacity: leftCollapsed ? 0 : 1 }}
+                        className={`flex shrink-0 flex-col overflow-hidden border-r border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] ${isResizingLeft ? "" : "animate-layout"}`}
+                        style={{ width: leftCollapsed ? 0 : resolvedLeftWidth, opacity: leftCollapsed ? 0 : 1 }}
                         data-mmcode-region="left"
                         aria-label="primary navigation"
                     >
@@ -145,32 +217,46 @@ export function MiniMaxCodeLayout({
                             {leftSlot}
                         </div>
                     </aside>
+                    {!leftCollapsed && onLeftWidthChange ? (
+                        <div
+                            role="separator"
+                            aria-label="调整左侧栏宽度"
+                            aria-orientation="vertical"
+                            tabIndex={0}
+                            onPointerDown={handleLeftResizePointerDown}
+                            onMouseDown={handleLeftResizeMouseDown}
+                            className="absolute bottom-0 top-0 z-50 w-2 cursor-col-resize"
+                            style={{ left: resolvedLeftWidth - 3 }}
+                        >
+                            <span className="mx-auto block h-full w-px bg-transparent transition-colors hover:bg-[var(--mm-border-strong)]" aria-hidden />
+                        </div>
+                    ) : null}
 
                     <main
-                        className={`flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)] ${leftCollapsed ? "pl-10" : ""} ${rightCollapsed ? "pr-10" : ""}`}
+                        className={`relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)] ${leftCollapsed ? "pl-10" : ""}`}
                         data-mmcode-region="center"
                         aria-label="main content"
                     >
                         {centerSlot}
+                        <div
+                            id="pi-global-composer-root"
+                            className="pointer-events-auto absolute bottom-0 left-0 right-0 z-30"
+                            aria-live="polite"
+                        />
                     </main>
 
-                    {/* 右侧栏 */}
-                    <aside
-                        className="flex shrink-0 flex-col bg-[var(--mm-bg-main)] animate-layout overflow-hidden"
-                        style={{ width: rightCollapsed ? 0 : "var(--mm-width-sidebar-right)", opacity: rightCollapsed ? 0 : 1 }}
-                        data-mmcode-region="right"
-                        aria-label="context panel"
-                    >
-                        <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto ${rightCollapsed ? "" : "pr-10"}`} style={{ minWidth: rightCollapsed ? 0 : undefined }}>
-                            {rightSlot}
-                        </div>
-                    </aside>
+                    {showRightFloating ? (
+                        <aside
+                            className="absolute bottom-3 right-3 top-3 z-[60] flex w-[var(--mm-width-sidebar-right)] flex-col overflow-hidden rounded-[8px] border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_18px_48px_rgba(15,23,42,0.13)]"
+                            data-mmcode-region="right-floating"
+                            aria-label="context panel"
+                        >
+                            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+                                {rightSlot}
+                            </div>
+                        </aside>
+                    ) : null}
 
-                    <div
-                        id="pi-global-composer-root"
-                        className="pointer-events-auto absolute inset-x-0 bottom-0 z-40"
-                        aria-live="polite"
-                    />
                 </div>
             </div>
         </div>

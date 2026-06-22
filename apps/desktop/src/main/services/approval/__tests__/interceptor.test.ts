@@ -107,10 +107,10 @@ describe("createApprovalInterceptor", () => {
         expect(abort).toHaveBeenCalledTimes(1);
         expect(pendingEdits.list()).toHaveLength(0);
         expect(send).toHaveBeenCalledWith(
-            "permission:update",
+            "pi:event",
             "ws_1",
             expect.objectContaining({
-                type: "error",
+                type: "extension_error",
                 message: expect.stringContaining("Plan 模式禁止"),
             }),
         );

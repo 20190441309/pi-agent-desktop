@@ -67,6 +67,17 @@ function PlanHookStateHost() {
             <button type="button" onClick={() => void state.startStreaming("ws1", "了解一下这个项目")}>
                 send-short-plan-task
             </button>
+            <button type="button" onClick={() => void state.startStreaming("ws1", [
+                "/plan",
+                "",
+                "用户请求:",
+                "了解一下这个项目",
+                "",
+                "要求:",
+                "- 先只读探索当前项目的真实文件、入口、配置和测试结构。",
+            ].join("\n"))}>
+                send-prewrapped-plan-task
+            </button>
         </div>
     );
 }
@@ -404,6 +415,29 @@ describe("usePiStream", () => {
         })).toBe(true);
     });
 
+    it("keeps a specific extension error when a later SDK abort message arrives", async () => {
+        await act(async () => {
+            render(<HookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({ type: "extension_error", message: "Plan 模式禁止执行 write" } as PiEvent);
+            emitPiEvent?.({
+                type: "message_end",
+                message: {
+                    role: "assistant",
+                    provider: "mimo",
+                    model: "mimo-v2.5-pro",
+                    errorMessage: "Request was aborted.",
+                },
+            } as PiEvent);
+        });
+
+        expect(screen.getByTestId("stream-error").textContent).toContain("Plan 模式禁止执行 write");
+        expect(screen.getByTestId("stream-error").textContent).not.toContain("Request was aborted");
+    });
+
     it("shows stop IPC fallback instead of silently swallowing it", async () => {
         stopPrompt.mockResolvedValueOnce({
             __error: true,
@@ -696,7 +730,7 @@ describe("usePiStream", () => {
         expect(usePlanStore.getState().pendingPlanClarification).not.toBeNull();
     });
 
-    it("blocks short project exploration requests locally in plan mode", async () => {
+    it("sends short project exploration requests directly as plan prompts", async () => {
         usePlanStore.setState({ enabled: true });
         await act(async () => {
             render(<PlanHookStateHost />);
@@ -707,9 +741,49 @@ describe("usePiStream", () => {
         });
 
         expect(usePlanStore.getState().decisionRequest).toBeNull();
-        expect(usePlanStore.getState().pendingPlanClarification).not.toBeNull();
-        expect(usePlanStore.getState().pendingPlanClarification?.originalContent).toBe("了解一下这个项目");
-        expect(sendPrompt).not.toHaveBeenCalled();
+        expect(usePlanStore.getState().pendingPlanClarification).toBeNull();
+        expect(sendPrompt).toHaveBeenCalledTimes(1);
+        const [, outbound] = sendPrompt.mock.calls[0] as unknown as [string, string];
+        expect(outbound).toContain("/plan\n");
+        expect(outbound).toContain("了解一下这个项目");
+        expect(outbound).toContain("先只读探索");
+    });
+
+    it("keeps project exploration instructions out of the visible user message", async () => {
+        usePlanStore.setState({ enabled: true });
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-short-plan-task").click();
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages[0]).toMatchObject({
+            role: "user",
+            content: "了解一下这个项目",
+        });
+        expect(session.messages[0]?.content).not.toContain("要求:");
+        expect(session.messages[0]?.content).not.toContain("先只读探索");
+    });
+
+    it("sanitizes already wrapped plan prompts before showing the user message", async () => {
+        usePlanStore.setState({ enabled: true });
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-prewrapped-plan-task").click();
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages[0]).toMatchObject({
+            role: "user",
+            content: "了解一下这个项目",
+        });
+        expect(session.messages[0]?.content).not.toContain("要求:");
     });
 
     it("combines original request with supplement when clarification is pending", async () => {
@@ -719,10 +793,10 @@ describe("usePiStream", () => {
         });
 
         await act(async () => {
-            screen.getByText("send-short-plan-task").click();
+            screen.getByText("send-plan-greeting").click();
         });
         expect(sendPrompt).not.toHaveBeenCalled();
-        expect(usePlanStore.getState().pendingPlanClarification?.originalContent).toBe("了解一下这个项目");
+        expect(usePlanStore.getState().pendingPlanClarification?.originalContent).toBe("你好");
 
         await act(async () => {
             screen.getByText("send-plan-task").click();
@@ -733,7 +807,7 @@ describe("usePiStream", () => {
         const [, outbound] = sendPrompt.mock.calls[0] as unknown as [string, string];
         expect(outbound).toContain("/plan\n");
         expect(outbound).toContain("原始请求:");
-        expect(outbound).toContain("了解一下这个项目");
+        expect(outbound).toContain("你好");
         expect(outbound).toContain("补充目标:");
         expect(outbound).toContain("为聊天输入框制定改版计划");
     });

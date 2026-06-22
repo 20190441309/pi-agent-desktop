@@ -709,7 +709,7 @@ export function ChatInput({
       <PermissionRequestStack workspaceId={workspaceId} agentId={agentId} />
       <div
         data-testid="chat-input-shell"
-        className={`${referenceFrame ? "mx-0 w-full max-w-none" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-composer)] shadow-none transition-all focus-within:border-[var(--mm-border-strong)]`}
+        className={`${referenceFrame ? "mx-0 flex w-full max-w-none flex-col" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-composer)] shadow-none transition-all focus-within:border-[var(--mm-border-strong)]`}
         style={referenceFrame ? { height: `${composerHeight}px` } : undefined}
       >
         {referenceFrame ? (
@@ -774,7 +774,10 @@ export function ChatInput({
         )}
 
         {/* 输入框 + 发送按钮 + @mention 弹窗 */}
-        <div className={`relative flex gap-2 px-3 ${referenceFrame ? "pb-0 pt-3" : "pb-1.5 pt-3"}`}>
+        <div
+          className={`relative z-0 flex gap-2 px-3 ${referenceFrame ? "min-h-0 flex-1 pb-0 pt-3" : "pb-1.5 pt-3"}`}
+          data-testid={referenceFrame ? "chat-input-reference-body" : undefined}
+        >
           <div className="flex-1 relative">
             {!referenceFrame && currentAgentMode !== "build" && (
               <div className="mb-2 flex">
@@ -937,7 +940,7 @@ export function ChatInput({
 
         {/* 控制栏 */}
         {referenceFrame ? (
-          <div className="flex h-[34px] items-start justify-between px-3 pb-2 pt-0" data-testid="chat-input-reference-controls">
+          <div className="relative z-20 flex h-[34px] shrink-0 items-center justify-between px-3 pb-2 pt-0" data-testid="chat-input-reference-controls">
             <div className="flex items-center gap-3 text-[var(--mm-text-secondary)]">
               <button type="button" onClick={() => void handlePickFiles()} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)]" aria-label="添加文件或图片">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -990,7 +993,7 @@ export function ChatInput({
                 )}
               </Popover>
             </div>
-            <div className="flex items-start gap-2">
+            <div className="flex items-center gap-2">
               <div className="flex h-7 overflow-hidden rounded-[5px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)]">
               <Popover
                 align="end"
@@ -1095,7 +1098,7 @@ export function ChatInput({
                 type="button"
                 onClick={() => void handleSend()}
                 disabled={!canSend}
-                className="mt-[-6px] flex h-[32px] w-[51px] translate-x-[2px] items-center justify-center rounded-[5px] bg-[var(--mm-accent-blue)] text-white shadow-[0_1px_2px_rgba(10,35,80,0.14)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
+                className="flex h-[32px] w-[51px] items-center justify-center rounded-[5px] bg-[var(--mm-accent-blue)] text-white shadow-[0_1px_2px_rgba(10,35,80,0.14)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
                 aria-label={t("chatInput.send")}
               >
                 <svg className="h-5 w-5 -rotate-12" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">

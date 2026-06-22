@@ -408,20 +408,13 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const shouldUseGlobalComposer = !currentSession?.readOnly;
 
   useEffect(() => {
-    const layoutBody = document.querySelector<HTMLElement>('[data-mmcode-region="body"]');
     const composerRoot = document.getElementById("pi-global-composer-root");
 
     if (shouldUseGlobalComposer && composerRoot) {
-      layoutBody?.setAttribute("data-has-global-composer", "true");
       setGlobalComposerRoot(composerRoot);
     } else {
-      layoutBody?.removeAttribute("data-has-global-composer");
       setGlobalComposerRoot(null);
     }
-
-    return () => {
-      layoutBody?.removeAttribute("data-has-global-composer");
-    };
   }, [shouldUseGlobalComposer]);
 
   const commitTitle = (): void => {
@@ -542,20 +535,20 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
 
   return (
     <div data-testid="chat-view-root" className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)]">
-      <div className="flex min-h-[42px] shrink-0 items-center justify-between gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-4 text-[12px]">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[var(--mm-text-secondary)]">
+      <div className="grid min-h-[42px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-4 text-[12px]">
+        <div className="flex min-w-0 items-center gap-4 overflow-hidden whitespace-nowrap text-[var(--mm-text-secondary)]">
           <WorkspaceSwitcher variant="strip" />
-          <span>权限: <span className="text-[var(--mm-text-primary)]">{permissionLabel}</span></span>
-          <span className="font-mono text-[var(--mm-text-primary)]">{usageSummary}</span>
+          <span className="shrink-0">权限: <span className="text-[var(--mm-text-primary)]">{permissionLabel}</span></span>
+          <span className="shrink-0 font-mono text-[var(--mm-text-primary)]">{usageSummary}</span>
           {usage ? (
             <>
-              <span className="text-[var(--mm-text-tertiary)]">{inputUsage}</span>
-              <span className="text-[var(--mm-text-tertiary)]">{outputUsage}</span>
-              {costUsage && <span className="text-[var(--mm-text-tertiary)]">{costUsage}</span>}
+              <span className="shrink-0 text-[var(--mm-text-tertiary)]">{inputUsage}</span>
+              <span className="shrink-0 text-[var(--mm-text-tertiary)]">{outputUsage}</span>
+              {costUsage && <span className="shrink-0 text-[var(--mm-text-tertiary)]">{costUsage}</span>}
             </>
           ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 text-[var(--mm-text-secondary)]" role="status" aria-label={isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}>
+        <div className="flex h-full shrink-0 items-center justify-end gap-1.5 text-[var(--mm-text-secondary)]" role="status" aria-label={isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}>
           <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />
           <span>{isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}</span>
         </div>
@@ -610,7 +603,11 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         </div>
       )}
       {/* 消息区域 */}
-      <div ref={scrollRegionRef} data-testid="chat-scroll-region" className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={scrollRegionRef}
+        data-testid="chat-scroll-region"
+        className={`min-h-0 flex-1 overflow-y-auto ${shouldUseGlobalComposer ? "pb-[var(--pi-global-composer-height,103px)]" : ""}`}
+      >
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col px-0 pb-0 pt-0 text-center">
             <EmptyConversationIntro

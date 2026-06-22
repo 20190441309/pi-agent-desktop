@@ -46,10 +46,11 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                     args: safeArgs,
                     workspacePath: deps.workspacePath,
                 })) {
+                    const message = `Plan 模式禁止执行 ${toolName}。请先完成计划并切换到 Build 模式，或仅写入 .pi/plans/*.md。`;
                     deps.abort();
-                    deps.send("permission:update", workspaceId, {
-                        type: "error",
-                        message: `Plan 模式禁止执行 ${toolName}。请先完成计划并切换到 Build 模式，或仅写入 .pi/plans/*.md。`,
+                    deps.send("pi:event", workspaceId, {
+                        type: "extension_error",
+                        message,
                         workspaceId,
                         toolCallId,
                     });

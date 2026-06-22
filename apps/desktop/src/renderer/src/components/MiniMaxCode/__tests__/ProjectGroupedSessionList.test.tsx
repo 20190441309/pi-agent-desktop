@@ -1,0 +1,102 @@
+// @vitest-environment jsdom
+
+import React from "react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "../../../i18n";
+import { useSessionStore, type Session } from "../../../stores/session-store";
+import { useWorkspaceStore } from "../../../stores/workspace-store";
+import { ProjectGroupedSessionList } from "../ProjectGroupedSessionList";
+
+const renderWithI18n = (ui: React.ReactElement) => render(<I18nProvider>{ui}</I18nProvider>);
+
+function makeSession(overrides: Partial<Session> & { id: string }): Session {
+  const now = new Date();
+  return {
+    title: overrides.id,
+    workspaceId: "w1",
+    createdAt: now,
+    updatedAt: now,
+    messages: [],
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  useWorkspaceStore.setState({
+    workspaces: [
+      { id: "w1", name: "repo", path: "C:/repo", createdAt: new Date(0), lastActiveAt: new Date(0) },
+    ],
+    currentWorkspaceId: "w1",
+  });
+  useSessionStore.setState({ sessions: [], currentSessionId: null });
+});
+
+describe("ProjectGroupedSessionList", () => {
+  it("keeps project session actions floating over the title layer", () => {
+    const longTitle = "了解一下这个项目并检查所有关键入口";
+    useSessionStore.setState({
+      sessions: [makeSession({ id: "s_long", title: longTitle, workspaceId: "w1" })],
+    });
+
+    const { container } = renderWithI18n(
+      <ProjectGroupedSessionList
+        currentWorkspaceId="w1"
+        currentSessionId="s_long"
+        onSelectSession={() => undefined}
+        onArchiveSession={() => undefined}
+        onDeleteSession={() => undefined}
+        onSwitchWorkspace={() => undefined}
+      />,
+    );
+
+    const titleButton = screen.getByRole("button", { name: longTitle });
+    const actions = container.querySelector('[data-session-actions="s_long"]');
+    expect(titleButton.className).toContain("pr-16");
+    expect(actions?.className ?? "").toContain("absolute");
+  });
+
+  it("does not render relative time in project session rows", () => {
+    useSessionStore.setState({
+      sessions: [makeSession({ id: "s_no_time", title: "项目行不显示时间", workspaceId: "w1" })],
+    });
+
+    renderWithI18n(
+      <ProjectGroupedSessionList
+        currentWorkspaceId="w1"
+        currentSessionId="s_no_time"
+        onSelectSession={() => undefined}
+        onArchiveSession={() => undefined}
+        onDeleteSession={() => undefined}
+        onSwitchWorkspace={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "项目行不显示时间" }).textContent).toBe("项目行不显示时间");
+    expect(screen.queryByText(/分钟前|刚刚|小时前/)).toBeNull();
+  });
+
+  it("does not select the session when clicking a floating project action", () => {
+    const onSelect = vi.fn();
+    const onArchive = vi.fn();
+    useSessionStore.setState({
+      sessions: [makeSession({ id: "s1", title: "项目会话", workspaceId: "w1" })],
+    });
+
+    renderWithI18n(
+      <ProjectGroupedSessionList
+        currentWorkspaceId="w1"
+        currentSessionId={null}
+        onSelectSession={onSelect}
+        onArchiveSession={onArchive}
+        onDeleteSession={() => undefined}
+        onSwitchWorkspace={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "归档 项目会话" }));
+
+    expect(onArchive).toHaveBeenCalledWith("s1", true);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+});

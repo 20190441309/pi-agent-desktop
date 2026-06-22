@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSessionStore, type Session } from "../../stores/session-store";
 import { useWorkspaceStore, type Workspace } from "../../stores/workspace-store";
-import { formatRelative } from "../../utils/format";
 import { useI18n } from "../../i18n";
-import { groupSessionsByWorkspace, sessionActivityTime, sessionDepth } from "../../utils/session-grouping";
+import { groupSessionsByWorkspace, sessionDepth } from "../../utils/session-grouping";
 
 export interface ProjectGroupedSessionListProps {
   currentWorkspaceId: string | null;
@@ -75,7 +74,6 @@ interface SessionRowProps {
   session: Session;
   active: boolean;
   depth: number;
-  relativeTime: string;
   archived: boolean;
   onSelect: () => void;
   onArchive: (archived: boolean) => void;
@@ -87,7 +85,6 @@ function SessionRow({
   session,
   active,
   depth,
-  relativeTime,
   archived,
   onSelect,
   onArchive,
@@ -97,7 +94,7 @@ function SessionRow({
   const [confirming, setConfirming] = useState(false);
   const title = session.title || t("sidebar.sessions.unnamed");
   const baseClasses =
-    "flex w-full items-center gap-2 rounded-[var(--mm-radius-sm)] py-0 pr-2 text-[13px] leading-relaxed transition-colors focus:outline-none";
+    "flex w-full items-center gap-2 rounded-[var(--mm-radius-sm)] py-0 pr-16 text-[13px] leading-relaxed transition-colors focus:outline-none";
   const stateClasses = active
     ? "border-l-2 border-l-[var(--mm-bg-active)] bg-[var(--mm-bg-selected)] font-medium text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-selected)]"
     : "border-l-2 border-l-transparent bg-transparent font-normal text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]";
@@ -131,7 +128,7 @@ function SessionRow({
   }
 
   return (
-    <div className="group flex items-center gap-1" style={{ paddingLeft: 8 + depth * 14 }}>
+    <div className="group relative flex items-center" style={{ paddingLeft: 8 + depth * 14 }}>
       <button
         type="button"
         onClick={onSelect}
@@ -143,9 +140,11 @@ function SessionRow({
           <IconMessage />
         </span>
         <span className="min-w-0 flex-1 truncate text-left">{title}</span>
-        <span className="shrink-0 text-[10px] text-[var(--mm-text-tertiary)]">{relativeTime}</span>
       </button>
-      <div className="flex items-center">
+      <div
+        className="absolute inset-y-0 right-1 flex items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+        data-session-actions={session.id}
+      >
         {archived ? (
           <SmallActionButton label={`${t("sidebar.sessions.restore")} ${title}`} onClick={() => onArchive(false)}>
             <RestoreIcon />
@@ -277,7 +276,6 @@ export function ProjectGroupedSessionList({
                   session={session}
                   active={currentSessionId === session.id}
                   depth={sessionDepth(session, byIdAll)}
-                  relativeTime={formatRelative(sessionActivityTime(session), t)}
                   archived={false}
                   onSelect={() => onSelectSession(session.id)}
                   onArchive={(archived) => onArchiveSession(session.id, archived)}
@@ -312,7 +310,6 @@ export function ProjectGroupedSessionList({
                 session={session}
                 active={false}
                 depth={0}
-                relativeTime={formatRelative(sessionActivityTime(session), t)}
                 archived={true}
                 onSelect={() => {
                   onArchiveSession(session.id, false);

@@ -55,6 +55,23 @@ type TerminalCommandTarget = { command: string; mode: TerminalCommandMode; nonce
 type PaletteCommandStatus = { message: string; tone: "success" | "error" };
 type FileWorkspaceTarget = { path: string; mode?: "edit" | "diff"; nonce: number };
 
+const LEFT_SIDEBAR_WIDTH_KEY = "pi-desktop-left-sidebar-width";
+const DEFAULT_LEFT_SIDEBAR_WIDTH = 190;
+const MIN_LEFT_SIDEBAR_WIDTH = 160;
+const MAX_LEFT_SIDEBAR_WIDTH = 320;
+const RIGHT_RAIL_AUTO_OPEN_MIN_WIDTH = 960;
+
+function clampLeftSidebarWidth(width: number): number {
+    return Math.max(MIN_LEFT_SIDEBAR_WIDTH, Math.min(MAX_LEFT_SIDEBAR_WIDTH, Math.round(width)));
+}
+
+function readStoredLeftSidebarWidth(): number {
+    if (typeof window === "undefined") return DEFAULT_LEFT_SIDEBAR_WIDTH;
+    const raw = window.localStorage?.getItem(LEFT_SIDEBAR_WIDTH_KEY);
+    const parsed = raw ? Number(raw) : DEFAULT_LEFT_SIDEBAR_WIDTH;
+    return Number.isFinite(parsed) ? clampLeftSidebarWidth(parsed) : DEFAULT_LEFT_SIDEBAR_WIDTH;
+}
+
 function panelForSection(section: string): MainPanel {
     if (section === "files") return "files";
     if (section === "skills" || section === "tools") return "skills";
@@ -113,6 +130,8 @@ function AppShell(): React.ReactElement {
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [showSearchHistory, setShowSearchHistory] = useState(false);
     const [leftCollapsed, setLeftCollapsed] = useState(false);
+    const [leftSidebarWidth, setLeftSidebarWidthState] = useState(readStoredLeftSidebarWidth);
+    const [workspaceHasRoomForRightRail, setWorkspaceHasRoomForRightRail] = useState(false);
     const [terminalCommandTarget, setTerminalCommandTarget] = useState<TerminalCommandTarget | null>(null);
     const [fileWorkspaceTarget, setFileWorkspaceTarget] = useState<FileWorkspaceTarget | null>(null);
     const sessions = useSessionStore((s) => s.sessions);
@@ -127,7 +146,7 @@ function AppShell(): React.ReactElement {
     const workspaceError = useWorkspaceStore((state) => state.lastError);
     const clearWorkspaceError = useWorkspaceStore((state) => state.clearError);
     const { loadPiConfig, settings, rightRailCollapsed, sidebarGroupMode } = useSettingsStore();
-    const { toggleRightRail, setSidebarGroupMode } = useSettingsStore();
+    const { setSidebarGroupMode } = useSettingsStore();
     const { status, loading: piStatusLoading, refreshStatus } = usePiStatusStore();
     const pendingApprovalCount = useApprovalStore(
         (s) => s.changes.filter((c) => c.status === "pending").length,
@@ -138,6 +157,22 @@ function AppShell(): React.ReactElement {
     const createAgent = useAgentStore((s) => s.createAgent);
     const currentWorkspace = getCurrentWorkspace();
     const pendingDefaultAgentWorkspaces = useRef<Set<string>>(new Set());
+    const rightRailManualPreferenceRef = useRef<"open" | "collapsed" | null>(null);
+    const activePanel = panelForSection(activeSection);
+    const setLeftSidebarWidth = useCallback((width: number): void => {
+        const next = clampLeftSidebarWidth(width);
+        setLeftSidebarWidthState(next);
+        try {
+            window.localStorage?.setItem(LEFT_SIDEBAR_WIDTH_KEY, String(next));
+        } catch {
+            // Ignore unavailable localStorage in restricted renderer contexts.
+        }
+    }, []);
+    const handleToggleRightRail = useCallback((): void => {
+        const nextCollapsed = !rightRailCollapsed;
+        rightRailManualPreferenceRef.current = nextCollapsed ? "collapsed" : "open";
+        useSettingsStore.setState({ rightRailCollapsed: nextCollapsed });
+    }, [rightRailCollapsed]);
 
     useEffect(() => {
         if (!workspaceError) return;
@@ -188,6 +223,38 @@ function AppShell(): React.ReactElement {
         ensureQueueSubscription();
     }, []);
 
+    useEffect(() => {
+        const measure = (): void => {
+            const body = document.querySelector<HTMLElement>('[data-mmcode-region="body"]');
+            const bodyWidth = body?.getBoundingClientRect().width ?? window.innerWidth;
+            const availableCenterWidth = bodyWidth - (leftCollapsed ? 0 : leftSidebarWidth);
+            setWorkspaceHasRoomForRightRail(activePanel === "chat" && availableCenterWidth >= RIGHT_RAIL_AUTO_OPEN_MIN_WIDTH);
+        };
+        measure();
+        window.addEventListener("resize", measure);
+        const body = document.querySelector<HTMLElement>('[data-mmcode-region="body"]');
+        const ResizeObserverCtor = typeof ResizeObserver !== "undefined" ? ResizeObserver : null;
+        const observer = body && ResizeObserverCtor ? new ResizeObserverCtor(measure) : null;
+        observer?.observe(body!);
+        return () => {
+            window.removeEventListener("resize", measure);
+            observer?.disconnect();
+        };
+    }, [activePanel, leftCollapsed, leftSidebarWidth]);
+
+    useEffect(() => {
+        if (activePanel !== "chat") return;
+        if (!workspaceHasRoomForRightRail) {
+            if (rightRailManualPreferenceRef.current !== "open" && !rightRailCollapsed) {
+                useSettingsStore.setState({ rightRailCollapsed: true });
+            }
+            return;
+        }
+        if (rightRailManualPreferenceRef.current !== "collapsed" && rightRailCollapsed) {
+            useSettingsStore.setState({ rightRailCollapsed: false });
+        }
+    }, [activePanel, rightRailCollapsed, workspaceHasRoomForRightRail]);
+
     // v2.0: 自动右栏 — 首条消息到达时展开, 之后由用户控制
     const prevMessageCountRef = useRef(0);
     const currentWorkspaceAgent = useMemo(
@@ -204,9 +271,11 @@ function AppShell(): React.ReactElement {
         const hadMessages = prevMessageCountRef.current > 0;
         prevMessageCountRef.current = count;
         if (count > 0 && !hadMessages) {
-            useSettingsStore.setState({ rightRailCollapsed: false });
+            if (workspaceHasRoomForRightRail && rightRailManualPreferenceRef.current !== "collapsed") {
+                useSettingsStore.setState({ rightRailCollapsed: false });
+            }
         }
-    }, [currentAgentMessageCount, currentSession?.messages?.length]);
+    }, [currentAgentMessageCount, currentSession?.messages?.length, workspaceHasRoomForRightRail]);
 
     useEffect(() => {
         if (activeSection === "new-task" && currentSession) {
@@ -515,8 +584,6 @@ function AppShell(): React.ReactElement {
 
     // 解析当前 section → 决定中间内容
     // v1.0.17: "settings" 通过 openSettingsWindow() 打开独立窗口，不再在主内容区占位
-    const activePanel = panelForSection(activeSection);
-
     const panelFallback = (name: string) => (error: Error, reset: () => void) => (
         <div className="flex items-center justify-center h-full bg-[#f5f5f5] p-4">
             <div className="bg-white rounded-xl p-6 max-w-sm shadow text-center">
@@ -559,8 +626,11 @@ function AppShell(): React.ReactElement {
                 }
                 leftCollapsed={leftCollapsed}
                 rightCollapsed={activePanel !== "chat" || rightRailCollapsed}
+                leftWidth={leftSidebarWidth}
+                rightFloatingOpen={activePanel === "chat"}
                 onCollapseLeft={() => setLeftCollapsed((v) => !v)}
-                onCollapseRight={activePanel === "chat" ? toggleRightRail : undefined}
+                onCollapseRight={activePanel === "chat" ? handleToggleRightRail : undefined}
+                onLeftWidthChange={setLeftSidebarWidth}
                 leftSlot={
                     <MiniMaxCodeSidebar
                         currentSection={activeSection}

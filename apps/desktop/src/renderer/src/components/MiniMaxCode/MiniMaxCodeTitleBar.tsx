@@ -10,6 +10,7 @@ export interface MiniMaxCodeTitleBarProps {
     statusLabel?: string;
     statusTone?: "idle" | "ready" | "busy" | "error";
     navigationSlot?: React.ReactNode;
+    leftWidth?: number;
     variant?: "main" | "settings";
     className?: string;
 }
@@ -58,6 +59,7 @@ export function MiniMaxCodeTitleBar({
     statusLabel,
     statusTone = "idle",
     navigationSlot,
+    leftWidth,
     variant = "main",
     className = "",
 }: MiniMaxCodeTitleBarProps): React.JSX.Element {
@@ -94,7 +96,7 @@ export function MiniMaxCodeTitleBar({
         >
             {/* 左侧 */}
             <div
-                style={{ width: isMac ? leftPad : "var(--mm-width-sidebar-left)", flexShrink: 0 }}
+                style={{ width: isMac ? leftPad : leftWidth ?? "var(--mm-width-sidebar-left)", flexShrink: 0 }}
                 className={variant === "settings"
                     ? "flex h-full items-center gap-1 px-2"
                     : "relative top-[4px] flex h-full items-center gap-[8px] pl-[17px] pr-2"}
