@@ -46,6 +46,7 @@ export class ConfigManager {
                         const pd = providerData as {
                             name?: string;
                             baseUrl?: string;
+                            apiKey?: string;
                             apiType?: string;
                             api?: string;
                             models?: Array<Record<string, unknown>>;
@@ -67,6 +68,7 @@ export class ConfigManager {
                             id: providerId,
                             name: pd.name || providerId,
                             baseUrl: pd.baseUrl,
+                            apiKey: pd.apiKey,
                             apiType: pd.apiType,
                             api: pd.api,
                             _piDesktopDeletedModels: Array.isArray(pd._piDesktopDeletedModels) ? pd._piDesktopDeletedModels : undefined,
@@ -113,6 +115,7 @@ export class ConfigManager {
             const pd = raw as {
                 name?: string;
                 baseUrl?: string;
+                apiKey?: string;
                 apiType?: string;
                 api?: string;
                 _piDesktopDeletedModels?: string[];
@@ -139,6 +142,7 @@ export class ConfigManager {
                 id: providerId,
                 name: typeof pd.name === "string" ? pd.name : providerId,
                 baseUrl: typeof pd.baseUrl === "string" ? pd.baseUrl : undefined,
+                apiKey: typeof pd.apiKey === "string" ? pd.apiKey : undefined,
                 apiType: typeof pd.apiType === "string" ? pd.apiType : undefined,
                 api: typeof pd.api === "string" ? pd.api : undefined,
                 _piDesktopDeletedModels: Array.isArray(pd._piDesktopDeletedModels)
@@ -437,9 +441,12 @@ export class ConfigManager {
         modelId?: string,
         apiType?: string,
         headers?: Record<string, string>,
+        options?: { providerId?: string; api?: string },
     ): Promise<ProviderTestResult> {
         if (!baseUrl) return { ok: false, message: "缺少 baseUrl" };
-        const useResponses = apiType === "responses";
+        const resolvedApiType = apiType ?? this.apiTypeFromApi(options?.api);
+        const resolvedApiKey = apiKey ?? await this.resolveProviderApiKey(options?.providerId);
+        const useResponses = resolvedApiType === "responses";
         const url = `${this.trimBaseUrl(baseUrl)}/${useResponses ? "responses" : "chat/completions"}`;
         const body = useResponses
             ? { model: modelId || "test", input: "ping", max_output_tokens: 1 }
@@ -449,7 +456,7 @@ export class ConfigManager {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
-                    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                    ...(resolvedApiKey ? { Authorization: `Bearer ${resolvedApiKey}` } : {}),
                     ...(headers ?? {}),
                 },
                 body: JSON.stringify(body),
@@ -465,6 +472,20 @@ export class ConfigManager {
                 message: error instanceof Error ? error.message : String(error),
             };
         }
+    }
+
+    private async resolveProviderApiKey(providerId?: string): Promise<string | undefined> {
+        if (!providerId) return undefined;
+        const [authResult, modelsResult, yamlModels] = await Promise.all([
+            this.getAuthConfig(),
+            this.getModelsConfig(),
+            this.getYamlModelsConfig(),
+        ]);
+        return (
+            this.getAuthValue(authResult.parsed[providerId]) ??
+            modelsResult.parsed.providers?.[providerId]?.apiKey ??
+            yamlModels.providers?.[providerId]?.apiKey
+        );
     }
 
     private async readJsonFile<T>(fileName: string, fallback: T): Promise<{ raw: string; parsed: T }> {

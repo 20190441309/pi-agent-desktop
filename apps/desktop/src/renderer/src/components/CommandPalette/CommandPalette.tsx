@@ -20,7 +20,7 @@ interface CommandPaletteProps {
     workspaceId?: string;
     onSelectFile?: (path: string) => void;
     onSelectHistory?: (sessionId: string) => void;
-    onRunCommand?: (cmdId: string) => void;
+    onRunCommand?: (cmdId: string) => boolean | void | Promise<boolean | void>;
 }
 
 interface CommandDef {
@@ -54,7 +54,7 @@ type CommandResult = {
     primary: string;
     secondary?: string;
     keepOpen?: boolean;
-    onSelect: () => void | Promise<void>;
+    onSelect: () => boolean | void | Promise<boolean | void>;
 };
 
 const COMMANDS: readonly CommandDef[] = Object.freeze([
@@ -409,6 +409,12 @@ export function CommandPalette({
 
     const handleClose = () => onClose();
 
+    const runResult = (result: CommandResult): void => {
+        void Promise.resolve(result.onSelect()).then((selectionResult) => {
+            if (!result.keepOpen && selectionResult !== false) handleClose();
+        });
+    };
+
     const onKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -418,9 +424,7 @@ export function CommandPalette({
             setActiveIdx((i) => Math.max(i - 1, 0));
         } else if (e.key === "Enter" && results[activeIdx]) {
             e.preventDefault();
-            const result = results[activeIdx];
-            void result.onSelect();
-            if (!result.keepOpen) handleClose();
+            runResult(results[activeIdx]);
         } else if (e.key === "Escape") {
             e.preventDefault();
             handleClose();
@@ -586,10 +590,7 @@ export function CommandPalette({
                                     >
                                         <button
                                             type="button" aria-label={r.primary} title={r.primary}
-                                            onClick={() => {
-                                                void r.onSelect();
-                                                if (!r.keepOpen) handleClose();
-                                            }}
+                                            onClick={() => runResult(r)}
                                             className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
                                                 isSelected
                                                     ? "bg-[var(--mm-bg-hover)]"

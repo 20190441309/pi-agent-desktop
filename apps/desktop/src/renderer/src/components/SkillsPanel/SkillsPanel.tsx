@@ -168,11 +168,11 @@ export function SkillsPanel(): React.JSX.Element {
     return (
         <div className="flex flex-col h-full bg-[var(--mm-bg-sidebar)]" role="region" aria-label="插件面板">
             <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--mm-border)]">
-                <div className="min-w-0">
-                    <h1 className="m-0 text-[14px] font-medium text-[var(--mm-text-primary)]">插件与技能</h1>
-                    <p className="m-0 text-[11px] text-[var(--mm-text-tertiary)]">安装 Pi packages，管理本地 skills</p>
+                <div className="w-[128px] min-w-0 shrink-0">
+                    <h1 className="m-0 truncate text-[14px] font-medium text-[var(--mm-text-primary)]">插件与技能</h1>
+                    <p className="m-0 truncate text-[11px] text-[var(--mm-text-tertiary)]">安装 Pi packages，管理本地 skills</p>
                 </div>
-                <div className="flex items-center gap-1 rounded-lg bg-[var(--mm-bg-sidebar)] p-1" role="tablist" aria-label="插件面板分类">
+                <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--mm-bg-sidebar)] p-1" role="tablist" aria-label="插件面板分类">
                     {([["pi", "Pi 插件"], ["installed", "已安装"]] as const).map(([id, label]) => {
                         const isActive = tab === id;
                         return (
@@ -184,7 +184,7 @@ export function SkillsPanel(): React.JSX.Element {
                                 aria-controls={`skills-tabpanel-${id}`}
                                 id={`skills-tab-${id}`}
                                 onClick={() => setTab(id)}
-                                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                                className={`whitespace-nowrap px-3 py-1.5 text-sm rounded-md transition-colors ${
                                     isActive
                                         ? "bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] shadow-sm"
                                         : "text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
@@ -195,7 +195,7 @@ export function SkillsPanel(): React.JSX.Element {
                         );
                     })}
                 </div>
-                <div className="flex-1" />
+                <div className="min-w-0 flex-1" />
                 {tab === "pi" && (
                     <input
                         type="text"
@@ -203,7 +203,7 @@ export function SkillsPanel(): React.JSX.Element {
                         value={packageQuery}
                         onChange={(e) => setPackageQuery(e.target.value)}
                         aria-label="搜索 Pi 插件"
-                        className="pl-3 pr-3 py-1.5 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-md text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus:border-[#1a1a1a] w-64"
+                        className="min-w-[140px] max-w-[220px] flex-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] py-1.5 pl-3 pr-3 text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:border-[#1a1a1a] focus:outline-none"
                     />
                 )}
                 <SkillCreateDropdown

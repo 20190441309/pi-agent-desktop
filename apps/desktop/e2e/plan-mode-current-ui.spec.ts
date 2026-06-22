@@ -135,21 +135,23 @@ async function waitForReactClickHandler(locator: ReturnType<Page["locator"]>): P
   })).toBe(true);
 }
 
-async function openPlusMenu(page: Page): Promise<void> {
-  const plus = page.locator('[data-testid="chat-input-plus-trigger"]');
-  await expect(plus).toBeVisible();
-  await waitForReactClickHandler(plus);
+async function enablePlanMode(page: Page): Promise<void> {
+  const modeTrigger = page.getByRole("button", { name: "选择 Agent 模式" });
+  await expect(modeTrigger).toBeVisible();
+  await waitForReactClickHandler(modeTrigger);
+  const modeMenu = page.getByRole("menu", { name: "Agent 模式" });
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await plus.click();
-    const menu = page.getByRole("menu").filter({ hasText: "添加文件或图片" });
+    await modeTrigger.click();
     try {
-      await expect(menu).toBeVisible({ timeout: 1_500 });
-      return;
+      await expect(modeMenu).toBeVisible({ timeout: 1_500 });
+      break;
     } catch {
-      // Retry: Electron can finish first paint before React handlers settle after reload.
+      await page.keyboard.press("Escape");
     }
   }
-  await expect(page.getByRole("menu").filter({ hasText: "添加文件或图片" })).toBeVisible();
+  await expect(modeMenu).toBeVisible({ timeout: 5_000 });
+  await modeMenu.getByRole("menuitemradio", { name: /Plan/ }).click();
+  await expect(modeTrigger).toContainText("Plan");
 }
 
 test.describe("Pi Desktop — current chat UI user path", () => {
@@ -164,7 +166,7 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     }
   });
 
-  test("plus menu attachment + plan mode uses inline clarification, then submits one /plan prompt", async () => {
+  test("attachment button + plan mode uses inline clarification, then submits one /plan prompt", async () => {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const workspacePath = test.info().outputPath("workspace");
     app = await _electron.launch({
@@ -181,29 +183,23 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     const textarea = page.locator("textarea").first();
     await expect(textarea).toBeVisible({ timeout: 15_000 });
 
-    await expect(page.getByRole("button", { name: "计划模式" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "选择 Agent 模式" })).toBeVisible();
     await expect(page.getByText("附件", { exact: true })).toHaveCount(0);
     await expect(page.getByText("深度研究")).toHaveCount(0);
     await expect(page.getByText("Computer Use")).toHaveCount(0);
     await expect(page.getByText("Agent Team")).toHaveCount(0);
 
-    await openPlusMenu(page);
-    await expect(page.getByRole("menuitem", { name: "添加文件或图片" })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "技能" })).toBeVisible();
-    await expect(page.getByRole("menuitemcheckbox", { name: "计划模式" })).toBeVisible();
-
-    await page.getByRole("menuitem", { name: "添加文件或图片" }).click();
+    const attachButton = page.getByRole("button", { name: "添加文件或图片" });
+    await expect(attachButton).toBeVisible();
+    await waitForReactClickHandler(attachButton);
+    await attachButton.click();
     await expect(page.locator('[data-testid="chat-input-shell"]').getByText("package.json", { exact: true })).toBeVisible();
     await expect.poll(async () => app.evaluate(() => {
       const target = globalThis as typeof globalThis & { __currentUiSelectedFiles?: unknown[] };
       return target.__currentUiSelectedFiles?.length ?? 0;
     })).toBe(1);
 
-    await openPlusMenu(page);
-    const planModeItem = page.getByRole("menuitemcheckbox", { name: "计划模式" });
-    await planModeItem.click();
-    await expect(page.getByLabel("计划模式已启用")).toBeVisible();
-    await expect(page.getByRole("button", { name: "计划模式" })).toHaveCount(0);
+    await enablePlanMode(page);
 
     await textarea.focus();
     const focusStyles = await page.locator('[data-testid="chat-input-shell"]').evaluate((shell) => {

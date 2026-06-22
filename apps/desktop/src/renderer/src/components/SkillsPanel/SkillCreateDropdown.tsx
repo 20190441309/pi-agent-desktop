@@ -34,7 +34,7 @@ export function SkillCreateDropdown({
         <div ref={ref} className="relative">
             <button
                 onClick={() => setOpen((v) => !v)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a1a1a] text-white text-sm rounded hover:bg-[#333] transition-colors"
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 bg-[#1a1a1a] text-white text-sm rounded hover:bg-[#333] transition-colors"
             >
                 <span>+ 创建</span>
             </button>

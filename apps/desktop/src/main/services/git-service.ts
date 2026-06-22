@@ -70,10 +70,14 @@ export function getGitStatus(workspacePath: string): GitStatus | null | IpcError
     for (const line of statusOutput.split("\n").filter((item) => item.trim())) {
         const status = line.substring(0, 2);
         const file = line.substring(3).trim();
-        if (status.includes("M")) modified.push(file);
-        if (status.includes("A")) added.push(file);
-        if (status.includes("D")) deleted.push(file);
-        if (status.includes("?")) untracked.push(file);
+        if (status === "??") {
+            untracked.push(file);
+            continue;
+        }
+        const worktreeStatus = status[1];
+        if (worktreeStatus === "M") modified.push(file);
+        if (worktreeStatus === "A") added.push(file);
+        if (worktreeStatus === "D") deleted.push(file);
     }
 
     let ahead = 0;

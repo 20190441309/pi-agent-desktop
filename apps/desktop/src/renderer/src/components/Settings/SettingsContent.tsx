@@ -65,8 +65,8 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
         <>
             <SettingsNav tabs={tabs} activeTab={activeTab} onSelectTab={setActiveTab} />
 
-            <main className="flex min-w-0 flex-1 flex-col bg-[#f2f4f6]">
-                <div className="flex min-h-[38px] items-center justify-between border-b border-[#dfe5eb] bg-[#f3f5f7] px-[26px] py-1.5">
+            <main className="flex min-w-0 flex-1 flex-col bg-[var(--mm-bg-main)]">
+                <div className="flex min-h-[38px] items-center justify-between border-b border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-[26px] py-1.5">
                     <div className="flex h-full min-w-0 items-end gap-7">
                         {primaryTabs.map((tab) => {
                             const selected = activeTab === tab.id;
@@ -76,8 +76,8 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
                                     type="button"
                                     aria-label={tab.label}
                                     onClick={() => setActiveTab(tab.id)}
-                                    className={`relative flex h-[28px] items-center text-[12px] transition-colors ${
-                                        selected ? "font-medium text-[#3f74a7]" : "text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)]"
+                                    className={`relative flex h-[28px] min-w-[44px] items-center justify-center px-1.5 text-[12px] transition-colors ${
+                                        selected ? "font-medium text-[var(--mm-accent-blue)]" : "text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)]"
                                     }`}
                                 >
                                     {tab.label}
@@ -107,7 +107,7 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
                     )}
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto py-0 pl-[6px] pr-[20px]">
+                <div className="min-h-0 flex-1 overflow-y-auto py-0 pl-[6px] pr-[20px]" data-testid="settings-scroll-region">
                     {activeTab === 'appearance' && <AppearanceTab />}
                     {activeTab === 'model' && (
                         <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-model" aria-labelledby="settings-tab-model">
@@ -129,7 +129,7 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
                 </div>
 
                 {onClose && (
-                    <div className="flex justify-end border-t border-[var(--mm-border)] px-7 py-4">
+                    <div className="flex justify-end border-t border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-7 py-4">
                         <button
                             type="button"
                             onClick={onClose}

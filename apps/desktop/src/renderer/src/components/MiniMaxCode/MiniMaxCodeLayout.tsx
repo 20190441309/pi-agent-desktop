@@ -58,7 +58,9 @@ const FloatingToggleButton: React.FC<{
     onClick?: () => void;
 }> = ({ side, collapsed, onClick }) => {
     if (!onClick) return null;
-    const sideClass = side === "left" ? "left-3" : "right-3";
+    const sideClass = side === "left"
+        ? collapsed ? "left-3" : "left-[calc(var(--mm-width-sidebar-left)-14px)]"
+        : collapsed ? "right-3" : "right-[calc(var(--mm-width-sidebar-right)-14px)]";
     const label = side === "left"
         ? collapsed ? "展开左侧栏" : "折叠左侧栏"
         : collapsed ? "展开右侧栏" : "折叠右侧栏";
@@ -68,7 +70,7 @@ const FloatingToggleButton: React.FC<{
             onClick={onClick}
             aria-label={label}
             title={label}
-            className={`absolute top-4 z-30 flex h-7 w-7 items-center justify-center rounded-md text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${sideClass}`}
+            className={`absolute top-4 z-50 flex h-7 w-7 items-center justify-center rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-main)] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${sideClass}`}
         >
             <SidebarToggleIcon side={side} collapsed={collapsed} />
         </button>
@@ -168,7 +170,7 @@ export function MiniMaxCodeLayout({
 
                     <div
                         id="pi-global-composer-root"
-                        className="pointer-events-none absolute inset-x-0 bottom-0 z-40"
+                        className="pointer-events-auto absolute inset-x-0 bottom-0 z-40"
                         aria-live="polite"
                     />
                 </div>

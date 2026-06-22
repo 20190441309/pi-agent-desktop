@@ -121,6 +121,12 @@ test.describe("Pi Desktop — visual function audit", () => {
         await expect(page.getByText("加载 Pi 插件市场...")).toBeHidden({ timeout: 30_000 });
         await expect(page.getByText(/spawn pi|Command failed|ENOENT/)).toHaveCount(0);
         await expect(page.locator('[role="alert"]')).toHaveCount(0);
+        const firstInstallButton = page.getByRole("button", { name: /安装 / }).first();
+        if (await firstInstallButton.count()) {
+            const box = await firstInstallButton.boundingBox();
+            expect(box?.width ?? 0, "Pi plugin install button should not collapse into vertical text").toBeGreaterThanOrEqual(56);
+            expect(box?.height ?? 0, "Pi plugin install button should keep a compact horizontal shape").toBeLessThanOrEqual(34);
+        }
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "04-skills");
 

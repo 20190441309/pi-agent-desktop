@@ -19,20 +19,139 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { join } from 'path';
-import { mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
 const TEST_TIMEOUT = 300_000; // 5 minutes for real AI responses
 const SCREENSHOT_DIR = join(__dirname, '..', 'e2e-output', 'deep-interactive');
-const deepInteractiveDescribe = process.env.RUN_DEEP_INTERACTIVE === '1' ? test.describe : test.describe.skip;
+const DEEP_API_KEY_ENV = 'PI_DESKTOP_DEEP_API_KEY';
 
-async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
+interface DeepProviderConfig {
+    provider: string;
+    providerName: string;
+    model: string;
+    modelName: string;
+    baseUrl: string;
+    api: string;
+    apiKeyEnv?: string;
+    apiKeyValue?: string;
+    contextWindow: number;
+    maxTokens: number;
+}
+
+const DEEP_CONFIG = resolveDeepProviderConfig();
+const deepInteractiveDescribe = process.env.RUN_DEEP_INTERACTIVE === '1' && DEEP_CONFIG
+    ? test.describe
+    : test.describe.skip;
+
+interface DeepAppContext {
+    app: ElectronApplication;
+    page: Page;
+    workspacePath: string;
+    configDir: string;
+}
+
+function writeDeepConfig(configDir: string): void {
+    const config = requireDeepConfig();
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'models.json'), JSON.stringify({
+        providers: {
+            [config.provider]: {
+                name: config.providerName,
+                baseUrl: config.baseUrl,
+                apiKey: config.apiKeyEnv,
+                api: config.api,
+                models: [{
+                    id: config.model,
+                    name: config.modelName,
+                    reasoning: false,
+                    input: ['text'],
+                    contextWindow: config.contextWindow,
+                    maxTokens: config.maxTokens,
+                }],
+            },
+        },
+    }, null, 2), 'utf8');
+    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({
+        defaultProvider: config.provider,
+        defaultModel: config.model,
+    }, null, 2), 'utf8');
+}
+
+function requireDeepConfig(): DeepProviderConfig {
+    if (!DEEP_CONFIG) throw new Error('No deep interactive provider config available');
+    return DEEP_CONFIG;
+}
+
+function resolveDeepProviderConfig(): DeepProviderConfig | null {
+    const longCatKey = process.env.LONGCAT_API_KEY ?? readLocalLongCatApiKey();
+    if (longCatKey) {
+        return {
+            provider: 'longcat',
+            providerName: 'LongCat',
+            model: 'LongCat-2.0-Preview',
+            modelName: 'LongCat 2.0 Preview',
+            baseUrl: 'https://api.longcat.chat/openai',
+            api: 'openai-completions',
+            apiKeyEnv: DEEP_API_KEY_ENV,
+            apiKeyValue: longCatKey,
+            contextWindow: 128000,
+            maxTokens: 4096,
+        };
+    }
+
+    if (process.env.ANTHROPIC_API_KEY) {
+        return {
+            provider: 'anthropic',
+            providerName: 'Anthropic',
+            model: 'claude-sonnet-4-20250514',
+            modelName: 'Claude Sonnet 4',
+            baseUrl: 'https://api.anthropic.com',
+            api: 'anthropic-messages',
+            contextWindow: 200000,
+            maxTokens: 4096,
+        };
+    }
+
+    return null;
+}
+
+function readLocalLongCatApiKey(): string | undefined {
+    try {
+        const authPath = join(process.env.USERPROFILE ?? '', '.pi', 'agent', 'auth.json');
+        if (!authPath || !existsSync(authPath)) return undefined;
+        const auth = JSON.parse(readFileSync(authPath, 'utf8')) as { longcat?: { key?: string; apiKey?: string } };
+        return auth.longcat?.key ?? auth.longcat?.apiKey;
+    } catch {
+        return undefined;
+    }
+}
+
+function writeDeepWorkspace(workspacePath: string): void {
+    mkdirSync(workspacePath, { recursive: true });
+    writeFileSync(join(workspacePath, 'package.json'), JSON.stringify({
+        name: 'pi-desktop-deep-e2e-workspace',
+        version: '0.0.0',
+        private: true,
+        description: 'Temporary workspace for Pi Desktop deep interactive E2E',
+    }, null, 2), 'utf8');
+}
+
+async function launchApp(): Promise<DeepAppContext> {
+    const deepConfig = requireDeepConfig();
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const configDir = test.info().outputPath(`pi-agent-config-${Date.now()}`);
+    const workspacePath = test.info().outputPath(`workspace-${Date.now()}`);
+    writeDeepConfig(configDir);
+    writeDeepWorkspace(workspacePath);
+
     const app = await _electron.launch({
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: {
             ...process.env,
             CI: '1',
             ELECTRON_RENDERER_URL: '',
+            PI_DESKTOP_CONFIG_DIR: configDir,
+            ...(deepConfig.apiKeyValue ? { [DEEP_API_KEY_ENV]: deepConfig.apiKeyValue } : {}),
         },
     });
     const page = await app.firstWindow();
@@ -47,13 +166,58 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
             { timeout: 5000 }
         );
     }
-    return { app, page };
+    await page.evaluate(async ({ workspacePath, provider, model }) => {
+        window.localStorage.setItem('pi-desktop:firstLaunchDone', 'true');
+        window.localStorage.setItem('pi-desktop.onboarding.completed', 'true');
+        const workspace = await window.piAPI.createWorkspace('deep-interactive-e2e', workspacePath);
+        if (!workspace || !('id' in workspace)) throw new Error('Failed to create deep interactive workspace');
+        await window.piAPI.selectWorkspace(workspace.path);
+        await window.piAPI.setSettings({ provider, model });
+    }, { workspacePath, provider: deepConfig.provider, model: deepConfig.model });
+
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+    return { app, page, workspacePath, configDir };
 }
 
 async function takeScreenshot(page: Page, name: string): Promise<void> {
     const path = join(SCREENSHOT_DIR, `${name}.png`);
     await page.screenshot({ path });
     console.log(`[DEEP-TEST] Screenshot: ${name}`);
+}
+
+async function waitForAiResponse(page: Page, initialCount: number, timeout = 120_000): Promise<void> {
+    const deadline = Date.now() + timeout;
+    const articles = page.locator('article');
+    const failure = page.getByRole('alert').filter({ hasText: '发送失败' }).first();
+
+    while (Date.now() < deadline) {
+        if (await failure.isVisible().catch(() => false)) {
+            const text = (await failure.textContent())?.replace(/\s+/g, ' ').trim();
+            throw new Error(`AI response failed: ${text ?? '发送失败'}`);
+        }
+        if (await articles.count() > initialCount) return;
+        await page.waitForTimeout(1000);
+    }
+
+    throw new Error(`Timed out waiting for AI response after ${timeout}ms`);
+}
+
+async function waitForRunToFinish(page: Page, timeout = 180_000): Promise<void> {
+    const deadline = Date.now() + timeout;
+    const stopButton = page.getByRole('button', { name: '停止生成' });
+    const failure = page.getByRole('alert').filter({ hasText: '发送失败' }).first();
+
+    while (Date.now() < deadline) {
+        if (await failure.isVisible().catch(() => false)) {
+            const text = (await failure.textContent())?.replace(/\s+/g, ' ').trim();
+            throw new Error(`AI run failed: ${text ?? '发送失败'}`);
+        }
+        if (!(await stopButton.isVisible().catch(() => false))) return;
+        await page.waitForTimeout(1000);
+    }
+
+    throw new Error(`Timed out waiting for AI run to finish after ${timeout}ms`);
 }
 
 deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
@@ -71,24 +235,28 @@ deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
     });
 
     test('1. 配置模型设置', async () => {
+        const deepConfig = requireDeepConfig();
         ({ app, page } = await launchApp());
         await takeScreenshot(page, '01-launch');
 
-        const settingsBtn = page.locator('button[data-mmcode-section="settings"]');
-        await expect(settingsBtn).toBeVisible({ timeout: 5000 });
-        await settingsBtn.click();
+        const settingsWindowPromise = app.waitForEvent('window');
+        await page.getByRole('button', { name: '打开设置窗口' }).click();
+        const settingsWindow = await settingsWindowPromise;
+        await settingsWindow.waitForLoadState('domcontentloaded');
 
-        const settingsDialog = page.getByRole('dialog', { name: '设置' });
-        await expect(settingsDialog).toBeVisible({ timeout: 5000 });
-        await takeScreenshot(page, '02-settings-opened');
+        await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible({ timeout: 5000 });
+        await takeScreenshot(settingsWindow, '02-settings-opened');
 
-        const modelTab = settingsDialog.locator('[role="tab"]').filter({ hasText: '模型' });
-        await modelTab.click();
-        await page.waitForTimeout(500);
-        await takeScreenshot(page, '03-settings-model-tab');
+        await settingsWindow.getByRole('tab', { name: '模型' }).click();
+        await expect(settingsWindow.getByRole('tab', { name: '模型' })).toHaveAttribute('aria-selected', 'true');
+        await expect(settingsWindow.getByText(deepConfig.modelName)).toBeVisible({ timeout: 10_000 });
+        await settingsWindow.waitForTimeout(500);
+        await takeScreenshot(settingsWindow, '03-settings-model-tab');
 
-        const closeBtn = settingsDialog.locator('button[aria-label="关闭"]').first();
-        await closeBtn.click();
+        const settingsClosed = settingsWindow.waitForEvent('close');
+        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
+        await settingsClosed;
+        await page.bringToFront();
         await page.waitForTimeout(300);
         await takeScreenshot(page, '04-settings-closed');
 
@@ -134,7 +302,7 @@ deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
         // Wait for AI response - article NOT starting with "你 ·" (so it's AI)
         // Or wait for any new article after user message
         const allArticles = page.locator('article');
-        await expect.poll(async () => await allArticles.count()).toBeGreaterThan(1);
+        await waitForAiResponse(page, 1);
         console.log('[DEEP-TEST] AI response appeared');
         await takeScreenshot(page, '15-ai-response-received');
 
@@ -148,7 +316,8 @@ deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
     });
 
     test('3. 让 AI 创建一个小项目（计算器组件）', async () => {
-        ({ app, page } = await launchApp());
+        const context = await launchApp();
+        ({ app, page } = context);
         await takeScreenshot(page, '20-ready-for-project');
 
         const textarea = page.locator('textarea[aria-label="发送"]');
@@ -172,24 +341,20 @@ deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
         // Wait for AI to start responding (more articles appear)
         const allArticles = page.locator('article');
         const initialCount = await allArticles.count();
-        await expect.poll(async () => await allArticles.count(), {
-            timeout: 120_000,
-            intervals: [1000],
-        }).toBeGreaterThan(initialCount);
+        await waitForAiResponse(page, initialCount);
         console.log('[DEEP-TEST] AI started responding');
         await takeScreenshot(page, '23-project-response-started');
 
-        // Wait for task to complete - status goes back to idle
-        // Check in right panel
-        const statusText = page.locator('text=idle').first();
-        await expect(statusText).toBeVisible({ timeout: 120_000 });
-        console.log('[DEEP-TEST] Task completed (status: idle)');
+        // Wait for the real run to finish; article creation alone can happen while tools are still queued.
+        await waitForRunToFinish(page);
+        console.log('[DEEP-TEST] Task completed');
         await takeScreenshot(page, '24-project-complete');
 
         // Check if calc.html was created
         const pageText = await page.textContent('body');
         const hasCalcFile = pageText?.includes('calc.html') ?? false;
         console.log(`[DEEP-TEST] calc.html mentioned in output: ${hasCalcFile}`);
+        expect(existsSync(join(context.workspacePath, 'calc.html'))).toBe(true);
 
         // Get final messages
         const messages = await allArticles.allTextContents();
@@ -220,11 +385,9 @@ deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
         // Wait for AI response
         const allArticles = page.locator('article');
         const initialCount = await allArticles.count();
-        await expect.poll(async () => await allArticles.count(), {
-            timeout: 120_000,
-            intervals: [1000],
-        }).toBeGreaterThan(initialCount);
+        await waitForAiResponse(page, initialCount);
         console.log('[DEEP-TEST] AI responded');
+        await waitForRunToFinish(page);
         await takeScreenshot(page, '32-read-response-received');
 
         // Check if "Pi 正在思考" appeared (tool call in progress)
@@ -238,9 +401,10 @@ deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
         const responseText = await lastArticle.textContent();
         console.log(`[DEEP-TEST] Final AI response: ${responseText?.slice(0, 150)}...`);
 
-        // Check if project name "pi-desktop" is mentioned
-        const hasProjectName = responseText?.toLowerCase().includes('pi-desktop') ?? false;
+        // Check if project name from the isolated temporary workspace is mentioned.
+        const hasProjectName = responseText?.toLowerCase().includes('pi-desktop-deep-e2e-workspace') ?? false;
         console.log(`[DEEP-TEST] Detected project name: ${hasProjectName}`);
+        expect(hasProjectName).toBe(true);
 
         await takeScreenshot(page, '33-read-test-complete');
     });

@@ -141,25 +141,17 @@ html, body {
 
 [data-mmcode-layout="window-frame"] {
   position: relative;
-  --mm-edge-right-shadow: rgba(47, 68, 78, 0.34);
-  --mm-edge-bottom-shadow: rgba(130, 96, 68, 0.25);
+  --mm-edge-right-shadow: transparent;
+  --mm-edge-bottom-shadow: transparent;
   --mm-edge-right-overlay: none;
 }
 
 [data-mm-window-kind="main"] {
   --mm-bg-main: #f4f4f4;
   --mm-edge-right-shadow: transparent;
-  --mm-edge-bottom-shadow: rgba(70, 118, 135, 0.27);
-  --mm-edge-right-overlay: linear-gradient(
-      to bottom,
-      rgba(80, 40, 35, 0.43) 0%,
-      rgba(85, 45, 35, 0.4) 30%,
-      rgba(90, 88, 90, 0.015) 62%,
-      rgba(255, 255, 255, 0.18) 100%
-    ) right top / 5px 100% no-repeat;
-  border-left-color: #8c8085 !important;
-  border-right-color: #69534c !important;
-  border-bottom-color: #505f6e !important;
+  --mm-edge-bottom-shadow: transparent;
+  --mm-edge-right-overlay: none;
+  border-color: var(--mm-border) !important;
 }
 
 [data-mm-window-kind="main"] [data-mmcode-region="titlebar"] {
@@ -170,21 +162,26 @@ html, body {
   background: linear-gradient(180deg, #f4f4f4 0%, #f4f4f4 52%, #f8f8f8 100%) !important;
 }
 
+.app-region-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 [data-mm-window-kind="settings"] {
+  --mm-bg-main: #f4f4f4;
+  --mm-bg-sidebar: #eef1f4;
+  --mm-bg-panel: #f6f7f9;
   --mm-edge-right-shadow: transparent;
   --mm-edge-bottom-shadow: transparent;
   --mm-edge-right-overlay: none;
-  border-left-color: #e6e7e9 !important;
-  border-right-color: #2b4c55 !important;
-  border-bottom-color: #96735b !important;
+  border-color: var(--mm-border) !important;
 }
 
 [data-mm-window-kind="settings"] [data-mmcode-region="titlebar"] {
-  background: #f2f5f7 !important;
+  background: #f3f3f3 !important;
 }
 
 [data-mmcode-layout="window-frame"]::after {
-  content: "";
+  content: none;
   position: absolute;
   inset: 0;
   z-index: 80;
@@ -934,8 +931,8 @@ code {
 }
 
 .settings-window-titlebar {
-  background-color: #ffffff !important;
-  border-bottom-color: #dfe5eb !important;
+  background-color: #f3f3f3 !important;
+  border-bottom-color: var(--mm-border) !important;
 }
 
 /* ===== Dark Mode — 全局属性级覆盖 =====

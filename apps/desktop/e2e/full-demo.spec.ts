@@ -50,31 +50,30 @@ test.describe('Pi Desktop 完整功能演示', () => {
     // 标题栏
     await expect(page).toHaveTitle(/Pi|Desktop/);
 
-    // ── 2. Sidebar 导航 ─────────────────────────
+    // ── 2. 顶部导航 ─────────────────────────
     // 新建任务 (默认)
     await expect(page.locator('button[data-mmcode-section="new-task"]')).toBeVisible({ timeout: 10000 });
 
-    // 技能按钮
-    await page.locator('button[data-mmcode-section="skills"]').click();
+    await page.getByRole('tab', { name: '技能' }).click();
     await page.waitForTimeout(500);
     await page.screenshot({ path: 'e2e-output/demo-02-skills.png' });
 
-    // 设置按钮
-    await page.locator('button[data-mmcode-section="settings"]').click();
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: 'e2e-output/demo-03-settings.png' });
-
-    // 关闭设置
-    const settingsDialog = page.getByRole('dialog', { name: '设置' });
-    const closeBtn = settingsDialog.locator('button[aria-label="关闭"]');
-    if (await closeBtn.isVisible()) await closeBtn.click();
+    const settingsWindowPromise = app.waitForEvent('window');
+    await page.getByRole('button', { name: '打开设置窗口' }).click();
+    const settingsWindow = await settingsWindowPromise;
+    await settingsWindow.waitForLoadState('domcontentloaded');
+    await settingsWindow.screenshot({ path: 'e2e-output/demo-03-settings.png' });
+    const settingsClosed = settingsWindow.waitForEvent('close');
+    await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
+    await settingsClosed;
+    await page.bringToFront();
 
     // 回到聊天
     await page.locator('button[data-mmcode-section="new-task"]').click();
     await page.waitForTimeout(500);
 
     // ── 3. 聊天空态 ──────────────────────────────
-    await expect(page.getByRole('heading', { name: '准备好开始了吗？' })).toBeVisible({ timeout: 3000 });
+    await expect(page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。')).toBeVisible({ timeout: 3000 });
     await page.waitForTimeout(500);
     await page.screenshot({ path: 'e2e-output/demo-04-chat-empty.png' });
 
@@ -111,15 +110,20 @@ test.describe('Pi Desktop 完整功能演示', () => {
     await page.keyboard.press('Escape');
 
     // ── 7. 设置 Model Tab ───────────────────────
-    await page.locator('button[data-mmcode-section="settings"]').click();
-    await page.waitForTimeout(500);
+    const modelSettingsWindowPromise = app.waitForEvent('window');
+    await page.getByRole('button', { name: '打开设置窗口' }).click();
+    const modelSettingsWindow = await modelSettingsWindowPromise;
+    await modelSettingsWindow.waitForLoadState('domcontentloaded');
 
     // 尝试切换 tab
-    const modelTab = page.getByRole('tab', { name: '模型' });
+    const modelTab = modelSettingsWindow.getByRole('tab', { name: '模型' });
     if (await modelTab.isVisible()) {
       await modelTab.click();
-      await page.waitForTimeout(500);
-      await page.screenshot({ path: 'e2e-output/demo-10-settings-model.png' });
+      await modelSettingsWindow.waitForTimeout(500);
+      await modelSettingsWindow.screenshot({ path: 'e2e-output/demo-10-settings-model.png' });
     }
+    const modelSettingsClosed = modelSettingsWindow.waitForEvent('close');
+    await modelSettingsWindow.getByRole('button', { name: '关闭窗口' }).click();
+    await modelSettingsClosed;
   });
 });

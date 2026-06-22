@@ -3,6 +3,7 @@ import type {
     AgentMessage,
     AgentRuntimeState,
     AgentTab,
+    AppSettings,
     CreateAgentInput,
     PiSlashCommand,
     SendAgentPromptInput,
@@ -16,6 +17,7 @@ import { createExtensionUiBridge } from "../extensions/extension-ui-bridge";
 import { buildAgentModePrompt, normalizeAgentMode } from "../agent-modes";
 import { MaxModeService } from "../long-horizon/max-mode-service";
 import type { PendingEdits } from "../approval/pending-edits";
+import type { PiAgentConfig } from "../../types";
 import log from "electron-log/main";
 
 type Send = (channel: string, payload: unknown) => void;
@@ -24,6 +26,9 @@ interface AgentRuntimeRegistryDeps {
     getWorkspace: (workspaceId: string) => Workspace | undefined;
     pendingEdits: PendingEdits;
     send: Send;
+    agentDir?: string;
+    getSettings?: () => AppSettings;
+    getPiAgentConfig?: () => PiAgentConfig | null;
     getModeOptions?: () => { longHorizonEnabled: boolean; maxModeEnabled: boolean; maxCandidates?: number };
     maxModeService?: Pick<MaxModeService, "run">;
 }
@@ -67,6 +72,7 @@ export class AgentRuntimeRegistry {
         const session = await createWorkspaceSession({
             workspaceId: workspace.id,
             workspacePath: workspace.path,
+            ...this.currentModelSelection(),
             sessionPath: input.sessionPath,
             uiContext: createExtensionUiBridge(workspace.id, { agentId: id }),
         });
@@ -114,6 +120,7 @@ export class AgentRuntimeRegistry {
                 const candidate = await createWorkspaceSession({
                     workspaceId: runtime.workspace.id,
                     workspacePath: runtime.workspace.path,
+                    ...this.currentModelSelection(),
                     uiContext: createExtensionUiBridge(runtime.workspace.id, { agentId: `${runtime.tab.id}:max:${index}` }),
                 });
                 const interceptor = createApprovalInterceptor(runtime.workspace.id, {
@@ -142,6 +149,7 @@ export class AgentRuntimeRegistry {
                 const judge = await createWorkspaceSession({
                     workspaceId: runtime.workspace.id,
                     workspacePath: runtime.workspace.path,
+                    ...this.currentModelSelection(),
                     uiContext: createExtensionUiBridge(runtime.workspace.id, { agentId: `${runtime.tab.id}:max:judge` }),
                 });
                 const judgeInterceptor = createApprovalInterceptor(runtime.workspace.id, {
@@ -340,6 +348,22 @@ export class AgentRuntimeRegistry {
 
     private emitState(): void {
         this.deps.send("agents:state", this.list());
+    }
+
+    private currentModelSelection(): {
+        agentDir?: string;
+        provider?: string;
+        modelId?: string;
+        piAgentConfig?: PiAgentConfig | null;
+    } {
+        const settings = this.deps.getSettings?.();
+        const config = this.deps.getPiAgentConfig?.() ?? null;
+        return {
+            agentDir: this.deps.agentDir,
+            provider: settings?.provider || config?.defaultProvider || undefined,
+            modelId: settings?.model || config?.defaultModel || undefined,
+            piAgentConfig: config,
+        };
     }
 
     private requireRuntime(agentId: string): AgentRuntime {

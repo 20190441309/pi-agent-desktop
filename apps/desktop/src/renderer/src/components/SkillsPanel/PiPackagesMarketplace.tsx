@@ -73,7 +73,7 @@ export function PiPackagesMarketplace(): React.JSX.Element {
     .sort((a, b) => scoreRecommended(a) - scoreRecommended(b));
 
   return (
-    <div className="p-4">
+    <div className="min-w-0 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="min-w-0 text-xs text-[var(--mm-text-tertiary)]">
           Pi 插件目录
@@ -82,7 +82,7 @@ export function PiPackagesMarketplace(): React.JSX.Element {
           type="button"
           onClick={() => void refreshCatalog()}
           disabled={loading || Boolean(actionSource)}
-          className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50"
+          className="shrink-0 whitespace-nowrap rounded-md border border-[var(--mm-border)] px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50"
         >
           {loading ? "刷新中..." : "刷新目录"}
         </button>
@@ -130,7 +130,7 @@ export function PiPackagesMarketplace(): React.JSX.Element {
           {query ? "没有找到匹配的 Pi 插件" : "Pi 插件市场暂时不可用，可打开 pi.dev/packages 查看"}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-3">
           {visible.map((pkg) => {
             const installedNow = pkg.installed || installedSources.has(pkg.source);
             const busy = actionSource === pkg.source;
@@ -141,22 +141,21 @@ export function PiPackagesMarketplace(): React.JSX.Element {
                   <span className="shrink-0 rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">Pi</span>
                 </div>
                 <p className="line-clamp-3 flex-1 text-xs leading-5 text-[var(--mm-text-secondary)]">{pkg.description || "暂无描述"}</p>
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-3 flex items-center justify-between gap-2">
                   <button
                     type="button"
                     onClick={() => window.open(pkg.url, "_blank")}
-                    className="rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
+                    className="min-w-[52px] whitespace-nowrap rounded px-2 py-1 text-center text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
                     详情
                   </button>
-                  <div className="flex-1" />
                   {installedNow ? (
                     <button
                       type="button"
                       aria-label={`卸载 ${pkg.name}`}
                       disabled={busy}
                       onClick={() => void remove(pkg.source)}
-                      className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      className="min-w-[64px] whitespace-nowrap rounded border border-red-200 px-2 py-1 text-center text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       {busy ? "处理中..." : "卸载"}
                     </button>
@@ -166,7 +165,7 @@ export function PiPackagesMarketplace(): React.JSX.Element {
                       aria-label={`安装 ${pkg.name}`}
                       disabled={busy}
                       onClick={() => setPendingInstall(pkg)}
-                      className="rounded bg-[#1a1a1a] px-2 py-1 text-xs text-white hover:bg-[#333] disabled:opacity-50"
+                      className="min-w-[64px] whitespace-nowrap rounded bg-[#1a1a1a] px-2 py-1 text-center text-xs text-white hover:bg-[#333] disabled:opacity-50"
                     >
                       {busy ? "安装中..." : "安装"}
                     </button>

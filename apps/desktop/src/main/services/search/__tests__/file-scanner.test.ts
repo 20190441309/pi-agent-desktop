@@ -39,7 +39,7 @@ describe("scanFiles (async)", () => {
 
     it("limits result count to 500 by default", async () => {
         const dir = mkdtempSync(join(tmpdir(), "scan-"));
-        for (let i = 0; i < 600; i++) {
+        for (let i = 0; i < 510; i++) {
             writeFileSync(join(dir, `f${i}.ts`), "");
         }
         const files = await scanFiles(dir, { recursive: false });

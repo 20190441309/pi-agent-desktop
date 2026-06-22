@@ -2,11 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { isIpcError, type GitStatus, type ProjectInfo } from "@shared";
 import { usePlanStore } from "../../stores/plan-store";
 import { useSessionStore } from "../../stores/session-store";
-import { useSettingsStore } from "../../stores/settings-store";
 import { useQueueStore, type QueueTaskStatus } from "../../stores/queue-store";
 import { ToolPermissionsPanel } from "../ToolPermissions/ToolPermissionsPanel";
-import { UsageStatsPanel } from "../UsageStats/UsageStatsPanel";
-import { useAgentStore } from "../../stores/agent-store";
 import { classifyTerminalCommand } from "../../utils/terminal-command";
 import { projectScriptCommand } from "../../utils/project-scripts";
 import type { TaskProgressItem } from "./TaskProgressPanel";
@@ -148,67 +145,6 @@ const GOAL_STATUS_LABELS: Record<string, string> = {
   cleared: "已清除",
 };
 
-function formatToken(value?: number): string {
-  if (value === undefined) return "unknown";
-  return value >= 1000 ? `${Math.round(value / 100) / 10}K` : String(value);
-}
-
-const THINKING_LEVELS = ["none", "low", "medium", "high"] as const;
-const THINKING_LABELS: Record<string, string> = {
-  none: "关闭",
-  low: "低",
-  medium: "中",
-  high: "高",
-};
-
-function ThinkingControlPanel(): React.JSX.Element {
-  const settings = useSettingsStore((state) => state.settings);
-  const updateSettings = useSettingsStore((state) => state.updateSettings);
-  const currentAgentId = useAgentStore((state) => state.currentAgentId);
-  const runtimeByAgent = useAgentStore((state) => state.runtimeByAgent);
-  const currentRuntime = currentAgentId ? runtimeByAgent[currentAgentId] : null;
-  const activeLevel = currentRuntime?.thinkingLevel ?? settings.thinkingLevel ?? "medium";
-  const showThinking = settings.showThinking ?? true;
-
-  const cycleLevel = useCallback(() => {
-    const currentIndex = THINKING_LEVELS.indexOf(activeLevel as typeof THINKING_LEVELS[number]);
-    const nextLevel = THINKING_LEVELS[(currentIndex + 1) % THINKING_LEVELS.length];
-    updateSettings({ thinkingLevel: nextLevel });
-    if (currentAgentId && window.piAPI?.agentsSetThinking) {
-      void window.piAPI.agentsSetThinking(currentAgentId, nextLevel).catch(() => {});
-    }
-  }, [activeLevel, currentAgentId, updateSettings]);
-
-  const toggleShowThinking = useCallback(() => {
-    updateSettings({ showThinking: !showThinking });
-  }, [showThinking, updateSettings]);
-
-  return (
-    <section className="rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="m-0 text-[13px] font-medium">思考</h2>
-        <button
-          type="button"
-          onClick={toggleShowThinking}
-          aria-label="切换思考显示"
-          aria-pressed={showThinking}
-          className={`flex h-5 w-9 items-center rounded-full transition-colors ${showThinking ? "bg-[var(--mm-bg-active)]" : "bg-[var(--mm-bg-sidebar)]"}`}
-        >
-          <span className={`h-4 w-4 rounded-full bg-white transition-transform ${showThinking ? "translate-x-4" : "translate-x-0.5"}`} />
-        </button>
-      </div>
-      <button
-        type="button"
-        onClick={cycleLevel}
-        className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-2 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
-        aria-label="切换思考级别"
-      >
-        级别: <span className="font-medium text-[var(--mm-text-primary)]">{THINKING_LABELS[activeLevel] ?? activeLevel}</span>
-      </button>
-    </section>
-  );
-}
-
 export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailProps): React.JSX.Element {
   const [git, setGit] = useState<GitStatus | null>(null);
   const [project, setProject] = useState<ProjectInfo | null>(null);
@@ -219,7 +155,6 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
   const [filesExpanded, setFilesExpanded] = useState(false);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const { steps, activeCard, goal } = usePlanStore();
-  const settings = useSettingsStore((state) => state.settings);
   const queue = useQueueStore();
   const currentSession = useSessionStore((state) =>
     state.currentSessionId
@@ -425,15 +360,6 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
     });
     window.setTimeout(() => setRailActionStatus(null), 1800);
   };
-  const usage = currentSession?.usage;
-  const usedTokens = usage?.totalTokens ?? (
-    usage?.inputTokens !== undefined || usage?.outputTokens !== undefined
-      ? (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
-      : undefined
-  );
-  const usagePercent = usage?.contextWindow && usedTokens !== undefined
-    ? Math.min(100, Math.round((usedTokens / usage.contextWindow) * 100))
-    : undefined;
   const queueItems = useMemo<QueueRailItem[]>(() => {
     const sessionId = currentSession?.id;
     return queue.items.slice(0, 8).map((item) => ({
@@ -476,16 +402,12 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
     );
   };
 
-  const contextLabel = usagePercent === undefined
-    ? "等待用量事件"
-    : usagePercent >= 80
-      ? "接近上限"
-      : usagePercent >= 50
-        ? "上下文充足"
-        : "上下文健康";
+  const openGitPanel = (): void => {
+    window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "git" } }));
+  };
 
   return (
-    <aside className="flex min-h-full w-full flex-col gap-3 bg-transparent px-4 py-[48px] text-[var(--mm-text-primary)]">
+    <aside className="flex min-h-full w-full flex-col gap-3 bg-transparent px-4 py-4 text-[var(--mm-text-primary)]">
       {railActionStatus && (
         <div
           className={`rounded-[14px] border px-3 py-2 text-xs ${
@@ -498,49 +420,6 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
           {railActionStatus.message}
         </div>
       )}
-      <UsageStatsPanel />
-      <section className="rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="m-0 text-[13px] font-medium">运行状态</h2>
-          <span className="rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
-            {usage?.compactionStatus === "running" ? "压缩中" : usage?.compactionStatus ?? "idle"}
-          </span>
-        </div>
-        <div className="space-y-2 text-xs">
-          <div className="flex justify-between gap-3">
-            <span className="text-[var(--mm-text-secondary)]">模型</span>
-            <span className="truncate text-right font-mono">{usage?.model || settings.model || "unknown"}</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-[var(--mm-text-secondary)]">Provider</span>
-            <span className="truncate text-right font-mono">{usage?.provider || settings.provider || "unknown"}</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-[var(--mm-text-secondary)]">Context</span>
-            <span className="font-mono">{formatToken(usedTokens)} / {formatToken(usage?.contextWindow)}</span>
-          </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-[var(--mm-bg-hover)]">
-            <div
-              className={`h-full rounded-full ${usagePercent !== undefined && usagePercent >= 80 ? "bg-[var(--color-error)]" : "bg-[#1f1f1f]"}`}
-              style={{ width: `${usagePercent ?? 0}%` }}
-            />
-          </div>
-          <div className="flex justify-between gap-3 text-[11px] text-[var(--mm-text-tertiary)]">
-            <span>{contextLabel}</span>
-            <span>{usagePercent === undefined ? "-" : `${usagePercent}%`}</span>
-          </div>
-          <div className="flex justify-between gap-3 text-[11px] text-[var(--mm-text-tertiary)]">
-            <span>输入 {formatToken(usage?.inputTokens)}</span>
-            <span>输出 {formatToken(usage?.outputTokens)}</span>
-            <span>费用 {usage?.estimatedCostUsd === undefined ? "unknown" : `$${usage.estimatedCostUsd.toFixed(4)}`}</span>
-          </div>
-        </div>
-      </section>
-
-      <ToolPermissionsPanel workspaceId={workspaceId} />
-
-      <ThinkingControlPanel />
-
       <section className="rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">环境信息</h2>
@@ -613,14 +492,19 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
             </div>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={openGitPanel}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-[var(--mm-bg-hover)]"
+              aria-label="提交或推送，打开 Git 面板"
+            >
               <RowIcon>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M4 12h13m0 0-4-4m4 4-4 4" />
                 </svg>
               </RowIcon>
               <span>提交或推送</span>
-            </div>
+            </button>
             <span className="shrink-0 font-mono text-[11px] text-[var(--mm-text-secondary)]">
               {git ? `${git.ahead}/${git.behind}` : "-"}
             </span>
@@ -670,6 +554,8 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
           )}
         </div>
       </section>
+
+      <ToolPermissionsPanel workspaceId={workspaceId} />
 
       <section className="min-h-0 rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">

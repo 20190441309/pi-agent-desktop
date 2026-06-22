@@ -12,13 +12,21 @@
  */
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { mkdir } from 'fs/promises';
 
 const TEST_TIMEOUT = 60_000;
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
+    const configDir = `${userDataDir}-pi-config`;
+    await mkdir(configDir, { recursive: true });
     const app = await _electron.launch({
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
-        env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
+        env: {
+            ...process.env,
+            CI: '1',
+            ELECTRON_RENDERER_URL: '',
+            PI_DESKTOP_CONFIG_DIR: configDir,
+        },
     });
     const page = await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');
@@ -35,6 +43,16 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
     return { app, page };
 }
 
+async function openConfigWindow(app: ElectronApplication, page: Page): Promise<Page> {
+    const settingsWindowPromise = app.waitForEvent('window');
+    await page.getByRole('button', { name: '打开设置窗口' }).click();
+    const settingsWindow = await settingsWindowPromise;
+    await settingsWindow.waitForLoadState('domcontentloaded');
+    await settingsWindow.getByRole('tab', { name: '配置文件' }).click();
+    await expect(settingsWindow.getByRole('tab', { name: '配置文件' })).toHaveAttribute('aria-selected', 'true');
+    return settingsWindow;
+}
+
 test.describe('Pi Desktop — Third-Party Model Configuration', () => {
     test.setTimeout(TEST_TIMEOUT);
 
@@ -43,18 +61,10 @@ test.describe('Pi Desktop — Third-Party Model Configuration', () => {
         const userDataDir = test.info().outputPath(`config-models-${Date.now()}`);
         const { app, page } = await launchApp(userDataDir);
 
-        // Step 1: Open settings
-        await page.locator('button[data-mmcode-section="settings"]').click();
-        const settingsDialog = page.getByRole('dialog', { name: '设置' });
-        await expect(settingsDialog).toBeVisible({ timeout: 5000 });
-
-        // Step 2: Click "配置中心" tab
-        const configTab = settingsDialog.locator('[role="tab"]').filter({ hasText: '配置中心' });
-        await configTab.click();
-        await page.waitForTimeout(300);
+        const settingsWindow = await openConfigWindow(app, page);
 
         // Step 3: Verify config editor is visible
-        const configEditor = settingsDialog.locator('textarea[aria-label="Pi 配置 JSON"]');
+        const configEditor = settingsWindow.locator('textarea[aria-label="Pi 配置 JSON"]');
         await expect(configEditor).toBeVisible({ timeout: 5000 });
 
         // Step 4: Get current models.json content
@@ -77,15 +87,15 @@ test.describe('Pi Desktop — Third-Party Model Configuration', () => {
         };
 
         await configEditor.fill(JSON.stringify(testProvider, null, 2));
-        await page.waitForTimeout(200);
+        await settingsWindow.waitForTimeout(200);
 
         // Step 6: Save the configuration
-        const saveBtn = settingsDialog.locator('button:has-text("保存当前文件")');
+        const saveBtn = settingsWindow.locator('button:has-text("保存当前文件")');
         await saveBtn.click();
-        await page.waitForTimeout(500);
+        await settingsWindow.waitForTimeout(500);
 
         // Step 7: Verify save success message
-        const successMessage = settingsDialog.locator('text=已保存');
+        const successMessage = settingsWindow.locator('text=已保存');
         await expect(successMessage).toBeVisible({ timeout: 5000 });
         console.log('[TEST] models.json saved successfully');
 
@@ -97,23 +107,15 @@ test.describe('Pi Desktop — Third-Party Model Configuration', () => {
         const userDataDir = test.info().outputPath(`config-auth-${Date.now()}`);
         const { app, page } = await launchApp(userDataDir);
 
-        // Open settings
-        await page.locator('button[data-mmcode-section="settings"]').click();
-        const settingsDialog = page.getByRole('dialog', { name: '设置' });
-        await expect(settingsDialog).toBeVisible({ timeout: 5000 });
-
-        // Click "配置中心" tab
-        const configTab = settingsDialog.locator('[role="tab"]').filter({ hasText: '配置中心' });
-        await configTab.click();
-        await page.waitForTimeout(300);
+        const settingsWindow = await openConfigWindow(app, page);
 
         // Switch to auth.json
-        const authBtn = settingsDialog.locator('button:has-text("auth.json")');
+        const authBtn = settingsWindow.locator('button:has-text("auth.json")');
         await authBtn.click();
-        await page.waitForTimeout(300);
+        await settingsWindow.waitForTimeout(300);
 
         // Verify auth.json editor
-        const configEditor = settingsDialog.locator('textarea[aria-label="Pi 配置 JSON"]');
+        const configEditor = settingsWindow.locator('textarea[aria-label="Pi 配置 JSON"]');
         await expect(configEditor).toBeVisible({ timeout: 5000 });
 
         // Write auth config with API key
@@ -124,15 +126,15 @@ test.describe('Pi Desktop — Third-Party Model Configuration', () => {
         };
 
         await configEditor.fill(JSON.stringify(authConfig, null, 2));
-        await page.waitForTimeout(200);
+        await settingsWindow.waitForTimeout(200);
 
         // Save
-        const saveBtn = settingsDialog.locator('button:has-text("保存当前文件")');
+        const saveBtn = settingsWindow.locator('button:has-text("保存当前文件")');
         await saveBtn.click();
-        await page.waitForTimeout(500);
+        await settingsWindow.waitForTimeout(500);
 
         // Verify save success
-        const successMessage = settingsDialog.locator('text=已保存');
+        const successMessage = settingsWindow.locator('text=已保存');
         await expect(successMessage).toBeVisible({ timeout: 5000 });
         console.log('[TEST] auth.json saved successfully');
 
@@ -144,16 +146,9 @@ test.describe('Pi Desktop — Third-Party Model Configuration', () => {
         const userDataDir = test.info().outputPath(`config-full-${Date.now()}`);
         const { app, page } = await launchApp(userDataDir);
 
-        // Open settings → config center
-        await page.locator('button[data-mmcode-section="settings"]').click();
-        const settingsDialog = page.getByRole('dialog', { name: '设置' });
-        await expect(settingsDialog).toBeVisible({ timeout: 5000 });
+        const settingsWindow = await openConfigWindow(app, page);
 
-        const configTab = settingsDialog.locator('[role="tab"]').filter({ hasText: '配置中心' });
-        await configTab.click();
-        await page.waitForTimeout(300);
-
-        const configEditor = settingsDialog.locator('textarea[aria-label="Pi 配置 JSON"]');
+        const configEditor = settingsWindow.locator('textarea[aria-label="Pi 配置 JSON"]');
 
         // Configure models.json
         const modelsConfig = {
@@ -169,12 +164,12 @@ test.describe('Pi Desktop — Third-Party Model Configuration', () => {
             }
         };
         await configEditor.fill(JSON.stringify(modelsConfig, null, 2));
-        await settingsDialog.locator('button:has-text("保存当前文件")').click();
-        await page.waitForTimeout(500);
+        await settingsWindow.locator('button:has-text("保存当前文件")').click();
+        await settingsWindow.waitForTimeout(500);
 
         // Switch to auth.json
-        await settingsDialog.locator('button:has-text("auth.json")').click();
-        await page.waitForTimeout(300);
+        await settingsWindow.locator('button:has-text("auth.json")').click();
+        await settingsWindow.waitForTimeout(300);
 
         // Configure auth
         const authConfig = {
@@ -183,12 +178,14 @@ test.describe('Pi Desktop — Third-Party Model Configuration', () => {
             }
         };
         await configEditor.fill(JSON.stringify(authConfig, null, 2));
-        await settingsDialog.locator('button:has-text("保存当前文件")').click();
-        await page.waitForTimeout(500);
+        await settingsWindow.locator('button:has-text("保存当前文件")').click();
+        await settingsWindow.waitForTimeout(500);
 
         // Close settings
-        await settingsDialog.locator('button[aria-label="关闭"]').first().click();
-        await page.waitForTimeout(300);
+        const settingsClosed = settingsWindow.waitForEvent('close');
+        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
+        await settingsClosed;
+        await page.bringToFront();
 
         // Step 4: Verify via IPC API
         const models = await page.evaluate(async () => {

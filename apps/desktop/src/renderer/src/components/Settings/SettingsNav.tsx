@@ -36,7 +36,7 @@ export function SettingsNav({
 }): React.JSX.Element {
     const { t } = useI18n();
     return (
-        <aside className="flex w-[142px] shrink-0 flex-col border-r border-[#dfe5eb] bg-[#f2f3f5]">
+        <aside className="flex w-[142px] shrink-0 flex-col border-r border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)]">
             <nav className="flex-1 px-1 pt-[12px]" role="tablist" aria-label={t('settings.tabsAria')}>
                 {tabs.map((tab) => {
                     const isActive = activeTab === tab.id;
@@ -52,7 +52,7 @@ export function SettingsNav({
                             onClick={() => onSelectTab(tab.id)}
                             className={`settings-pressable mb-[4px] flex -ml-px h-[31px] w-full items-center gap-2 rounded-[4px] px-2 text-left transition-[transform,background-color,color,box-shadow] duration-150 ease-out ${
                                 isActive
-                                    ? 'relative top-[4px] border-l-2 border-l-[#80a9e7] bg-[#e4ebf3] text-[#0874d1] shadow-[0_1px_2px_rgba(20,60,100,0.04)]'
+                                    ? 'relative top-[4px] border-l-2 border-l-[var(--mm-accent-blue)] bg-[var(--mm-bg-selected)] text-[var(--mm-accent-blue)] shadow-none'
                                     : 'text-[#777777] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]'
                             }`}
                         >

@@ -94,6 +94,66 @@ describe("AgentRuntimeRegistry", () => {
         expect(createExtensionUiBridge).toHaveBeenCalledWith("ws_1", { agentId: agent.id });
     });
 
+    it("creates agent sessions with the selected desktop provider and model", async () => {
+        const { createWorkspaceSession } = await import("../../pi-session/factory");
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) =>
+                workspaceId === "ws_1"
+                    ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                    : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            agentDir: "C:/Users/test/.pi/agent",
+            getSettings: () => ({
+                theme: "light",
+                fontSize: 14,
+                model: "LongCat-2.0-Preview",
+                provider: "longcat",
+                apiKey: "",
+                temperature: 0.7,
+                maxTokens: 4096,
+                autoSave: true,
+                showLineNumbers: true,
+                wordWrap: true,
+                permissionLevel: "smart",
+            }),
+            getPiAgentConfig: () => ({
+                defaultProvider: "longcat",
+                defaultModel: "LongCat-2.0-Preview",
+                providers: [
+                    {
+                        id: "longcat",
+                        name: "LongCat",
+                        baseUrl: "https://api.longcat.chat/openai",
+                        api: "openai-completions",
+                        models: [
+                            {
+                                id: "LongCat-2.0-Preview",
+                                name: "LongCat 2.0 Preview",
+                                provider: "longcat",
+                                providerName: "LongCat",
+                            },
+                        ],
+                    },
+                ],
+            }),
+        });
+
+        await registry.create({ workspaceId: "ws_1", title: "A" });
+
+        expect(createWorkspaceSession).toHaveBeenCalledWith(
+            expect.objectContaining({
+                agentDir: "C:/Users/test/.pi/agent",
+                provider: "longcat",
+                modelId: "LongCat-2.0-Preview",
+                piAgentConfig: expect.objectContaining({
+                    defaultProvider: "longcat",
+                    defaultModel: "LongCat-2.0-Preview",
+                }),
+            }),
+        );
+    });
+
     it("routes prompt, messages, and state by agent id", async () => {
         const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
 

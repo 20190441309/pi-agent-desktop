@@ -57,16 +57,18 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         await page.screenshot({ path: join(screenshotDir, '02-after-click-new-task.png') });
         console.log('[AUTO] Clicked "新建任务" (New Task)');
 
-        // ===== Step 3: Click "文件" (Files) =====
-        const filesBtn = page.locator('button[data-mmcode-section="files"]');
-        await expect(filesBtn).toBeVisible({ timeout: 5000 });
-        await filesBtn.click();
+        // ===== Step 3: Click "历史" (History) =====
+        const historyTab = page.getByRole('tab', { name: '历史' });
+        await expect(historyTab).toBeVisible({ timeout: 5000 });
+        await historyTab.click();
+        await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeVisible({ timeout: 5000 });
         await page.waitForTimeout(500);
-        await page.screenshot({ path: join(screenshotDir, '03-after-click-files.png') });
-        console.log('[AUTO] Clicked "文件" (Files)');
+        await page.screenshot({ path: join(screenshotDir, '03-after-click-history.png') });
+        await page.getByRole('button', { name: '关闭搜索' }).click();
+        console.log('[AUTO] Clicked "历史" (History)');
 
         // ===== Step 4: Click "插件" (Skills/Plugins) =====
-        const skillsBtn = page.locator('button[data-mmcode-section="skills"]');
+        const skillsBtn = page.getByRole('tab', { name: '技能' });
         await expect(skillsBtn).toBeVisible({ timeout: 5000 });
         await skillsBtn.click();
         await page.waitForTimeout(500);
@@ -85,39 +87,41 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         }
 
         // ===== Step 5: Click "Git" =====
-        const gitBtn = page.locator('button[data-mmcode-section="git"]');
+        const gitBtn = page.getByRole('tab', { name: 'Git' });
         await expect(gitBtn).toBeVisible({ timeout: 5000 });
         await gitBtn.click();
         await page.waitForTimeout(500);
         await page.screenshot({ path: join(screenshotDir, '05-after-click-git.png') });
         console.log('[AUTO] Clicked "Git"');
 
-        // ===== Step 6: Click "设置" (Settings) — opens dialog =====
-        const settingsBtn = page.locator('button[data-mmcode-section="settings"]');
+        // ===== Step 6: Click "设置" (Settings) — opens window =====
+        const settingsBtn = page.getByRole('button', { name: '打开设置窗口' });
         await expect(settingsBtn).toBeVisible({ timeout: 5000 });
+        const settingsWindowPromise = app.waitForEvent('window');
         await settingsBtn.click();
-        const settingsDialog = page.getByRole('dialog', { name: '设置' });
-        await expect(settingsDialog).toBeVisible({ timeout: 5000 });
+        const settingsWindow = await settingsWindowPromise;
+        await settingsWindow.waitForLoadState('domcontentloaded');
+        await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible({ timeout: 5000 });
         await page.waitForTimeout(400);
-        await page.screenshot({ path: join(screenshotDir, '06-after-click-settings.png') });
-        console.log('[AUTO] Clicked "设置" (Settings) — dialog opened');
+        await settingsWindow.screenshot({ path: join(screenshotDir, '06-after-click-settings.png') });
+        console.log('[AUTO] Clicked "设置" (Settings) — window opened');
 
         // Switch a few Settings tabs (first 3)
-        const tabs = settingsDialog.locator('[role="tab"]');
+        const tabs = settingsWindow.locator('[role="tab"]');
         const tabCount = await tabs.count();
         for (let i = 1; i < Math.min(tabCount, 4); i++) {
             await tabs.nth(i).click();
-            await page.waitForTimeout(300);
-            await page.screenshot({ path: join(screenshotDir, `06b-settings-tab-${i}.png`) });
+            await settingsWindow.waitForTimeout(300);
+            await settingsWindow.screenshot({ path: join(screenshotDir, `06b-settings-tab-${i}.png`) });
             console.log(`[AUTO] Settings tab ${i} clicked`);
         }
 
-        // Close settings dialog using the close button
-        const closeBtn = settingsDialog.locator('button[aria-label="关闭"]').first();
-        await closeBtn.click();
-        await page.waitForTimeout(300);
+        const settingsClosed = settingsWindow.waitForEvent('close');
+        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
+        await settingsClosed;
+        await page.bringToFront();
         await page.screenshot({ path: join(screenshotDir, '06c-after-close-settings.png') });
-        console.log('[AUTO] Closed Settings dialog');
+        console.log('[AUTO] Closed Settings window');
 
         // ===== Step 7: Open Command Palette with Ctrl+K =====
         await page.keyboard.press('Control+k');
@@ -127,19 +131,19 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         await page.keyboard.press('Escape');
         await page.waitForTimeout(200);
 
-        // ===== Step 8: Click permission trigger =====
-        const permTrigger = page.locator('[data-testid="chat-input-permission-trigger"]');
-        if (await permTrigger.isVisible().catch(() => false)) {
-            await permTrigger.click();
+        // ===== Step 8: Click Agent mode trigger =====
+        const modeTrigger = page.getByRole('button', { name: '选择 Agent 模式' });
+        if (await modeTrigger.isVisible().catch(() => false)) {
+            await modeTrigger.click();
             await page.waitForTimeout(400);
-            await page.screenshot({ path: join(screenshotDir, '08-permission-menu-open.png') });
-            console.log('[AUTO] Clicked permission trigger');
+            await page.screenshot({ path: join(screenshotDir, '08-agent-mode-menu-open.png') });
+            console.log('[AUTO] Clicked Agent mode trigger');
             await page.keyboard.press('Escape');
             await page.waitForTimeout(200);
         }
 
         // ===== Step 9: Click model trigger =====
-        const modelTrigger = page.locator('[data-testid="chat-input-model-trigger"]');
+        const modelTrigger = page.getByRole('button', { name: /当前模型:/ });
         if (await modelTrigger.isVisible().catch(() => false)) {
             await modelTrigger.click();
             await page.waitForTimeout(400);

@@ -16,21 +16,57 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { join } from 'path';
+import type { ChildProcess } from 'child_process';
 
 const TEST_TIMEOUT = 60_000;
+let activeApp: ElectronApplication | undefined;
+
+async function waitForExit(process: ChildProcess | undefined, timeoutMs = 5_000): Promise<void> {
+    if (!process || process.exitCode !== null || process.killed) return;
+
+    await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+            process.kill();
+            resolve();
+        }, timeoutMs);
+
+        process.once('exit', () => {
+            clearTimeout(timeout);
+            resolve();
+        });
+    });
+}
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await _electron.launch({
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
+    activeApp = app;
     const page = await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');
     return { app, page };
 }
 
+async function closeActiveApp(): Promise<void> {
+    const app = activeApp;
+    const process = app?.process();
+    try {
+        await app?.close();
+    } catch {
+        // Electron can already be gone after restart-heavy tests; cleanup should stay best-effort.
+    } finally {
+        await waitForExit(process);
+        activeApp = undefined;
+    }
+}
+
 test.describe('Pi Desktop — Core Workflow', () => {
     test.setTimeout(TEST_TIMEOUT);
+
+    test.afterEach(async () => {
+        await closeActiveApp();
+    });
 
     // ===== Test 1: 工作区创建与切换 =====
     test('workspace lifecycle: create → switch → delete', async () => {
@@ -63,7 +99,7 @@ test.describe('Pi Desktop — Core Workflow', () => {
         // Close palette
         await page.keyboard.press('Escape');
 
-        await app.close();
+        await closeActiveApp();
 
         // Restart app and verify persistence
         ({ app, page } = await launchApp(userDataDir));
@@ -73,7 +109,7 @@ test.describe('Pi Desktop — Core Workflow', () => {
         });
         expect(persisted).toBeGreaterThanOrEqual(2);
 
-        await app.close();
+        await closeActiveApp();
     });
 
     // ===== Test 2: 会话创建与消息持久化 =====
@@ -105,7 +141,7 @@ test.describe('Pi Desktop — Core Workflow', () => {
             return { sessionId: session.id, workspaceId: ws.id };
         }, { wsPath });
 
-        await app.close();
+        await closeActiveApp();
 
         // Restart and verify messages persisted
         ({ app, page } = await launchApp(userDataDir));
@@ -121,7 +157,7 @@ test.describe('Pi Desktop — Core Workflow', () => {
         expect(restored?.title).toBe('测试会话');
         expect(restored?.messageCount).toBe(2);
 
-        await app.close();
+        await closeActiveApp();
     });
 
     // ===== Test 3: 多 Agent 创建与切换 =====
@@ -157,7 +193,7 @@ test.describe('Pi Desktop — Core Workflow', () => {
 
         expect(list).toHaveLength(2);
 
-        await app.close();
+        await closeActiveApp();
     });
 
     // ===== Test 4: 设置持久化 =====
@@ -172,7 +208,7 @@ test.describe('Pi Desktop — Core Workflow', () => {
             await window.piAPI.setSettings({ theme: 'dark', language: 'zh-CN' });
         });
 
-        await app.close();
+        await closeActiveApp();
 
         // Restart and verify
         ({ app, page } = await launchApp(userDataDir));
@@ -184,6 +220,6 @@ test.describe('Pi Desktop — Core Workflow', () => {
         expect(settings.theme).toBe('dark');
         expect(settings.language).toBe('zh-CN');
 
-        await app.close();
+        await closeActiveApp();
     });
 });

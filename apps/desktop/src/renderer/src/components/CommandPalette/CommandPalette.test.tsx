@@ -392,7 +392,9 @@ describe("CommandPalette", () => {
     fireEvent.click(await screen.findByRole("button", { name: "打开文件" }));
 
     expect(onRunCommand).toHaveBeenCalledWith("open_files");
-    expect(onClose).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalled();
+    });
   });
 
   it("keeps workspace switching open so async errors are visible", async () => {
@@ -416,6 +418,31 @@ describe("CommandPalette", () => {
 
     expect(onRunCommand).toHaveBeenCalledWith("switch_workspace");
     expect((await screen.findByRole("alert")).textContent).toContain("打开目录选择器失败: dialog unavailable");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("keeps built-in command failures open so status feedback is visible", async () => {
+    const onRunCommand = vi.fn(() => {
+      window.dispatchEvent(new CustomEvent("command-palette:status", {
+        detail: { message: "请先选择工作区", tone: "error" },
+      }));
+      return false;
+    });
+    filesList.mockResolvedValue([]);
+    detectProject.mockResolvedValue({
+      type: "unknown",
+      name: "repo",
+      rootPath: "C:/repo",
+      configFiles: [],
+      hasGit: true,
+    });
+    const { onClose } = renderPalette({ workspacePath: "", onRunCommand });
+
+    fireEvent.click(screen.getByRole("tab", { name: "命令" }));
+    fireEvent.click(await screen.findByRole("button", { name: "切换终端" }));
+
+    expect(onRunCommand).toHaveBeenCalledWith("toggle_terminal");
+    expect((await screen.findByRole("alert")).textContent).toContain("请先选择工作区");
     expect(onClose).not.toHaveBeenCalled();
   });
 });

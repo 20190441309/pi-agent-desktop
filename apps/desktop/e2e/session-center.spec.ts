@@ -39,14 +39,11 @@ test.describe('Pi Desktop — Session Center', () => {
         const userDataDir = test.info().outputPath(`session-ui-${Date.now()}`);
         const { app, page } = await launchApp(userDataDir);
 
-        // Open session center
-        await page.locator('button[data-mmcode-section="sessions"]').click();
-        await page.waitForTimeout(500);
-
-        // Verify session center region
-        await expect(page.getByRole('region', { name: '会话中心' }).or(
-            page.locator('text=会话').first()
-        )).toBeVisible({ timeout: 5000 });
+        await page.getByRole('tab', { name: '历史' }).click();
+        await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('button', { name: '关闭搜索' })).toBeVisible();
+        await page.getByRole('button', { name: '关闭搜索' }).click();
+        await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeHidden({ timeout: 3000 });
 
         await app.close();
     });

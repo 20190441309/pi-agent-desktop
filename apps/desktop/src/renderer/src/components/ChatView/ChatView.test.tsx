@@ -239,6 +239,37 @@ describe("ChatView", () => {
     expect(screen.queryByTestId("external-model-selector")).toBeNull();
   });
 
+  it("shows compact token usage in the top strip instead of model details", () => {
+    mockedStreamError = null;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              usage: {
+                inputTokens: 1200,
+                outputTokens: 300,
+                totalTokens: 1500,
+                estimatedCostUsd: 0.0123,
+                updatedAt: Date.now(),
+              },
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByText(/模型:/)).toBeNull();
+    expect(screen.getByText(/Token:/).textContent).toContain("1.5K");
+    expect(screen.getByText(/输入 1.2K/)).toBeTruthy();
+    expect(screen.getByText(/输出 300/)).toBeTruthy();
+  });
+
   it("auto-scrolls only the chat scroll region instead of the outer document", () => {
     mockedStreamError = null;
     const scrollIntoView = vi.fn();

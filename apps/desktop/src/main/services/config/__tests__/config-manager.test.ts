@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigManager } from "../config-manager";
 
 describe("ConfigManager", () => {
@@ -11,6 +11,10 @@ describe("ConfigManager", () => {
     beforeEach(async () => {
         dir = await mkdtemp(join(tmpdir(), "pi-config-"));
         manager = new ConfigManager(dir);
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
     });
 
     it("returns defaults when config files are missing", async () => {
@@ -193,6 +197,50 @@ describe("ConfigManager", () => {
         await expect(readFile(join(dir, "models.json"), "utf8")).resolves.toContain("\"_piDesktopDeletedModels\"");
     });
 
+    it("tests provider connections with the provider api key when auth.json has no matching key", async () => {
+        const fetchMock = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({}),
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+        await writeFile(
+            join(dir, "models.json"),
+            JSON.stringify({
+                providers: {
+                    mimo: {
+                        name: "MiMo",
+                        baseUrl: "https://api.xiaomimimo.com/v1",
+                        apiKey: "sk-provider-key",
+                        api: "openai-completions",
+                        models: [{ id: "mimo-v2.5-pro", name: "MiMo v2.5 Pro", api: "openai-completions" }],
+                    },
+                },
+            }),
+            "utf8",
+        );
+        await writeFile(join(dir, "auth.json"), JSON.stringify({ provider: { key: "sk-other" } }), "utf8");
+
+        const result = await manager.testProviderConnection(
+            "https://api.xiaomimimo.com/v1",
+            undefined,
+            "mimo-v2.5-pro",
+            undefined,
+            undefined,
+            { providerId: "mimo", api: "openai-completions" },
+        );
+
+        expect(result.ok).toBe(true);
+        expect(fetchMock).toHaveBeenCalledWith(
+            "https://api.xiaomimimo.com/v1/chat/completions",
+            expect.objectContaining({
+                headers: expect.objectContaining({
+                    Authorization: "Bearer sk-provider-key",
+                }),
+            }),
+        );
+    });
+
     describe("loadPiAgentConfig", () => {
         it("returns null when config dir does not exist", () => {
             const mgr = new ConfigManager(join(tmpdir(), "nonexistent-dir-" + Date.now()));
@@ -207,6 +255,7 @@ describe("ConfigManager", () => {
                         openai: {
                             name: "OpenAI",
                             baseUrl: "https://api.openai.com/v1",
+                            apiKey: "OPENAI_API_KEY",
                             models: [{ id: "gpt-4o", name: "GPT-4o", contextWindow: 128000 }],
                         },
                     },
@@ -220,6 +269,7 @@ describe("ConfigManager", () => {
             expect(config!.defaultProvider).toBe("google");
             expect(config!.providers).toHaveLength(1);
             expect(config!.providers[0].id).toBe("openai");
+            expect(config!.providers[0].apiKey).toBe("OPENAI_API_KEY");
             expect(config!.providers[0].models[0].id).toBe("gpt-4o");
             expect(config!.providers[0].models[0].contextWindow).toBe(128000);
         });

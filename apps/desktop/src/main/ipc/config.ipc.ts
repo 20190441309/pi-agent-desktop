@@ -76,7 +76,7 @@ export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedMo
         }
         return configManager.fetchModels(baseUrl, apiKey, apiType);
     });
-    ipcMain.handle("config:test-provider", (_event, input: { baseUrl: string; apiKey?: string; modelId?: string; apiType?: string; headers?: Record<string, string> }) => {
+    ipcMain.handle("config:test-provider", (_event, input: { baseUrl: string; providerId?: string; apiKey?: string; modelId?: string; apiType?: string; api?: string; headers?: Record<string, string> }) => {
         // SSRF 防护: 验证 URL 安全性
         if (!isSafeUrl(input.baseUrl)) {
             return ipcError(
@@ -85,6 +85,9 @@ export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedMo
                 { url: input.baseUrl },
             );
         }
-        return configManager.testProviderConnection(input.baseUrl, input.apiKey, input.modelId, input.apiType, input.headers);
+        return configManager.testProviderConnection(input.baseUrl, input.apiKey, input.modelId, input.apiType, input.headers, {
+            providerId: input.providerId,
+            api: input.api,
+        });
     });
 }

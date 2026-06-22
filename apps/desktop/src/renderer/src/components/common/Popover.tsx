@@ -103,15 +103,26 @@ export function Popover({
         };
     }, [open]);
 
-    // 滚动/resize 时关掉(简化:不重定位,直接关)
+    // 外部滚动/resize 时关掉；下拉自身滚动不能关闭，否则长菜单无法滑动。
     useEffect(() => {
         if (!open) return;
+        let canCloseOnScroll = false;
+        const armScrollClose = requestAnimationFrame(() => {
+            canCloseOnScroll = true;
+        });
         const close = (): void => setOpen(false);
+        const closeOnExternalScroll = (e: Event): void => {
+            if (!canCloseOnScroll) return;
+            const target = e.target as Node | null;
+            if (target && contentRef.current?.contains(target)) return;
+            setOpen(false);
+        };
         window.addEventListener("resize", close);
-        window.addEventListener("scroll", close, true);
+        window.addEventListener("scroll", closeOnExternalScroll, true);
         return () => {
+            cancelAnimationFrame(armScrollClose);
             window.removeEventListener("resize", close);
-            window.removeEventListener("scroll", close, true);
+            window.removeEventListener("scroll", closeOnExternalScroll, true);
         };
     }, [open]);
 

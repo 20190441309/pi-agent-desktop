@@ -13,6 +13,7 @@ import { ChatInput } from './ChatInput';
 import { useI18n } from '../../i18n';
 import { usePlanStore } from '../../stores/plan-store';
 import { useSettingsStore } from '../../stores/settings-store';
+import { formatUsageCost, formatUsageNumber } from '../UsageStats/usage-aggregation';
 import type { Message } from '../../stores/session-store';
 import type { AgentMessage } from '@shared';
 
@@ -368,6 +369,18 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
           : "中";
   const modelSummary = [settings.provider, settings.model].filter(Boolean).join(" / ") || "未配置模型";
   const workspaceName = currentWorkspace?.name ?? "未选择";
+  const usage = currentSession?.usage;
+  const totalTokens = usage?.totalTokens ?? (
+    usage?.inputTokens !== undefined || usage?.outputTokens !== undefined
+      ? (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
+      : undefined
+  );
+  const usageSummary = totalTokens === undefined
+    ? "Token: -"
+    : `Token: ${formatUsageNumber(totalTokens, "compact")}`;
+  const inputUsage = `输入 ${formatUsageNumber(usage?.inputTokens, "compact")}`;
+  const outputUsage = `输出 ${formatUsageNumber(usage?.outputTokens, "compact")}`;
+  const costUsage = usage?.estimatedCostUsd !== undefined ? `费用 ${formatUsageCost(usage.estimatedCostUsd)}` : null;
   const shouldUseGlobalComposer = !currentSession?.readOnly;
 
   useEffect(() => {
@@ -510,11 +523,15 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
           <span className="min-w-0 truncate">
             工作区: <span className="text-[var(--mm-text-primary)]">{workspaceName}</span>
           </span>
-          <span className="min-w-0 truncate">
-            模型: <span className="font-mono text-[var(--mm-text-primary)]">{modelSummary}</span>
-          </span>
           <span>权限: <span className="text-[var(--mm-text-primary)]">{permissionLabel}</span></span>
-          <span>思考: <span className="text-[var(--mm-text-primary)]">{thinkingLabel}</span></span>
+          <span className="font-mono text-[var(--mm-text-primary)]">{usageSummary}</span>
+          {usage ? (
+            <>
+              <span className="text-[var(--mm-text-tertiary)]">{inputUsage}</span>
+              <span className="text-[var(--mm-text-tertiary)]">{outputUsage}</span>
+              {costUsage && <span className="text-[var(--mm-text-tertiary)]">{costUsage}</span>}
+            </>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5 text-[var(--mm-text-secondary)]" role="status" aria-label={isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}>
           <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />

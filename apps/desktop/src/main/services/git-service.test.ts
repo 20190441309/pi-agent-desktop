@@ -91,4 +91,26 @@ describe("git-service protected path policy", () => {
         expect(execFileSyncMock).toHaveBeenCalledWith("git", ["status", "--porcelain"], expect.objectContaining({ cwd: "C:/repo" }));
         expect(execFileSyncMock).toHaveBeenCalledWith("git", ["diff", "--staged"], expect.objectContaining({ cwd: "C:/repo" }));
     });
+
+    it("keeps staged-only changes out of unstaged status buckets", () => {
+        execFileSyncMock
+            .mockReturnValueOnce("C:/repo\n")
+            .mockReturnValueOnce("main\n")
+            .mockReturnValueOnce("M  src/staged-only.ts\nMM src/staged-and-unstaged.ts\nA  src/staged-new.ts\n D src/deleted-worktree.ts\n?? src/untracked.ts\n")
+            .mockImplementationOnce(() => {
+                throw new Error("no upstream");
+            });
+
+        const status = getGitStatus("C:/repo");
+
+        expect(status).toMatchObject({
+            branch: "main",
+            modified: ["src/staged-and-unstaged.ts"],
+            added: [],
+            deleted: ["src/deleted-worktree.ts"],
+            untracked: ["src/untracked.ts"],
+            ahead: 0,
+            behind: 0,
+        });
+    });
 });

@@ -1,13 +1,13 @@
 // E2E smoke: 全面 runtime test v1.0.16 Pi Desktop 的各个功能。
 //
 // 覆盖矩阵:
-//   - Sidebar 主操作路由 (新建任务/文件/插件/Git/设置)
-//   - ChatView 欢迎页 + ChatInput 渲染
+//   - 顶部导航路由 (对话/技能/Git/历史/设置窗口)
+//   - ChatView 新对话页 + ChatInput 渲染
 //   - 插件面板 3 个真接通按钮 (GitHub 导入/编写技能/搜索)
-//   - Settings panel 接通 + 4 tabs (general/model/piagent/about)
+//   - Settings 独立窗口接通 + 10 个 tabs
 //   - CommandPalette 接通 (Ctrl+K 快捷键)
 //   - ApprovalPanel 渲染 + 自动审批 toggle
-//   - ChatInput 3 个 Popover (权限/模型/附件) — 回归 (原 v1.0.13 spec)
+//   - ChatInput reference-frame 控件 (附件/Agent 模式/模型/思考强度)
 //
 // 设计原则: 用 page.click 触发 React onClick, 不走 OS 鼠标 (避免 z-order 抢焦点)
 
@@ -46,56 +46,70 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         try { await app?.close(); } catch { /* ignore */ }
     });
 
-    test('1. Sidebar 主操作路由 (新建任务/文件/插件/Git/设置)', async () => {
+    test('1. 顶部导航主路由 (对话/技能/Git/历史/设置窗口)', async () => {
         ({ app, page } = await launchApp());
 
+        await expect(page.getByRole('tablist', { name: '顶部标签栏' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: '对话' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: '技能' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Git' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: '历史' })).toBeVisible();
+        await expect(page.getByRole('button', { name: '打开设置窗口' })).toBeVisible();
         await expect(page.locator('button[data-mmcode-section="new-task"]')).toBeVisible();
-        await expect(page.locator('button[data-mmcode-section="files"]')).toBeVisible();
-        await expect(page.locator('button[data-mmcode-section="skills"]')).toBeVisible();
-        await expect(page.locator('button[data-mmcode-section="git"]')).toBeVisible();
-        await expect(page.locator('button[data-mmcode-section="settings"]')).toBeVisible();
 
-        // v1.0.16: 新用户无历史会话时"任务历史"区域条件渲染不显示
-        // 验证主导航 sidebar 存在即可
-        await expect(page.locator('nav[aria-label="主导航"]')).toBeVisible();
+        // 导航已移到顶部，左栏只保留会话列表。
+        await expect(page.locator('nav[aria-label="会话列表"]')).toBeVisible();
 
-        await page.locator('button[data-mmcode-section="skills"]').click();
+        await page.getByRole('tab', { name: '技能' }).click();
         await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('tab', { name: '技能' })).toHaveAttribute('aria-selected', 'true');
 
-        await page.locator('button[data-mmcode-section="files"]').click();
-        await expect(page.getByRole('region', { name: '文件工作区' })).toBeVisible({ timeout: 5000 });
-
-        await page.locator('button[data-mmcode-section="git"]').click();
+        await page.getByRole('tab', { name: 'Git' }).click();
         await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('tab', { name: 'Git' })).toHaveAttribute('aria-selected', 'true');
 
-        await page.locator('button[data-mmcode-section="settings"]').click();
-        const settingsDialog = page.getByRole('dialog', { name: '设置' });
-        await expect(settingsDialog).toBeVisible({ timeout: 5000 });
+        await page.getByRole('tab', { name: '历史' }).click();
+        await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeVisible({ timeout: 5000 });
+        await page.getByRole('button', { name: '关闭搜索' }).click();
+        await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeHidden({ timeout: 3000 });
 
-        await settingsDialog.locator('button[aria-label="关闭"]').click();
-        await expect(settingsDialog).toBeHidden({ timeout: 3000 });
+        const settingsWindowPromise = app.waitForEvent('window');
+        await page.getByRole('button', { name: '打开设置窗口' }).click();
+        const settingsWindow = await settingsWindowPromise;
+        await settingsWindow.waitForLoadState('domcontentloaded');
+        await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible({ timeout: 5000 });
+
+        const settingsClosed = settingsWindow.waitForEvent('close');
+        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
+        await settingsClosed;
+        await page.bringToFront();
 
         await page.locator('button[data-mmcode-section="new-task"]').click();
-        await expect(page.getByText('描述你想要构建或修改的内容')).toBeVisible({ timeout: 5000 });
+        await expect(page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。')).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('tab', { name: '对话' })).toHaveAttribute('aria-selected', 'true');
     });
 
-    test('2. ChatView 欢迎页和 ChatInput 渲染', async () => {
+    test('2. ChatView 新对话页和 ChatInput 渲染', async () => {
         ({ app, page } = await launchApp());
 
-        await expect(page.getByText('描述你想要构建或修改的内容')).toBeVisible({ timeout: 15000 });
+        await expect(page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。')).toBeVisible({ timeout: 15000 });
 
         const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="输入消息" i]').first();
         await expect(textarea).toBeVisible({ timeout: 5000 });
-        await expect(page.getByRole('button', { name: /添加附件/ })).toBeVisible();
-        await expect(page.locator('[data-testid="chat-input-permission-trigger"]')).toBeVisible();
-        await expect(page.locator('[data-testid="chat-input-model-trigger"]')).toBeVisible();
+        await expect(page.getByRole('button', { name: '添加文件或图片' })).toBeVisible();
+        await expect(page.getByRole('button', { name: '打开 Slash 命令' })).toBeVisible();
+        await expect(page.getByRole('button', { name: '选择 Agent 模式' })).toBeVisible();
+        await expect(page.getByRole('button', { name: /当前模型:/ })).toBeVisible();
+        await expect(page.getByRole('button', { name: /思考强度:/ })).toBeVisible();
+        await expect(page.getByRole('button', { name: '发送' })).toBeDisabled();
+        await expect(page.locator('[data-testid="chat-input-reference-controls"]')).toBeVisible();
     });
 
     test('3. 插件面板 3 个真接通按钮', async () => {
         ({ app, page } = await launchApp());
 
         // 切到插件面板
-        await page.getByRole('button', { name: '插件' }).click();
+        await page.getByRole('tab', { name: '技能' }).click();
         await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
 
         // (1) "+ 创建" dropdown 按钮接通
@@ -129,20 +143,20 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         expect(v).toBe('pi-coding-agent');
     });
 
-    test('4. Settings panel 接通 — 4 个 tabs 都能切', async () => {
+    test('4. Settings 独立窗口接通 — 10 个 tabs 都能切', async () => {
         ({ app, page } = await launchApp());
 
-        // 打开 Settings
-        await page.getByRole('button', { name: '设置' }).click();
-        await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible({ timeout: 5000 });
+        const settingsWindowPromise = app.waitForEvent('window');
+        await page.getByRole('button', { name: '打开设置窗口' }).click();
+        const settingsWindow = await settingsWindowPromise;
+        await settingsWindow.waitForLoadState('domcontentloaded');
 
-        // 当前设置页 7 个 tab 都在 — 用 tablist + tab roles
-        const tablist = page.getByRole('tablist', { name: '设置分类' });
+        const tablist = settingsWindow.getByRole('tablist', { name: '设置分类' });
         await expect(tablist).toBeVisible();
         const tabs = tablist.getByRole('tab');
         const tabCount = await tabs.count();
-        expect(tabCount).toBe(7); // appearance / model / piagent / config / general / shortcuts / about
-        for (const name of ['外观', '模型', 'Pi Agent', '配置中心', '通用', '快捷键', '关于']) {
+        expect(tabCount).toBe(10);
+        for (const name of ['模型', 'Agent', '权限', '用量', '长程能力', '界面', '通用', '快捷键', '配置文件', '关于']) {
             await expect(tablist.getByRole('tab', { name })).toBeVisible();
         }
 
@@ -150,18 +164,18 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await tablist.getByRole('tab', { name: '模型' }).click();
         await expect(tablist.getByRole('tab', { name: '模型' })).toHaveAttribute('aria-selected', 'true');
 
+        await tablist.getByRole('tab', { name: '长程能力' }).click();
+        await expect(tablist.getByRole('tab', { name: '长程能力' })).toHaveAttribute('aria-selected', 'true');
+
+        await tablist.getByRole('tab', { name: '界面' }).click();
+        await expect(tablist.getByRole('tab', { name: '界面' })).toHaveAttribute('aria-selected', 'true');
+
         await tablist.getByRole('tab', { name: '关于' }).click();
         await expect(tablist.getByRole('tab', { name: '关于' })).toHaveAttribute('aria-selected', 'true');
 
-        // 关闭按钮接通 — Settings 顶部关闭按钮 aria-label="关闭" (t('common.close'))
-        //   注: Settings 内有 2 个 "关闭" substring-match 的按钮 (line 76 = "关闭" + line 440 = "关闭设置")
-        //   用 attribute 精确 selector 避免 strict mode
-        const settingsDialog = page.getByRole('dialog', { name: '设置' });
-        const closeBtn = settingsDialog.locator('button[aria-label="关闭"]');
-        await expect(closeBtn).toBeVisible();
-        await closeBtn.click();
-        // 关闭后 dialog 消失
-        await expect(settingsDialog).toBeHidden({ timeout: 3000 });
+        const settingsClosed = settingsWindow.waitForEvent('close');
+        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
+        await settingsClosed;
     });
 
     test('5. CommandPalette 接通 — Ctrl+K 快捷键', async () => {
@@ -191,37 +205,42 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await expect(palette).toBeHidden({ timeout: 3000 });
     });
 
-    test('7. ChatInput 3 个 Popover 接通 (回归 v1.0.13)', async () => {
+    test('7. ChatInput reference-frame 控件接通', async () => {
         ({ app, page } = await launchApp());
 
-        // 3 个按钮渲染
-        const permTrigger = page.locator('[data-testid="chat-input-permission-trigger"]');
-        const modelTrigger = page.locator('[data-testid="chat-input-model-trigger"]');
-        const attachBtn = page.getByRole('button', { name: /添加附件/ });
-        await expect(permTrigger).toBeVisible();
-        await expect(modelTrigger).toBeVisible();
+        const attachBtn = page.getByRole('button', { name: '添加文件或图片' });
+        const agentModeTrigger = page.getByRole('button', { name: '选择 Agent 模式' });
+        const modelTrigger = page.getByRole('button', { name: /当前模型:/ });
+        const thinkingTrigger = page.getByRole('button', { name: /思考强度:/ });
         await expect(attachBtn).toBeVisible();
+        await expect(agentModeTrigger).toBeVisible();
+        await expect(modelTrigger).toBeVisible();
+        await expect(thinkingTrigger).toBeVisible();
 
-        // (1) 权限 popover — click → 出现 → 选 "主动询问" → 关闭
-        await permTrigger.click();
-        const permMenu = page.getByRole('menu').filter({ hasText: '主动询问' });
-        await expect(permMenu).toBeVisible();
-        await expect(permMenu.getByRole('menuitemradio', { name: /智能授权/ })).toBeVisible();
-        await expect(permMenu.getByRole('menuitemradio', { name: /始终授权/ })).toBeVisible();
-        await permMenu.getByRole('menuitemradio', { name: /主动询问/ }).click();
-        await expect(permMenu).toBeHidden();
-        await expect(permTrigger).toContainText('主动询问');
+        await agentModeTrigger.click();
+        const agentModeMenu = page.getByRole('menu', { name: 'Agent 模式' });
+        await expect(agentModeMenu).toBeVisible();
+        await expect(agentModeMenu.getByRole('menuitemradio', { name: /Build/ })).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(agentModeMenu).toBeHidden();
 
-        // (2) 模型 popover — click → 出现
         await modelTrigger.click();
         const modelMenu = page.getByRole('menu').filter({ hasText: '选择模型' });
         await expect(modelMenu).toBeVisible();
         await page.keyboard.press('Escape');
         await expect(modelMenu).toBeHidden();
 
-        // (3) 附件按钮 React fiber onClick 检查
+        await thinkingTrigger.click();
+        const thinkingMenu = page.getByRole('menu', { name: '思考强度' });
+        await expect(thinkingMenu).toBeVisible();
+        await expect(thinkingMenu.getByRole('menuitemradio', { name: '高' })).toBeVisible();
+        await thinkingMenu.getByRole('menuitemradio', { name: '低' }).click();
+        await expect(thinkingMenu).toBeHidden();
+        await expect(thinkingTrigger).toContainText('低');
+
+        // 附件按钮 React fiber onClick 检查
         const hasOnClick = await page.evaluate(() => {
-            const el = document.querySelector('button[aria-label*="添加附件" i]') as
+            const el = document.querySelector('button[aria-label="添加文件或图片"]') as
                 | (HTMLElement & Record<string, unknown>)
                 | null;
             if (!el) return false;

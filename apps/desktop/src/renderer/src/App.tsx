@@ -74,6 +74,12 @@ function emitCommandPaletteStatus(status: PaletteCommandStatus): void {
     window.dispatchEvent(new CustomEvent("command-palette:status", { detail: status }));
 }
 
+function requestChatInputFocus(): void {
+    window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("chat-input:focus"));
+    }, 0);
+}
+
 async function selectWorkspaceForRoute(path: string): Promise<void> {
     if (!window.piAPI?.selectWorkspace) return;
     try {
@@ -357,6 +363,7 @@ function AppShell(): React.ReactElement {
                 void useAgentStore.getState().createAgent(currentWorkspace.id, `${currentWorkspace.name} Agent`);
             }
             setActiveSection("new-task");
+            requestChatInputFocus();
             return;
         }
         if (section.startsWith("session:")) {
@@ -375,7 +382,7 @@ function AppShell(): React.ReactElement {
         }
         setActiveSection(section);
     }, [currentWorkspace]);
-    const handleRunCommand = useCallback((cmdId: string) => {
+    const handleRunCommand = useCallback((cmdId: string): boolean | void => {
         switch (cmdId) {
             case "new_chat":
                 routeSection("new-task");
@@ -386,12 +393,16 @@ function AppShell(): React.ReactElement {
             case "open_files":
                 if (!currentWorkspace) {
                     emitCommandPaletteStatus({ message: "请先选择工作区", tone: "error" });
-                    return;
+                    return false;
                 }
                 setFileWorkspaceTarget(null);
                 setActiveSection("files");
                 return;
             case "open_git":
+                if (!currentWorkspace) {
+                    emitCommandPaletteStatus({ message: "请先选择工作区", tone: "error" });
+                    return false;
+                }
                 routeSection("git");
                 return;
             case "open_sessions":
@@ -439,6 +450,10 @@ function AppShell(): React.ReactElement {
                 })();
                 return;
             case "toggle_terminal":
+                if (!currentWorkspace) {
+                    emitCommandPaletteStatus({ message: "请先选择工作区", tone: "error" });
+                    return false;
+                }
                 setShowTerminal((v) => !v);
                 return;
             default:
@@ -543,7 +558,7 @@ function AppShell(): React.ReactElement {
                     />
                 }
                 leftCollapsed={leftCollapsed}
-                rightCollapsed={rightRailCollapsed}
+                rightCollapsed={activePanel !== "chat" || rightRailCollapsed}
                 onCollapseLeft={() => setLeftCollapsed((v) => !v)}
                 onCollapseRight={activePanel === "chat" ? toggleRightRail : undefined}
                 leftSlot={

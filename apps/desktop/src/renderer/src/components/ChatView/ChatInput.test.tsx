@@ -37,7 +37,11 @@ function clickAddAttachment(): void {
 describe("ChatInput", () => {
   beforeEach(() => {
     Object.defineProperty(window, "piAPI", {
-      value: {},
+      value: {
+        setSettings: vi.fn(async () => undefined),
+        configSetDefaultModel: vi.fn(async () => ({ ok: true })),
+        agentsSetThinking: vi.fn(async () => undefined),
+      },
       configurable: true,
     });
     useAttachmentsStore.setState({ byWorkspace: new Map() });
@@ -67,6 +71,7 @@ describe("ChatInput", () => {
         showLineNumbers: true,
         wordWrap: true,
         permissionLevel: "smart",
+        thinkingLevel: "medium",
       },
       piModels: null,
     });
@@ -93,6 +98,8 @@ describe("ChatInput", () => {
       "添加文件或图片",
       "打开 Slash 命令",
       "选择 Agent 模式",
+      "当前模型: 未配置模型",
+      "思考强度: 中",
       "发送",
     ]);
   });
@@ -119,6 +126,173 @@ describe("ChatInput", () => {
     expect(usePlanStore.getState().enabled).toBe(false);
   });
 
+  it("does not steal focus back to the textarea after selecting an agent mode", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 0;
+    });
+    const focusSpy = vi.spyOn(HTMLTextAreaElement.prototype, "focus").mockImplementation(() => undefined);
+
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "选择 Agent 模式" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: /Plan/ }));
+
+      expect(useAgentModeStore.getState().getMode("ws1")).toBe("plan");
+      expect(focusSpy).not.toHaveBeenCalled();
+    } finally {
+      focusSpy.mockRestore();
+      rafSpy.mockRestore();
+    }
+  });
+
+  it("does not render the non-build mode status chip inside the reference composer body", () => {
+    useAgentModeStore.setState({ byWorkspace: { ws1: "max" } });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "选择 Agent 模式" }).textContent).toContain("Max");
+    expect(screen.queryByLabelText("max 模式已启用")).toBeNull();
+  });
+
+  it("selects a model from the reference composer model menu", async () => {
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        provider: "mimo",
+        model: "mimo-v2.5-pro",
+      },
+      piModels: [
+        {
+          id: "mimo-v2.5-pro",
+          name: "MiMo v2.5 Pro",
+          description: "Pro model",
+          provider: "mimo",
+          providerName: "MiMo",
+        },
+        {
+          id: "mimo-v2.5",
+          name: "MiMo v2.5",
+          description: "Base model",
+          provider: "mimo",
+          providerName: "MiMo",
+        },
+      ],
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "当前模型: mimo / mimo-v2.5-pro" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /MiMo v2.5$/ }));
+
+    expect(useSettingsStore.getState().settings).toMatchObject({
+      provider: "mimo",
+      model: "mimo-v2.5",
+    });
+    await waitFor(() => {
+      expect(window.piAPI.setSettings).toHaveBeenCalled();
+    });
+  });
+
+  it("keeps the model menu open while scrolling through many models", () => {
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        provider: "provider_a",
+        model: "model-0",
+      },
+      piModels: Array.from({ length: 12 }, (_, index) => ({
+        id: `model-${index}`,
+        name: `Model ${index}`,
+        description: `Model ${index}`,
+        provider: `provider_${index}`,
+        providerName: `Provider ${index}`,
+      })),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "当前模型: provider_a / model-0" }));
+
+    const menu = screen.getByRole("menu");
+    fireEvent.scroll(menu);
+
+    expect(screen.getByRole("menuitemradio", { name: "Model 11" })).toBeTruthy();
+  });
+
+  it("changes thinking strength from the reference composer and updates the active agent", async () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          agentId="agent-1"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "思考强度: 中" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /高/ }));
+
+    expect(useSettingsStore.getState().settings.thinkingLevel).toBe("high");
+    await waitFor(() => {
+      expect(window.piAPI.agentsSetThinking).toHaveBeenCalledWith("agent-1", "high");
+    });
+  });
+
   it("lets the reference composer resize from the top handle", () => {
     render(
       <I18nProvider>
@@ -143,6 +317,30 @@ describe("ChatInput", () => {
     fireEvent.pointerUp(window, { pointerId: 1 });
 
     expect((shell as HTMLElement).style.height).toBe("155px");
+  });
+
+  it("focuses the composer when the app requests a new chat focus", async () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    textbox.blur();
+    window.dispatchEvent(new CustomEvent("chat-input:focus"));
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(textbox);
+    });
   });
 
   it("shows attachment picker failures inline instead of window.alert", () => {

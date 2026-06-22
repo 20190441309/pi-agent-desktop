@@ -111,7 +111,10 @@ export function MiniMaxCodeTitleBar({
             </div>
 
             {/* 中间 drag region */}
-            <div className="flex h-full min-w-0 flex-1 items-center px-2" data-mmcode-region="titlebar-center">
+            <div
+                className={`flex h-full min-w-0 flex-1 items-center px-2 ${navigationSlot ? "app-region-no-drag" : ""}`}
+                data-mmcode-region="titlebar-center"
+            >
                 {navigationSlot ?? (showCenterMeta && (
                     <div className="flex min-w-0 items-center gap-2 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-1 text-[11px] text-[var(--mm-text-secondary)]">
                         {statusLabel && (

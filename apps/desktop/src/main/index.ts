@@ -50,7 +50,7 @@ let piDriver: PiDriver | null = null;
 const piRegistry = new WorkspaceRegistry();
 const piPendingEdits = new PendingEdits();
 
-const PI_AGENT_DIR = join(homedir(), '.pi', 'agent');
+const PI_AGENT_DIR = process.env.PI_DESKTOP_CONFIG_DIR || join(homedir(), '.pi', 'agent');
 
 // Startup banner for electron-log diagnostics
 log.info(`[Main] Pi Desktop starting (electron ${process.versions.electron}, node ${process.versions.node})`);
@@ -115,6 +115,9 @@ const agentRegistry = new AgentRuntimeRegistry({
   getWorkspace: (workspaceId: string) => store.get('workspaces').find((workspace) => workspace.id === workspaceId),
   pendingEdits: piPendingEdits,
   send: sendToRenderer,
+  agentDir: PI_AGENT_DIR,
+  getSettings: () => store.get('settings'),
+  getPiAgentConfig: () => piAgentConfig,
   getModeOptions: getLongHorizonModeOptions,
 });
 const configManager = new ConfigManager(PI_AGENT_DIR);

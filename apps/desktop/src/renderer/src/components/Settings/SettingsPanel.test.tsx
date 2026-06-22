@@ -268,9 +268,11 @@ describe("SettingsPanel 配置中心", () => {
         await waitFor(() => {
             expect(window.piAPI.configTestProvider).toHaveBeenCalledWith({
                 baseUrl: "https://api.custom-ai.com/v1",
+                providerId: "custom_provider",
                 apiKey: "sk-real-test",
                 modelId: "custom-model-v1",
                 apiType: "openai",
+                api: undefined,
                 headers: undefined,
             });
         });

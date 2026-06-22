@@ -123,9 +123,11 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
             const apiKey = await loadApiKey(model.providerId);
             const response = await window.piAPI.configTestProvider({
                 baseUrl: model.baseUrl,
+                providerId: model.providerId,
                 apiKey,
                 modelId: model.modelId,
                 apiType: model.apiType,
+                api: model.api,
                 headers: model.headers,
             });
             if (isIpcError(response)) {

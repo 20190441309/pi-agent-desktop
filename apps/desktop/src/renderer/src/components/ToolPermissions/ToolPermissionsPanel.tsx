@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { isIpcError, type ToolPermissionKey, type ToolPermissions, type ToolPermissionPreset } from "@shared";
 import { TOOL_PERMISSION_PRESETS, useSettingsStore } from "../../stores/settings-store";
 import { useSessionStore } from "../../stores/session-store";
@@ -41,7 +41,11 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
       ? state.sessions.find((session) => session.id === state.currentSessionId) ?? null
       : null,
   );
-  const getWorkspaceToolDefaults = useSettingsStore((state) => state.getWorkspaceToolDefaults);
+  const workspaceDefaults = useSettingsStore((state) =>
+    workspaceId
+      ? state.settings.workspaceToolDefaults?.[workspaceId] ?? TOOL_PERMISSION_PRESETS.development
+      : TOOL_PERMISSION_PRESETS.development,
+  );
   const updateWorkspaceToolDefaults = useSettingsStore((state) => state.updateWorkspaceToolDefaults);
   const clearWriteError = useSettingsStore((state) => state.clearWriteError);
   const settingsWriteError = useSettingsStore((state) => state.lastWriteError);
@@ -49,10 +53,6 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
   const persistErrorCount = useSessionStore((state) => state.persistErrorCount);
   const lastPersistError = useSessionStore((state) => state.lastPersistError);
 
-  const workspaceDefaults = useMemo(
-    () => getWorkspaceToolDefaults(workspaceId),
-    [getWorkspaceToolDefaults, workspaceId],
-  );
   const effective = currentSession?.toolPermissions ?? workspaceDefaults;
   const canApply = Boolean(currentSession || workspaceId);
 
@@ -113,7 +113,12 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
       </div>
       <div className="space-y-1.5">
         {TOOL_LABELS.map((item) => (
-          <label key={item.key} className="flex items-center justify-between gap-2 text-xs">
+          <label
+            key={item.key}
+            className={`flex min-h-8 items-center justify-between gap-2 rounded-md px-2 text-xs transition-colors ${
+              canApply ? "cursor-pointer hover:bg-[var(--mm-bg-hover)]" : "cursor-not-allowed opacity-60"
+            }`}
+          >
             <span>{item.label}</span>
             <input
               type="checkbox"

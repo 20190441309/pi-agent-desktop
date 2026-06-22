@@ -895,9 +895,11 @@ export interface PiAPI {
     configFetchModels(baseUrl: string, apiKey?: string, apiType?: string): Promise<PiModelItem[] | IpcError>;
     configTestProvider(input: {
         baseUrl: string;
+        providerId?: string;
         apiKey?: string;
         modelId?: string;
         apiType?: string;
+        api?: string;
         headers?: Record<string, string>;
     }): Promise<ProviderTestResult | IpcError>;
 

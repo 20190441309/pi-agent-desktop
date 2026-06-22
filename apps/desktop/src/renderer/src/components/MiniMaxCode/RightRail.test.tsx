@@ -716,7 +716,19 @@ describe("RightRail", () => {
     window.removeEventListener("terminal:run-command", runCommandSpy);
   });
 
-  it("renders usage and tool permission controls from the current session", () => {
+  it("puts environment controls first, opens Git for commit or push, and keeps runtime controls out of the rail", async () => {
+    const switchSpy = vi.fn();
+    window.addEventListener("app:switch-section", switchSpy);
+    getGitStatus.mockResolvedValue({
+      branch: "master",
+      modified: [],
+      added: [],
+      deleted: [],
+      untracked: [],
+      ahead: 1,
+      behind: 0,
+    });
+    gitDiff.mockResolvedValue("");
     useSessionStore.setState({
       currentSessionId: "s1",
       sessions: [
@@ -752,12 +764,23 @@ describe("RightRail", () => {
 
     render(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
-    expect(screen.getByText("运行状态")).toBeTruthy();
-    expect(screen.getByText("claude-sonnet")).toBeTruthy();
-    expect(screen.getByText("anthropic")).toBeTruthy();
-    expect(screen.getByText("输入 1.2K")).toBeTruthy();
+    expect(screen.queryByText("运行状态")).toBeNull();
+    expect(screen.queryByText("思考")).toBeNull();
+    expect(screen.queryByText("claude-sonnet")).toBeNull();
+    expect(screen.queryByText("anthropic")).toBeNull();
+    expect(screen.queryByText("输入 1.2K")).toBeNull();
+    expect(screen.getByText("环境信息").compareDocumentPosition(screen.getByText("工具权限")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("工具权限")).toBeTruthy();
     expect((screen.getByLabelText("文件写入") as HTMLInputElement).checked).toBe(false);
     expect((screen.getByLabelText("Git") as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(await screen.findByRole("button", { name: /提交或推送/ }));
+    expect(switchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: { section: "git" },
+      }),
+    );
+
+    window.removeEventListener("app:switch-section", switchSpy);
   });
 });

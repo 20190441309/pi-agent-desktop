@@ -8,7 +8,7 @@
  * (button aria-label / form label / image alt / heading 顺序) 在 e2e 上下文更稳.
  *
  * 当前覆盖范围 (a11y-baseline slice):
- *   - 主聊天界面: MiniMaxCodeSidebar + ChatView + ChatInput
+ *   - 主聊天界面: TopTabBar + MiniMaxCodeSidebar session list + ChatView + ChatInput
  *   - 命令面板: 通过 Ctrl+K 打开 CommandPalette
  *
  * 跑测试前置条件:
@@ -135,21 +135,21 @@ test.describe('Pi Desktop a11y', () => {
         const window: Page = await app.firstWindow();
         await window.waitForLoadState('domcontentloaded');
 
-        // 等待 React 挂载 (MiniMaxCodeSidebar 是首屏固定元素)
-        // v1.0.16: IconBar 整个删了,新 Sidebar 用 <nav aria-label="主导航"> 接管导航
-        //   <nav> implicit role="navigation",没显式 role attribute → 用 nav[aria-label] 不用 [role=]
-        await window.waitForSelector('nav[aria-label="主导航"]', { timeout: 15_000 });
+        // 等待 React 挂载。导航已分为顶部标签栏 + 左侧会话列表。
+        await window.waitForSelector('[role="tablist"][aria-label="顶部标签栏"]', { timeout: 15_000 });
+        await window.waitForSelector('nav[aria-label="会话列表"]', { timeout: 15_000 });
 
         // 触发 Ctrl+K 打开命令面板
         await window.keyboard.press('Control+k');
 
         // 等待 dialog 出现
-        await window.waitForSelector('[role="dialog"][aria-label="命令面板"]', { timeout: 5_000 });
+        await window.waitForSelector('[role="dialog"][aria-label*="命令面板"]', { timeout: 5_000 });
 
         // 跑手写 a11y 扫描
         const violations = await checkBasicA11y(window, [
-            'nav[aria-label="主导航"]',
-            '[role="dialog"][aria-label="命令面板"]',
+            '[role="tablist"][aria-label="顶部标签栏"]',
+            'nav[aria-label="会话列表"]',
+            '[role="dialog"][aria-label*="命令面板"]',
         ]);
 
         if (violations.length > 0) {
@@ -180,12 +180,13 @@ test.describe('Pi Desktop a11y', () => {
 
         const window: Page = await app.firstWindow();
         await window.waitForLoadState('domcontentloaded');
-        // v1.0.16: IconBar 删了,新 Sidebar 用 <nav aria-label="主导航"> (implicit role)
-        await window.waitForSelector('nav[aria-label="主导航"]', { timeout: 15_000 });
+        await window.waitForSelector('[role="tablist"][aria-label="顶部标签栏"]', { timeout: 15_000 });
+        await window.waitForSelector('nav[aria-label="会话列表"]', { timeout: 15_000 });
 
         // 不打开命令面板, 扫主聊天界面
         const violations = await checkBasicA11y(window, [
-            'nav[aria-label="主导航"]',
+            '[role="tablist"][aria-label="顶部标签栏"]',
+            'nav[aria-label="会话列表"]',
             '[role="log"]',
             'form, [aria-label="给 Pi 发消息"]',
         ]);

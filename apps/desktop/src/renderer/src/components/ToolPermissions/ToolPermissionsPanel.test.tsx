@@ -85,6 +85,21 @@ describe("ToolPermissionsPanel", () => {
     });
   });
 
+  it("reflects workspace checkbox changes immediately and can toggle them back", () => {
+    render(<ToolPermissionsPanel workspaceId="w1" />);
+
+    const network = screen.getByLabelText("网络") as HTMLInputElement;
+    expect(network.checked).toBe(false);
+
+    fireEvent.click(network);
+    expect(network.checked).toBe(true);
+    expect(useSettingsStore.getState().settings.workspaceToolDefaults?.w1?.network).toBe(true);
+
+    fireEvent.click(network);
+    expect(network.checked).toBe(false);
+    expect(useSettingsStore.getState().settings.workspaceToolDefaults?.w1?.network).toBe(false);
+  });
+
   it("surfaces workspace permission write failures", async () => {
     window.piAPI.setSettings = vi.fn(async () => ({
       code: "ipcErrors.settings.writeFailed",

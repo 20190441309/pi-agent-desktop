@@ -45,6 +45,15 @@ const AGENT_MODE_OPTIONS: Array<{ value: AgentMode; label: string; desc: string 
   { value: "max", label: "Max", desc: "实验增强：多候选生成并由 judge 选优" },
 ];
 
+const THINKING_OPTIONS = [
+  { value: "none", label: "关闭" },
+  { value: "low", label: "低" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
+] as const;
+
+type ThinkingLevel = typeof THINKING_OPTIONS[number]["value"];
+
 const COMPOSER_MIN_HEIGHT = 95;
 const COMPOSER_MAX_HEIGHT = 240;
 
@@ -271,6 +280,14 @@ export function ChatInput({
     if (focusKey === undefined) return;
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, [focusKey]);
+
+  useEffect(() => {
+    const focusComposer = (): void => {
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    };
+    window.addEventListener("chat-input:focus", focusComposer);
+    return () => window.removeEventListener("chat-input:focus", focusComposer);
+  }, []);
 
   const handleSend = async (): Promise<void> => {
     if (sendingRef.current || !inputValue.trim() || !isConnected) return;
@@ -523,9 +540,17 @@ export function ChatInput({
     },
     [updateSettings],
   );
+  const handleThinkingSelect = useCallback(
+    (level: ThinkingLevel) => {
+      updateSettings({ thinkingLevel: level });
+      if (agentId && window.piAPI?.agentsSetThinking) {
+        void window.piAPI.agentsSetThinking(agentId, level).catch(() => undefined);
+      }
+    },
+    [agentId, updateSettings],
+  );
   const handleAgentModeSelect = useCallback((mode: AgentMode) => {
     if (workspaceId) setAgentMode(workspaceId, mode);
-    requestAnimationFrame(() => textareaRef.current?.focus());
   }, [setAgentMode, workspaceId]);
 
   const commitComposerHeight = useCallback((height: number) => {
@@ -660,6 +685,10 @@ export function ChatInput({
   const canSend = inputValue.trim().length > 0 && isConnected && !isSending;
   const currentPermissionLabel = PERMISSION_OPTIONS.find((p) => p.value === currentPermission)?.label ?? "智能授权";
   const currentModelLabel = [settings.provider, currentModel].filter(Boolean).join(" / ") || "未配置模型";
+  const currentThinking = THINKING_OPTIONS.some((option) => option.value === settings.thinkingLevel)
+    ? settings.thinkingLevel as ThinkingLevel
+    : "medium";
+  const currentThinkingLabel = THINKING_OPTIONS.find((option) => option.value === currentThinking)?.label ?? "中";
   const inputPlaceholder = !isConnected
     ? t("chatInput.placeholder.noConnection")
     : referenceFrame
@@ -747,7 +776,7 @@ export function ChatInput({
         {/* 输入框 + 发送按钮 + @mention 弹窗 */}
         <div className={`relative flex gap-2 px-3 ${referenceFrame ? "pb-0 pt-3" : "pb-1.5 pt-3"}`}>
           <div className="flex-1 relative">
-            {currentAgentMode !== "build" && (
+            {!referenceFrame && currentAgentMode !== "build" && (
               <div className="mb-2 flex">
                 <span
                   className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-hover)] px-2.5 text-xs font-semibold text-[var(--color-success)]"
@@ -961,15 +990,112 @@ export function ChatInput({
                 )}
               </Popover>
             </div>
-            <div className="flex items-start gap-3">
-              <div className="flex h-7 w-[155px] items-center rounded-[3px] border border-[var(--mm-border)] bg-[#fbfbfb] px-2 text-[10px] text-[var(--mm-text-secondary)]" aria-label={`当前模型 ${currentModelLabel}`} role="status">
-                <span className="truncate">{currentModelLabel}</span>
+            <div className="flex items-start gap-2">
+              <div className="flex h-7 overflow-hidden rounded-[5px] border border-[var(--mm-border)] bg-[#fbfbfb]">
+              <Popover
+                align="end"
+                contentClassName="min-w-[240px]"
+                trigger={
+                  <button
+                    type="button"
+                    className="flex h-7 w-[150px] items-center gap-1.5 px-2 text-left text-[10px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
+                    aria-label={`当前模型: ${currentModelLabel}`}
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#126dd8]" aria-hidden />
+                    <span className="truncate">{currentModelLabel}</span>
+                  </button>
+                }
+              >
+                {(close) => (
+                  <div className="py-1">
+                    <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--mm-text-tertiary)]">选择模型</div>
+                    {piModels && piModels.length > 0 ? (
+                      piModels.map((m) => {
+                        const isSelected = settings.provider === m.provider && settings.model === m.id;
+                        return (
+                          <button
+                            key={`${m.provider}:${m.id}`}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={isSelected}
+                            aria-label={m.name}
+                            onClick={() => {
+                              handleModelSelect({ id: m.id, name: m.name, provider: m.provider });
+                              close();
+                            }}
+                            className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-[var(--mm-bg-hover)]"
+                          >
+                            <span
+                              className={`mt-0.5 inline-block h-3 w-3 flex-shrink-0 rounded-full border-2 ${
+                                isSelected ? "border-[var(--mm-bg-active)] bg-[var(--mm-bg-active)]" : "border-[var(--color-border)]"
+                              }`}
+                              aria-hidden
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm text-[var(--mm-text-primary)]">{m.name}</span>
+                              <span className="block text-xs text-[var(--mm-text-tertiary)]">{m.providerName}</span>
+                            </span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="px-3 py-3 text-xs text-[var(--mm-text-tertiary)]">
+                        暂无可用模型 (Pi CLI 未配置)
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Popover>
+              <Popover
+                align="end"
+                contentClassName="w-[180px] rounded-[10px] border border-[var(--mm-border)] bg-white p-1.5 shadow-[0_16px_38px_rgba(20,31,50,0.14)]"
+                trigger={
+                  <button
+                    type="button"
+                    className="flex h-7 items-center gap-1 border-l border-[var(--mm-border)] px-2 text-[10px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
+                    aria-label={`思考强度: ${currentThinkingLabel}`}
+                  >
+                    <span className="font-medium text-[var(--mm-text-primary)]">{currentThinkingLabel}</span>
+                    <svg className="h-3 w-3 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                }
+              >
+                {(close) => (
+                  <div role="menu" aria-label="思考强度">
+                    <div className="px-2 py-1 text-[10px] text-[var(--mm-text-tertiary)]">推理</div>
+                    {THINKING_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={currentThinking === option.value}
+                        onClick={() => {
+                          handleThinkingSelect(option.value);
+                          close();
+                        }}
+                        className={`flex h-8 w-full items-center justify-between rounded-[7px] px-2 text-left text-[12px] hover:bg-[var(--mm-bg-hover)] ${
+                          currentThinking === option.value ? "bg-[#eef5ff] text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"
+                        }`}
+                      >
+                        <span>{option.label}</span>
+                        {currentThinking === option.value && (
+                          <svg className="h-3.5 w-3.5 text-[#126dd8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Popover>
               </div>
               <button
                 type="button"
                 onClick={() => void handleSend()}
                 disabled={!canSend}
-                className="mt-[-6px] flex h-[32px] w-[51px] translate-x-[2px] items-center justify-center rounded-[5px] bg-[#126dd8] text-white shadow-[0_1px_2px_rgba(10,35,80,0.14)] transition-opacity hover:opacity-90 disabled:opacity-100"
+                className="mt-[-6px] flex h-[32px] w-[51px] translate-x-[2px] items-center justify-center rounded-[5px] bg-[#126dd8] text-white shadow-[0_1px_2px_rgba(10,35,80,0.14)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
                 aria-label={t("chatInput.send")}
               >
                 <svg className="h-5 w-5 -rotate-12" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">

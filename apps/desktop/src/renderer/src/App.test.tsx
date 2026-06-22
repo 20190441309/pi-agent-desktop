@@ -241,6 +241,19 @@ describe("App sidebar session navigation", () => {
         expect(window.piAPI.openSettingsWindow).toHaveBeenCalledTimes(1);
     });
 
+    it("点击侧栏新对话加号会进入新对话并请求聚焦输入框", async () => {
+        const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+        render(<App />);
+
+        fireEvent.click(screen.getByRole("button", { name: "快速新建对话" }));
+
+        await waitFor(() => {
+            expect(useSessionStore.getState().currentSessionId).toBeNull();
+            expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "chat-input:focus" }));
+        });
+        dispatchSpy.mockRestore();
+    });
+
     it("agent 对话收到首条消息时自动展开右栏", async () => {
         useSessionStore.setState((state) => ({
             sessions: state.sessions.map((session) => ({ ...session, messages: [] })),
@@ -266,5 +279,20 @@ describe("App sidebar session navigation", () => {
         });
 
         expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("false");
+    });
+
+    it("切到非聊天功能页时隐藏右栏，避免空白栏挤压主内容", () => {
+        useSettingsStore.setState({
+            rightRailCollapsed: false,
+        });
+
+        render(<App />);
+
+        expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("false");
+
+        fireEvent.click(screen.getByRole("tab", { name: "技能" }));
+
+        expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("true");
+        expect(screen.getByText("SkillsPanel")).toBeTruthy();
     });
 });

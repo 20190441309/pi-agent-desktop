@@ -165,7 +165,7 @@ describe("usePiStream", () => {
     });
 
     it("passes the selected workspace agent mode to agent prompts", async () => {
-        useAgentModeStore.getState().setMode("ws1", "plan");
+        useAgentModeStore.getState().setMode("ws1", "compose");
 
         await act(async () => {
             render(<AgentHookStateHost />);
@@ -177,8 +177,23 @@ describe("usePiStream", () => {
         expect(agentsPrompt).toHaveBeenCalledWith({
             agentId: "agent_1",
             message: expect.stringContaining("agent follow up"),
-            mode: "plan",
+            mode: "compose",
         });
+    });
+
+    it("treats selected Plan agent mode as plan clarification flow", async () => {
+        useAgentModeStore.getState().setMode("ws1", "plan");
+
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+        await act(async () => {
+            screen.getByText("send-plan-greeting").click();
+        });
+
+        expect(sendPrompt).not.toHaveBeenCalled();
+        expect(usePlanStore.getState().pendingPlanClarification).not.toBeNull();
+        expect(usePlanStore.getState().pendingPlanClarification?.originalContent).toBe("你好");
     });
 
     it("handles SDK message_update events emitted immediately after subscription", async () => {
@@ -227,6 +242,55 @@ describe("usePiStream", () => {
             role: "assistant",
             content: "legacy",
         });
+    });
+
+    it("renders assistant text from SDK message_end content when no text_delta is emitted", async () => {
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_end",
+                message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "final answer" }],
+                },
+            } as unknown as PiEvent);
+        });
+
+        const messages = useAgentStore.getState().messagesByAgent.agent_1;
+        expect(messages).toHaveLength(1);
+        expect(messages[0]).toMatchObject({
+            role: "assistant",
+            content: "final answer",
+        });
+    });
+
+    it("shows provider errors from SDK message_end instead of replacing them with a generic empty response", async () => {
+        await act(async () => {
+            render(<HookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_end",
+                message: {
+                    role: "assistant",
+                    provider: "longcat",
+                    model: "LongCat-2.0-Preview",
+                    content: [],
+                    errorMessage: '403 {"error":{"type":"forbidden","message":"Request not allowed"}}',
+                },
+            } as unknown as PiEvent);
+            emitPiEvent?.({ type: "agent_end" });
+        });
+
+        expect(screen.getByTestId("stream-error").textContent).toContain("longcat / LongCat-2.0-Preview");
+        expect(screen.getByTestId("stream-error").textContent).toContain("403");
+        expect(screen.getByTestId("stream-error").textContent).not.toContain("Pi 本轮没有返回内容");
     });
 
     it("syncs SDK tool calls into the assistant message without a second assistant row", async () => {

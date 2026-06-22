@@ -38,6 +38,12 @@ function prepareGitRepo(dir: string): void {
     execSync('git commit -m "Initial commit"', { cwd: dir, stdio: 'ignore' });
 }
 
+async function reloadAppShell(page: Page): Promise<void> {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const modal = page.locator('[data-testid="onboarding-modal"]');
+    await expect(modal).toHaveCount(0, { timeout: 5000 });
+}
+
 test.describe('Pi Desktop — File & Git Workflow', () => {
     test.setTimeout(TEST_TIMEOUT);
 
@@ -92,6 +98,55 @@ test.describe('Pi Desktop — File & Git Workflow', () => {
 
         expect(project).toBeTruthy();
         console.log(`[TEST] Project detected: ${JSON.stringify(project).slice(0, 200)}`);
+
+        await app.close();
+    });
+
+    test('Git panel UI opens diffs, stages, unstages, and commits a real workspace change', async () => {
+        const userDataDir = test.info().outputPath(`git-panel-ui-${Date.now()}`);
+        const wsPath = join(userDataDir, 'git-panel-project');
+        mkdirSync(wsPath, { recursive: true });
+        prepareGitRepo(wsPath);
+        writeFileSync(join(wsPath, 'README.md'), '# Test Project\n\nEdited from GitPanel E2E.\n', 'utf-8');
+
+        const { app, page } = await launchApp(userDataDir);
+
+        await page.evaluate(async ({ wsPath }) => {
+            window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
+            window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
+            const ws = await window.piAPI.createWorkspace('git-panel-ui', wsPath);
+            await window.piAPI.selectWorkspace(ws.path);
+        }, { wsPath });
+        await reloadAppShell(page);
+
+        await page.getByRole('tab', { name: 'Git' }).click();
+        await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText(/0 staged \/ 1 changes/)).toBeVisible({ timeout: 10_000 });
+
+        await page.getByRole('button', { name: '刷新 Git 状态' }).click();
+        await expect(page.getByRole('button', { name: '打开 README.md diff' })).toBeVisible({ timeout: 10_000 });
+        await page.getByRole('button', { name: '打开 README.md diff' }).click();
+        await expect(page.getByText('Edited from GitPanel E2E.')).toBeVisible({ timeout: 10_000 });
+
+        await page.getByRole('button', { name: '打开 README.md diff' }).hover();
+        await page.getByRole('button', { name: '暂存 README.md' }).click();
+        await expect(page.getByRole('status').filter({ hasText: '已暂存 README.md' })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText(/1 staged \/ 0 changes/)).toBeVisible({ timeout: 10_000 });
+
+        await page.getByRole('button', { name: '打开 README.md diff' }).hover();
+        await page.getByRole('button', { name: '取消暂存 README.md' }).click();
+        await expect(page.getByRole('status').filter({ hasText: '已取消暂存 README.md' })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText(/0 staged \/ 1 changes/)).toBeVisible({ timeout: 10_000 });
+
+        await page.getByRole('button', { name: '全部暂存' }).click();
+        await expect(page.getByRole('status').filter({ hasText: '已暂存 1 个文件' })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText('只会提交 1 个暂存文件')).toBeVisible({ timeout: 10_000 });
+
+        await page.getByRole('textbox', { name: '提交信息' }).fill('test: commit from git panel e2e');
+        await expect(page.getByRole('button', { name: '提交' })).toBeEnabled();
+        await page.getByRole('button', { name: '提交' }).click();
+        await expect(page.getByRole('status').filter({ hasText: '提交完成: test: commit from git panel e2e' })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('工作区干净')).toBeVisible({ timeout: 15_000 });
 
         await app.close();
     });

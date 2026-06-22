@@ -121,15 +121,14 @@ test.describe('Plan Mode Smoke Test', () => {
     const textarea = page.locator('textarea').first();
     await expect(textarea).toBeVisible({ timeout: 15_000 });
 
-    // Enable plan mode via plus menu
-    const plus = page.locator('[data-testid="chat-input-plus-trigger"]');
-    await expect(plus).toBeVisible();
-    await plus.click();
-    await expect(page.getByRole('menuitemcheckbox', { name: '计划模式' })).toBeVisible();
-    await page.getByRole('menuitemcheckbox', { name: '计划模式' }).click();
-
-    // Wait for plan mode tag to appear
-    await expect(page.locator('text=计划模式').first()).toBeVisible();
+    // Enable plan mode via Agent mode menu
+    const modeTrigger = page.getByRole('button', { name: '选择 Agent 模式' });
+    await expect(modeTrigger).toBeVisible();
+    await modeTrigger.click();
+    const modeMenu = page.getByRole('menu', { name: 'Agent 模式' });
+    await expect(modeMenu).toBeVisible();
+    await modeMenu.getByRole('menuitemradio', { name: /Plan/ }).click();
+    await expect(modeTrigger).toContainText('Plan');
 
     // Send first message - should be blocked with clarification
     await textarea.fill('了解一下这个项目');

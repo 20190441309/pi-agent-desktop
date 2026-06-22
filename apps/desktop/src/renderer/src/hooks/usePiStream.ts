@@ -223,6 +223,40 @@ function eventMessage(event: unknown, fallback: string): string {
     return fallback;
 }
 
+function textFromMessageContent(content: unknown): string {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    return content
+        .map((part) => {
+            if (typeof part === "string") return part;
+            if (!part || typeof part !== "object") return "";
+            const data = part as Record<string, unknown>;
+            return typeof data.text === "string" ? data.text : "";
+        })
+        .join("");
+}
+
+function assistantTextFromMessageEnd(event: PiEvent): string {
+    const message = (event as unknown as { message?: unknown }).message;
+    if (!message || typeof message !== "object") return "";
+    const data = message as Record<string, unknown>;
+    if (data.role !== "assistant") return "";
+    return textFromMessageContent(data.content);
+}
+
+function assistantErrorFromMessageEnd(event: PiEvent): string {
+    const message = (event as unknown as { message?: unknown }).message;
+    if (!message || typeof message !== "object") return "";
+    const data = message as Record<string, unknown>;
+    if (data.role !== "assistant") return "";
+    const errorMessage = typeof data.errorMessage === "string" ? data.errorMessage.trim() : "";
+    if (!errorMessage) return "";
+    const provider = typeof data.provider === "string" && data.provider.trim() ? data.provider.trim() : "";
+    const model = typeof data.model === "string" && data.model.trim() ? data.model.trim() : "";
+    const scope = [provider, model].filter(Boolean).join(" / ");
+    return scope ? `${scope}: ${errorMessage}` : errorMessage;
+}
+
 function describePermissionsForPrompt(sessionId: string | null, workspaceId: string): string {
     const session = sessionId
         ? useSessionStore.getState().sessions.find((item) => item.id === sessionId)
@@ -277,6 +311,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const sessionIdRef = useRef<string | null>(null);
     const agentIdRef = useRef<string | null>(null);
     const isTurnActiveRef = useRef(false);
+    const lastProviderErrorRef = useRef<string | null>(null);
 
     // Debounce + flush mechanism
     //   - streamPersistRef 累积待 flush 的内容
@@ -534,6 +569,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 setCurrentThinking("");
                 textRef.current = "";
                 thinkingRef.current = "";
+                lastProviderErrorRef.current = null;
                 toolCallsRef.current = new Map();
                 setToolCalls(new Map());
                 break;
@@ -677,9 +713,34 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 break;
             }
 
-            case "message_end":
-                // 一条消息完成 — 已经在 text_delta 实时更新过了
+            case "message_end": {
+                const providerError = assistantErrorFromMessageEnd(event);
+                if (providerError) {
+                    lastProviderErrorRef.current = providerError;
+                    setError(providerError);
+                    break;
+                }
+
+                const finalText = assistantTextFromMessageEnd(event);
+                if (!finalText || finalText === textRef.current) break;
+                ensureAssistantMessage();
+                textRef.current = finalText;
+                setCurrentText(finalText);
+                if (agentIdRef.current && messageIdRef.current) {
+                    useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
+                        content: finalText,
+                    });
+                } else if (sessionIdRef.current && messageIdRef.current) {
+                    updateMessage(sessionIdRef.current, messageIdRef.current, { content: finalText }, { persist: false });
+                    streamPersistRef.current = {
+                        sessionId: sessionIdRef.current,
+                        messageId: messageIdRef.current,
+                        content: finalText,
+                    };
+                    scheduleStreamPersist();
+                }
                 break;
+            }
 
             case "tool_execution_start": {
                 const e = event as { toolCallId: string; toolName: string; args: Record<string, unknown> };
@@ -830,7 +891,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     !textRef.current &&
                     !thinkingRef.current &&
                     toolCallsRef.current.size === 0 &&
-                    !usePlanStore.getState().activeCard
+                    !usePlanStore.getState().activeCard &&
+                    !lastProviderErrorRef.current
                 ) {
                     setError("Pi 本轮没有返回内容，请检查模型/API Key 配置后重试。");
                 }
@@ -893,7 +955,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         const aid = agentIdRef.current;
         const session = aid ? null : getCurrentSession();
         const selectedMode = useAgentModeStore.getState().getMode(workspaceId);
-        const planEnabled = selectedMode === "build" && usePlanStore.getState().enabled;
+        const planEnabled = selectedMode === "plan" || (selectedMode === "build" && usePlanStore.getState().enabled);
         const isFollowUpWhileStreaming = isStreamingRef.current || promptInFlightRef.current;
         const isSlashCommand = content.trimStart().startsWith("/");
         const shouldUsePlanMode = planEnabled && !isSlashCommand && !isFollowUpWhileStreaming;
