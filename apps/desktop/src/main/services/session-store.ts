@@ -45,15 +45,31 @@ async function withLock<T>(fn: () => Promise<T> | T): Promise<T> {
 
 // ── 基础 CRUD ─────────────────────────────────────────────────────────
 
+/**
+ * 返回 store 数据的深拷贝, 避免 caller 持有 live 引用原地修改污染持久化态.
+ * electron-store 的 get 返回同一个内存对象, IPC handler 在主进程内持有该引用时
+ * 任何外部 mutate 会被下次 set 写盘. structuredClone 既快又支持嵌套结构.
+ */
+function cloneForRead<T>(value: T): T {
+    if (value == null || typeof value !== "object") return value;
+    try {
+        return structuredClone(value);
+    } catch {
+        // 兜底: 含不可克隆值 (函数等) 时退回 JSON 拷贝
+        return JSON.parse(JSON.stringify(value)) as T;
+    }
+}
+
 export async function listSessions(store: SessionPersistence): Promise<Session[]> {
-    return store.get("sessions");
+    return cloneForRead(store.get("sessions"));
 }
 
 export async function getSession(
     store: SessionPersistence,
     id: string,
 ): Promise<Session | undefined> {
-    return store.get("sessions").find((s) => s.id === id);
+    const target = store.get("sessions").find((s) => s.id === id);
+    return target ? cloneForRead(target) : undefined;
 }
 
 export async function createSession(
@@ -78,7 +94,7 @@ export async function createSession(
         const all = store.get("sessions");
         all.push(session);
         store.set("sessions", all);
-        return session;
+        return cloneForRead(session);
     });
 }
 
@@ -97,7 +113,7 @@ export async function renameSession(
         target.title = trimmed;
         target.updatedAt = Date.now();
         store.set("sessions", all);
-        return target;
+        return cloneForRead(target);
     });
 }
 
@@ -125,7 +141,7 @@ export async function archiveSession(
         target.archived = archived;
         target.updatedAt = Date.now();
         store.set("sessions", all);
-        return target;
+        return cloneForRead(target);
     });
 }
 
@@ -194,7 +210,7 @@ export async function updateSessionMetadata(
         }
         target.updatedAt = Date.now();
         store.set("sessions", all);
-        return target;
+        return cloneForRead(target);
     });
 }
 
@@ -217,12 +233,12 @@ export async function appendMessage(
             throw new Error(`Session not found: ${sessionId}`);
         }
         if (target.messages.some((m) => m.id === message.id)) {
-            return target;
+            return cloneForRead(target);
         }
         target.messages.push(message);
         target.updatedAt = Date.now();
         store.set("sessions", all);
-        return target;
+        return cloneForRead(target);
     });
 }
 
@@ -251,7 +267,7 @@ export async function updateMessage(
         Object.assign(msg, updates);
         target.updatedAt = Date.now();
         store.set("sessions", all);
-        return target;
+        return cloneForRead(target);
     });
 }
 
@@ -289,6 +305,6 @@ export async function updateToolCall(
         Object.assign(tc, updates);
         target.updatedAt = Date.now();
         store.set("sessions", all);
-        return target;
+        return cloneForRead(target);
     });
 }

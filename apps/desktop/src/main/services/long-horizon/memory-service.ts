@@ -40,6 +40,10 @@ export class MemoryService {
     private readonly recordsById = new Map<string, MemoryRecord>();
     private readonly childrenByParent = new Map<string, Set<string>>();
     private readonly jsonlPath: string;
+    // 内存记录上限: 超过后淘汰最旧的 history 记录, 防止长期运行内存无界增长
+    private static MAX_RECORDS = 5000;
+    // 平均文档长度缓存: records 变更时失效, 避免每次搜索 O(n) 重算
+    private avgDocLengthCache: number | null = null;
 
     constructor(opts: { rootDir: string }) {
         mkdirSync(opts.rootDir, { recursive: true });
@@ -54,6 +58,7 @@ export class MemoryService {
             createdAt: Date.now(),
         };
         this.addToMemory(record);
+        this.evictIfFull();
         appendFileSync(this.jsonlPath, `${JSON.stringify(record)}\n`, "utf8");
         return record;
     }
@@ -140,6 +145,29 @@ export class MemoryService {
             bucket.add(record.id);
             this.index.set(token, bucket);
         }
+        // 记录集变更, 失效平均文档长度缓存
+        this.avgDocLengthCache = null;
+    }
+
+    /** 超过 MAX_RECORDS 时淘汰最旧的 history 记录 (保留 note/checkpoint/summary 等结构化记录) */
+    private evictIfFull(): void {
+        while (this.records.length > MemoryService.MAX_RECORDS) {
+            const oldestHistoryIdx = this.records.findIndex((r) => r.kind === "history");
+            if (oldestHistoryIdx === -1) break; // 无 history 可淘汰, 停止以保护结构化记录
+            const [removed] = this.records.splice(oldestHistoryIdx, 1);
+            this.removeIndexEntry(removed);
+        }
+    }
+
+    private removeIndexEntry(record: MemoryRecord): void {
+        this.recordsById.delete(record.id);
+        for (const token of tokenize(`${record.text} ${(record.tags ?? []).join(" ")}`)) {
+            this.index.get(token)?.delete(record.id);
+        }
+        if (record.parentId) {
+            this.childrenByParent.get(record.parentId)?.delete(record.id);
+        }
+        this.avgDocLengthCache = null;
     }
 
     private bm25(record: MemoryRecord, terms: string[]): number {
@@ -161,9 +189,14 @@ export class MemoryService {
     }
 
     private averageDocumentLength(): number {
-        if (this.records.length === 0) return 1;
+        if (this.avgDocLengthCache !== null) return this.avgDocLengthCache;
+        if (this.records.length === 0) {
+            this.avgDocLengthCache = 1;
+            return 1;
+        }
         const total = this.records.reduce((sum, record) => sum + tokenize(`${record.text} ${(record.tags ?? []).join(" ")}`).length, 0);
-        return Math.max(1, total / this.records.length);
+        this.avgDocLengthCache = Math.max(1, total / this.records.length);
+        return this.avgDocLengthCache;
     }
 }
 

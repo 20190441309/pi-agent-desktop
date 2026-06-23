@@ -82,6 +82,8 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                         safeArgs.file_path ?? safeArgs.path ?? safeArgs.filePath ?? ""
                     );
                     if (!filePath) return;
+                    // autoApprove 时跳过 deferred 编辑追踪 (用户已选择自动批准)
+                    if (deps.pendingEdits.autoApprove) return;
                     const changeId = deps.pendingEdits.track(
                         toolCallId,
                         toolName as "write" | "edit",
@@ -112,6 +114,8 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
             const end = asToolEnd(event);
             if (end) {
                 const { toolName, toolCallId } = end;
+                // turn 结束前每个 tool_execution_end 都清理对应缓存, 防止 announcedToolArgs 无界增长
+                announcedToolArgs.delete(toolCallId);
                 if (toolName !== "write" && toolName !== "edit") return;
                 const change = deps.pendingEdits.list().find((c) => c.toolCallId === toolCallId);
                 if (!change) return;

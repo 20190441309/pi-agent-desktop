@@ -67,13 +67,18 @@ interface Workspace {
 // Session type used by @shared (includes messages field)
 
 interface StoreSchema {
+  schemaVersion: number;
   workspaces: Workspace[];
   sessions: Session[];
   settings: AppSettings;
 }
 
+/** 当前持久化 schema 版本; 升级字段/重命名时递增并在 migrateStore 内补迁移步骤. */
+const CURRENT_SCHEMA_VERSION = 1;
+
 const store = new Store<StoreSchema>({
   defaults: {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     workspaces: [],
     sessions: [],
     settings: {
@@ -95,6 +100,29 @@ const store = new Store<StoreSchema>({
     }
   }
 });
+
+/**
+ * 启动时 schema 迁移: 按 schemaVersion 顺序补齐/重命名持久化字段.
+ * 当前 v1: 确保每条 session 含新字段默认值 (toolPermissions/tags/favorite 等),
+ * 避免旧持久化数据部分字段缺失时被 Object.assign 静默"补"成脏值.
+ */
+function migrateStore(): void {
+  const version = store.get('schemaVersion') ?? 0;
+  if (version < 1) {
+    const sessions = store.get('sessions');
+    const migrated = sessions.map((s) => ({
+      ...s,
+      favorite: s.favorite ?? false,
+      tags: Array.isArray(s.tags) ? s.tags : [],
+      readOnly: s.readOnly ?? false,
+      messages: Array.isArray(s.messages) ? s.messages : [],
+    }));
+    store.set('sessions', migrated);
+  }
+  // 未来迁移: if (version < 2) { ... }
+  store.set('schemaVersion', CURRENT_SCHEMA_VERSION);
+}
+migrateStore();
 
 const sendToRenderer = (channel: string, payload: unknown) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -241,7 +269,14 @@ function setupIPC(): void {
   // Pi Driver management
   setupPiDriverIpc(() => piDriver);
 
-  setupWorkspaceIpc({ store, getMainWindow: () => mainWindow });
+  setupWorkspaceIpc({
+    store,
+    getMainWindow: () => mainWindow,
+    disposeWorkspaceSession: (workspaceId) => {
+      piRegistry.dispose(workspaceId);
+      agentRegistry.disposeWorkspace(workspaceId);
+    },
+  });
 
   // Session management (delegated to sessions.ipc.ts)
   setupSessionsIpc({

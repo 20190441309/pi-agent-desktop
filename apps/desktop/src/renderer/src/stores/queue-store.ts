@@ -204,11 +204,19 @@ export const useQueueStore = create<QueueState>((set) => ({
 }));
 
 let subscribed = false;
+let unsubscribe: (() => void) | null = null;
 
 export function ensureQueueSubscription(): void {
   if (subscribed || typeof window === "undefined" || !window.piAPI?.onEvent) return;
   subscribed = true;
-  window.piAPI.onEvent((event) => {
+  unsubscribe = window.piAPI.onEvent((event) => {
     useQueueStore.getState().applyEvent(event);
   });
+}
+
+/** 退订 queue 事件, 供测试 / AppShell 重挂时重置. */
+export function cleanupQueueSubscription(): void {
+  try { unsubscribe?.(); } catch { /* ignore */ }
+  unsubscribe = null;
+  subscribed = false;
 }

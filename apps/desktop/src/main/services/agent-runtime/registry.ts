@@ -47,7 +47,11 @@ interface AgentRuntime {
     isStreaming: boolean;
     mode: AgentMode;
     thinkingLevel?: "none" | "low" | "medium" | "high";
+    /** 卡死看门狗: running 期间计时, 超时未结束则合成 extension_error 翻转状态 */
+    watchdog?: NodeJS.Timeout;
 }
+
+const AGENT_WATCHDOG_MS = 5 * 60 * 1000;
 
 export class AgentRuntimeRegistry {
     private readonly runtimes = new Map<string, AgentRuntime>();
@@ -216,6 +220,7 @@ export class AgentRuntimeRegistry {
             runtime.tab.status = "error";
             runtime.tab.updatedAt = Date.now();
             runtime.isStreaming = false;
+            this.disarmWatchdog(runtime);
             this.addMessage(runtime, "error", `Agent prompt failed: ${message}`);
             this.emitState();
             throw error;
@@ -228,6 +233,7 @@ export class AgentRuntimeRegistry {
         runtime.isStreaming = false;
         runtime.tab.status = "idle";
         runtime.tab.updatedAt = Date.now();
+        this.disarmWatchdog(runtime);
         this.addMessage(runtime, "system", "已请求停止当前响应");
         this.emitState();
     }
@@ -235,6 +241,7 @@ export class AgentRuntimeRegistry {
     stop(agentId: string): void {
         const runtime = this.runtimes.get(agentId);
         if (!runtime) return;
+        this.disarmWatchdog(runtime);
         runtime.session.dispose();
         this.runtimes.delete(agentId);
         this.emitState();
@@ -284,6 +291,16 @@ export class AgentRuntimeRegistry {
         return this.list().find((agent) => agent.workspaceId === workspaceId);
     }
 
+    /** 停止并释放某 workspace 下所有 agent (用于 workspace:delete) */
+    disposeWorkspace(workspaceId: string): void {
+        for (const agentId of [...this.runtimes.keys()]) {
+            const runtime = this.runtimes.get(agentId);
+            if (runtime?.workspace.id === workspaceId) {
+                this.stop(agentId);
+            }
+        }
+    }
+
     disposeAll(): void {
         for (const agentId of [...this.runtimes.keys()]) {
             this.stop(agentId);
@@ -319,14 +336,17 @@ export class AgentRuntimeRegistry {
         if (event.type === "agent_start") {
             runtime.tab.status = "running";
             runtime.isStreaming = true;
+            this.armWatchdog(runtime);
         }
         if (event.type === "extension_error") {
             runtime.tab.status = "error";
             runtime.isStreaming = false;
+            this.disarmWatchdog(runtime);
         }
         if (event.type === "agent_end" || event.type === "turn_end") {
             runtime.tab.status = "idle";
             runtime.isStreaming = false;
+            this.disarmWatchdog(runtime);
         }
         if (!this.suppressEventForwarding) {
             this.deps.send("agents:event", {
@@ -336,6 +356,41 @@ export class AgentRuntimeRegistry {
             });
         }
         this.emitState();
+    }
+
+    private armWatchdog(runtime: AgentRuntime): void {
+        if (runtime.watchdog) return;
+        runtime.watchdog = setTimeout(() => {
+            runtime.watchdog = undefined;
+            log.error("[agent-runtime] watchdog fired (stuck running):", runtime.tab.id);
+            runtime.tab.status = "error";
+            runtime.isStreaming = false;
+            runtime.tab.updatedAt = Date.now();
+            this.addMessage(
+                runtime,
+                "error",
+                "会话运行超时未结束，可能已崩溃。请重新发起对话。",
+            );
+            if (!this.suppressEventForwarding) {
+                this.deps.send("agents:event", {
+                    agentId: runtime.tab.id,
+                    workspaceId: runtime.workspace.id,
+                    event: {
+                        type: "extension_error",
+                        message: "会话运行超时未结束，可能已崩溃。",
+                        workspaceId: runtime.workspace.id,
+                    },
+                });
+            }
+            this.emitState();
+        }, AGENT_WATCHDOG_MS);
+    }
+
+    private disarmWatchdog(runtime: AgentRuntime): void {
+        if (runtime.watchdog) {
+            clearTimeout(runtime.watchdog);
+            runtime.watchdog = undefined;
+        }
     }
 
     private sendInterceptorPayload(

@@ -16,6 +16,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createRequire } from "module";
 import { dirname, join } from "path";
+import log from "electron-log/main";
 import type { PiAgentConfig } from "../../types";
 
 const require = createRequire(__filename);
@@ -82,8 +83,8 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
         dispose: () => {
             try {
                 session.dispose();
-            } catch {
-                // 忽略 dispose 错误
+            } catch (err) {
+                log.warn("[factory] session dispose error:", err);
             }
         },
     };

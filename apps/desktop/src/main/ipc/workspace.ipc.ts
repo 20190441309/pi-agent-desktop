@@ -15,8 +15,10 @@ interface Workspace {
 export function setupWorkspaceIpc(opts: {
   store: { get: (key: 'workspaces') => Workspace[]; set: (key: 'workspaces', value: Workspace[]) => void };
   getMainWindow: () => BrowserWindow | null;
+  /** 删除 workspace 时同步释放对应 in-process Pi session (避免资源/句柄泄漏) */
+  disposeWorkspaceSession?: (workspaceId: string) => void;
 }): void {
-  const { store, getMainWindow } = opts;
+  const { store, getMainWindow, disposeWorkspaceSession } = opts;
 
   ipcMain.handle('workspace:list', async () => {
     let workspaces = store.get('workspaces');
@@ -60,6 +62,11 @@ export function setupWorkspaceIpc(opts: {
   ipcMain.handle('workspace:delete', async (_, id: string) => {
     const workspaces = store.get('workspaces').filter(w => w.id !== id);
     store.set('workspaces', workspaces);
+    try {
+      disposeWorkspaceSession?.(id);
+    } catch (err) {
+      log.warn("[workspace.ipc] dispose workspace session failed:", err);
+    }
   });
 
   ipcMain.handle('workspace:select', async (_, path: string) => {

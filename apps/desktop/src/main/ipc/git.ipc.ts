@@ -136,9 +136,24 @@ export function setupGitIpc(): void {
       return ipcError("ipcErrors.git.protectedPath", logPathReason, { path: workspacePath });
     }
     try {
-      const format = '--pretty=format:{"hash":"%h","author":"%an","date":"%ai","message":"%s"}';
-      const output = execFileSync('git', ['log', format, '-n', String(count)], { cwd: workspacePath, encoding: 'utf-8' });
-      return output.split('\n').filter(l => l.trim()).map(l => JSON.parse(l));
+      // 用 NUL 分隔字段 + 行, 避免 %s commit message 含 " 或换行导致 JSON.parse 失败.
+      // %x00 = NUL. 每条提交按 hash/author/date/message 顺序输出, NUL 分隔字段与记录.
+      const format = '--pretty=format:%H%x00%an%x00%ai%x00%s%x00';
+      const output = execFileSync('git', ['log', format, '-n', String(count), '-z'], { cwd: workspacePath, encoding: 'utf-8' });
+      // -z 用 NUL 分隔记录, format 内也用 NUL 分隔字段; 拆分后每 4 个一段为一条提交.
+      const tokens = output.split('\x00');
+      const entries: { hash: string; author: string; date: string; message: string }[] = [];
+      for (let i = 0; i + 3 < tokens.length; i += 4) {
+        const hash = tokens[i].trim();
+        if (!hash) continue;
+        entries.push({
+          hash,
+          author: tokens[i + 1],
+          date: tokens[i + 2],
+          message: tokens[i + 3],
+        });
+      }
+      return entries;
     } catch (err) {
       log.error("[git.ipc] git:log failed:", err);
       return ipcError(

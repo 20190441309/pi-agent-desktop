@@ -124,3 +124,12 @@ apps/desktop/test-sidebar-*.png
 apps/desktop/test-sidebar-*.mjs
 apps/desktop/app_stderr.log
 apps/desktop/app_stdout.log
+
+# Stray dev scaffolding at repo root (todo app, local launch scripts) — keep repo clean
+/todo*.ts
+/todo-app*
+/launch*.bat
+/launcher.bat
+/create-shortcut.ps1
+/electron-dev.log
+/nul

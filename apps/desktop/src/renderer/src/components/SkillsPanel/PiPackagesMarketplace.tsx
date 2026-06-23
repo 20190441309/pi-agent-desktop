@@ -144,7 +144,18 @@ export function PiPackagesMarketplace(): React.JSX.Element {
                 <div className="mt-3 flex items-center justify-between gap-2">
                   <button
                     type="button"
-                    onClick={() => window.open(pkg.url, "_blank")}
+                    onClick={() => {
+                      // 仅放行 http/https, 防止 javascript:/data:/file: 注入 + reverse tabnab
+                      const url = pkg.url;
+                      try {
+                        const parsed = new URL(url);
+                        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+                          window.open(url, "_blank", "noopener,noreferrer");
+                        }
+                      } catch {
+                        // 非法 URL 忽略
+                      }
+                    }}
                     className="min-w-[52px] whitespace-nowrap rounded px-2 py-1 text-center text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
                     详情

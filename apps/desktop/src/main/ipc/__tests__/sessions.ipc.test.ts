@@ -90,7 +90,10 @@ describe("session:list", () => {
         const store = setupWithStore(seed);
         const handler = handlers.get("session:list")!;
         const result = await handler();
-        expect(result).toBe(store.raw);
+        // session-store 现在返回深拷贝 (避免 caller 持 live 引用原地修改污染持久化态).
+        // 断言值相等而非引用相等.
+        expect(result).toEqual(store.raw);
+        expect(result).not.toBe(store.raw);
     });
 });
 

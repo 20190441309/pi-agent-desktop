@@ -261,12 +261,23 @@ export const usePlanStore = create<PlanState>((set, get) => ({
 }));
 
 let subscribed = false;
+const unsubscribers: Array<() => void> = [];
 
 export function ensurePlanSubscriptions(): void {
   if (subscribed || !window.piAPI?.onPlanCard) return;
   subscribed = true;
-  window.piAPI.onPlanCard((card) => usePlanStore.getState().setCard(card));
-  window.piAPI.onPlanDecisionRequest((request) => usePlanStore.getState().setDecisionRequest(request));
-  window.piAPI.onPlanProgress((update) => usePlanStore.getState().setProgress(update));
-  window.piAPI.onGoalChanged?.((goal) => usePlanStore.getState().setGoal(goal));
+  unsubscribers.push(window.piAPI.onPlanCard((card) => usePlanStore.getState().setCard(card)));
+  unsubscribers.push(window.piAPI.onPlanDecisionRequest((request) => usePlanStore.getState().setDecisionRequest(request)));
+  unsubscribers.push(window.piAPI.onPlanProgress((update) => usePlanStore.getState().setProgress(update)));
+  const offGoal = window.piAPI.onGoalChanged?.((goal) => usePlanStore.getState().setGoal(goal));
+  if (typeof offGoal === "function") unsubscribers.push(offGoal);
+}
+
+/** 退订所有 plan 订阅, 供测试 / AppShell 重挂时重置. */
+export function cleanupPlanSubscriptions(): void {
+  for (const off of unsubscribers) {
+    try { off(); } catch { /* ignore */ }
+  }
+  unsubscribers.length = 0;
+  subscribed = false;
 }

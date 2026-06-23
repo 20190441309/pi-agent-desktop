@@ -12,7 +12,7 @@ import {
     uninstallSkill,
     checkSkillhubInstalled,
 } from "../services/skills/skillhub-adapter";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
 import { dirname, basename, join } from "path";
 import { execFileSync } from "child_process";
 
@@ -206,12 +206,26 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
         }
 
         try {
-            // git clone
-            execFileSync("git", ["clone", repoUrl, targetPath], {
-                cwd,
-                timeout: 60_000,
-                stdio: ["pipe", "pipe", "pipe"],
-            });
+            // git clone — 禁用仓库自带 hooks, 防止克隆未审计仓库时 post-checkout 等钩子
+            // 在工作区内执行任意代码 (供应链风险). 用空 GIT_TEMPLATE_DIR 阻止 git 安装
+            // 模板钩子, 并用 -c core.hooksPath 指向一个空目录禁用仓库内钩子 (跨平台).
+            const emptyHooksDir = join(cwd, ".git-empty-hooks-tmp");
+            mkdirSync(emptyHooksDir, { recursive: true });
+            try {
+                execFileSync("git", [
+                    "clone",
+                    "-c", `core.hooksPath=${emptyHooksDir}`,
+                    repoUrl,
+                    targetPath,
+                ], {
+                    cwd,
+                    timeout: 60_000,
+                    stdio: ["pipe", "pipe", "pipe"],
+                    env: { ...process.env, GIT_TEMPLATE_DIR: emptyHooksDir },
+                });
+            } finally {
+                try { rmSync(emptyHooksDir, { recursive: true, force: true }); } catch { /* ignore */ }
+            }
 
             // 检查 SKILL.md 是否存在
             const skillMdPath = join(targetPath, "SKILL.md");
