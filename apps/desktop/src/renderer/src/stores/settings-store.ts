@@ -262,9 +262,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 
   getPiAPI()?.onSettingsChanged?.((settings) => {
     const next = { ...defaultSettings, ...settings };
-    applyAndCacheTheme(next.theme as Theme);
-    applyAndCacheFontSize(next.fontSize);
-    set({ settings: next, lastWriteError: null });
+    // 多窗口写竞态保护: 若本地有尚未落盘的乐观更新 (pendingSettingsUpdates),
+    // 把这些 key 重新叠加到广播值上, 避免慢窗口的编辑被另一窗口的广播静默回退.
+    const pending = pendingSettingsUpdates;
+    const reconciled = pending ? { ...next, ...pending } : next;
+    applyAndCacheTheme(reconciled.theme as Theme);
+    applyAndCacheFontSize(reconciled.fontSize);
+    set({ settings: reconciled, lastWriteError: null });
   });
 
   return {

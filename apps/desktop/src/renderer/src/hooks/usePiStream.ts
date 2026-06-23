@@ -434,7 +434,15 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 flushStreamPersist();
             }
         }, 1000);
-        return () => window.clearInterval(id);
+        // unmount 时 flush 残留增量并清掉待触发防抖定时器, 防止数据丢失 + setState-after-unmount
+        return () => {
+            window.clearInterval(id);
+            flushStreamPersist();
+            if (flushTimerRef.current !== null) {
+                window.clearTimeout(flushTimerRef.current);
+                flushTimerRef.current = null;
+            }
+        };
     }, [flushStreamPersist]);
 
     const { getCurrentSession, addMessage, updateMessage, addToolCall, updateToolCall } = useSessionStore();

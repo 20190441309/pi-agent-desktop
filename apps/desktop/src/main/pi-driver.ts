@@ -86,6 +86,8 @@ const COMMON_PATHS = platform() === 'win32'
 export class PiDriver extends EventEmitter {
   private _cachedStatus: PiStatus | null = null;
   private npmProcess: ChildProcess | null = null;
+  // 瞬态子进程 (getLatestVersion/uninstall 等): 跟踪以便 destroy 时统一回收, 避免孤儿
+  private transientChildren = new Set<ChildProcess>();
 
   /** 获取上次检测的缓存状态 */
   get cachedStatus(): PiStatus | null {
@@ -223,9 +225,11 @@ export class PiDriver extends EventEmitter {
       });
 
       let stderr = '';
+      this.transientChildren.add(child);
       child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
 
       child.on('close', (code) => {
+        this.transientChildren.delete(child);
         if (code === 0) {
           this._cachedStatus = null;
           this.emitProgress('done', 'Pi CLI 已卸载');
@@ -243,6 +247,7 @@ export class PiDriver extends EventEmitter {
       });
 
       child.on('error', (err) => {
+        this.transientChildren.delete(child);
         this.emitProgress('error', `卸载出错: ${err.message}`);
         reject(err);
       });
@@ -526,10 +531,12 @@ export class PiDriver extends EventEmitter {
 
       let stdout = '';
       let stderr = '';
+      this.transientChildren.add(child);
       child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
       child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
 
       child.on('close', (code) => {
+        this.transientChildren.delete(child);
         if (code === 0) {
           const version = stdout.trim().match(/v?(\d+\.\d+\.\d+)/);
           resolve(version ? version[1] : stdout.trim());
@@ -538,7 +545,10 @@ export class PiDriver extends EventEmitter {
         }
       });
 
-      child.on('error', reject);
+      child.on('error', (err) => {
+        this.transientChildren.delete(child);
+        reject(err);
+      });
     });
   }
 
@@ -695,6 +705,15 @@ export class PiDriver extends EventEmitter {
    */
   destroy(): void {
     this.cancelOperation();
+    // 回收所有在飞的瞬态子进程, 避免快速退出时孤儿化 (npm show / uninstall 等)
+    for (const child of this.transientChildren) {
+      try {
+        child.kill();
+      } catch {
+        // 进程可能已退出
+      }
+    }
+    this.transientChildren.clear();
     this.removeAllListeners();
   }
 }

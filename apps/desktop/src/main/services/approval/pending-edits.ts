@@ -17,6 +17,8 @@ export interface TrackedEdit {
 
 export class PendingEdits {
     private map = new Map<string, TrackedEdit>();
+    /** 最大追踪条目数, 超出按时间最旧的淘汰, 防止无界增长 */
+    private static MAX_ENTRIES = 200;
     /** v1.1: 自动审批开关 (renderer 同步过来) */
     private _autoApprove = false;
 
@@ -45,7 +47,18 @@ export class PendingEdits {
             newString: args.new_string,
             timestamp: Date.now(),
         });
+        this.evictIfFull();
         return id;
+    }
+
+    private evictIfFull(): void {
+        if (this.map.size <= PendingEdits.MAX_ENTRIES) return;
+        // 按时间最旧的淘汰至容量内
+        const sorted = [...this.map.values()].sort((a, b) => a.timestamp - b.timestamp);
+        const excess = this.map.size - PendingEdits.MAX_ENTRIES;
+        for (let i = 0; i < excess; i++) {
+            this.map.delete(sorted[i].id);
+        }
     }
 
     review(id: string, diff: string, finalContent: string): void {

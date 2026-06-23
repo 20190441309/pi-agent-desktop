@@ -16,6 +16,18 @@ export function setupAutoUpdater(deps: UpdaterDeps): void {
         return;
     }
 
+    // 安全闸: 当前发布流程未启用代码签名 (release.yml 无 CSC_* / certificate).
+    // 未签名包若被自动下载安装, 一旦 GitHub Release 资源被劫持即等于任意代码执行.
+    // 在引入 Authenticode 证书并在构建中注入 CSC_* secrets 前, 显式禁用自动更新.
+    // 手动设置环境变量 PI_DESKTOP_SIGNED=1 (配合已签名构建) 可重新启用.
+    const signed = process.env.PI_DESKTOP_SIGNED === "1";
+    if (!signed) {
+        log.warn(
+            "[AutoUpdater] Disabled: build is not code-signed (set PI_DESKTOP_SIGNED=1 once Authenticode signing is wired).",
+        );
+        return;
+    }
+
     autoUpdater.autoDownload = true; // 自动下载
     autoUpdater.autoInstallOnAppQuit = true; // 退出时自动装
 

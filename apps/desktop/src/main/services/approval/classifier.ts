@@ -61,6 +61,37 @@ const READ_BASH_COMMANDS = new Set([
     "test", "true", "false",
 ]);
 
+// 对 git/npm/node 等多用途工具, 只读白名单子命令; 其余视为可变 (edit) 以防
+// `git push`(非 force)、`npm publish/install`、`node -e "..."` 等被误判为只读而绕过追踪.
+const READ_ONLY_SUBCOMMANDS: Record<string, Set<string>> = {
+    git: new Set([
+        "status", "log", "diff", "show", "branch", "remote", "config",
+        "ls-files", "ls-remote", "blame", "describe", "rev-parse",
+        "fetch", "pull", "stash", "tag", "shortlog", "name-rev",
+    ]),
+    npm: new Set([
+        "view", "show", "list", "ls", "outdated", "info", "search",
+        "ping", "config", "help", "version", "prefix", "root",
+    ]),
+    pnpm: new Set([
+        "list", "ls", "outdated", "info", "why", "config", "help",
+        "version", "root", "fetch",
+    ]),
+    yarn: new Set(["info", "list", "outdated", "config", "version", "why"]),
+    node: new Set(["--version", "-v", "--help", "-h", "version"]),
+};
+
+/** 对 READ_BASH_COMMANDS 中的多用途工具, 检查子命令是否在只读白名单内. */
+function isReadOnlyMultiTool(firstToken: string, cmd: string): boolean {
+    const allowed = READ_ONLY_SUBCOMMANDS[firstToken];
+    if (!allowed) return true; // 无白名单的工具保持原 read 行为
+    const tokens = cmd.split(/\s+/);
+    // 取第一个非 flag token 作为子命令 (跳过 --global 等开关)
+    const sub = tokens.find((t, i) => i > 0 && !t.startsWith("-"));
+    if (!sub) return false; // 有工具名但无明确只读子命令 → 视为可变
+    return allowed.has(sub.toLowerCase());
+}
+
 function isHighRiskPath(p: string): boolean {
     for (const pat of HIGH_RISK_PATH_PATTERNS) {
         if (pat.test(p)) return true;
@@ -88,7 +119,12 @@ export function classifyToolCall(call: ToolCall): Classification {
         }
         // 第一个 token 是不是读类命令
         const firstToken = cmd.split(/\s+/)[0];
-        if (READ_BASH_COMMANDS.has(firstToken)) return { risk: "read", preview: cmd };
+        if (READ_BASH_COMMANDS.has(firstToken)) {
+            // git/npm/node 等多用途工具: 仅当子命令在只读白名单内才放行,
+            // 否则降级为 edit, 避免可变子命令被误判只读而绕过编辑追踪.
+            if (isReadOnlyMultiTool(firstToken, cmd)) return { risk: "read", preview: cmd };
+            return { risk: "edit", preview: cmd };
+        }
         // 未知 bash, 默认 edit (保守)
         return { risk: "edit", preview: cmd };
     }

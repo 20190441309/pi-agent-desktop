@@ -50,3 +50,12 @@ electronDownload:
   cache: .electron-cache
 
 electronDist: node_modules/electron/dist
+
+# 自动更新源: GitHub Releases. electron-updater 据此拉取 latest.yml.
+# 注意: 当前发布未启用代码签名, updater.ts 默认禁用自动下载/安装以避免
+# 未签名包被劫持投毒的风险. 引入 Authenticode 证书 + PI_DESKTOP_SIGNED=1 后启用.
+publish:
+  provider: github
+  owner: ChisaAlter
+  repo: pi-agent-desktop
+  releaseType: release
