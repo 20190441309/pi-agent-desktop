@@ -59,6 +59,15 @@ describe("settingsSetSchema", () => {
         expect(() => settingsSetSchema.parse([{ theme: "system" }])).not.toThrow();
     });
 
+    it("accepts thinking and vision fields from the renderer settings surfaces", () => {
+        expect(() => settingsSetSchema.parse([{
+            showThinking: false,
+            thinkingLevel: "high",
+            visionProvider: "minimax",
+            visionModel: "MiniMax-VL",
+        }])).not.toThrow();
+    });
+
     it("accepts long-horizon capability settings", () => {
         expect(() => settingsSetSchema.parse([{
             longHorizon: {
@@ -120,6 +129,7 @@ describe("settingsSetSchema", () => {
         expect(() => settingsSetSchema.parse([{ theme: "solarized" }])).toThrow(ZodError);
         expect(() => settingsSetSchema.parse([{ temperature: 3 }])).toThrow(ZodError);
         expect(() => settingsSetSchema.parse([{ maxTokens: 0 }])).toThrow(ZodError);
+        expect(() => settingsSetSchema.parse([{ thinkingLevel: "ultra" }])).toThrow(ZodError);
     });
 
     it("rejects a non-object (string)", () => {
