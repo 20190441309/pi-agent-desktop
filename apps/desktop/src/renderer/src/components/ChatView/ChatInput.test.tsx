@@ -980,9 +980,9 @@ describe("ChatInput", () => {
     Object.defineProperty(window, "piAPI", {
       value: {
         listSlashCommands: vi.fn(async () => [
-          { name: "changelog", description: "Show changelog entries", source: "builtin", desktopAction: "unsupported" },
-          { name: "clone", description: "Duplicate the current session at the current position", source: "builtin", desktopAction: "unsupported" },
           { name: "compact", description: "Manually compact the session context", source: "builtin", desktopAction: "compact" },
+          { name: "settings", description: "Open settings", source: "builtin", desktopAction: "open-settings" },
+          { name: "clone", description: "Duplicate the current session at the current position", source: "builtin", desktopAction: "unsupported" },
         ]),
       },
       configurable: true,
@@ -1012,6 +1012,7 @@ describe("ChatInput", () => {
     fireEvent.keyDown(textbox, { key: "ArrowDown" });
 
     await waitFor(() => {
+      expect(options[1].textContent).toContain("settings");
       expect(options[1].getAttribute("aria-selected")).toBe("true");
       expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
     });
