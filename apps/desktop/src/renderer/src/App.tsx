@@ -35,7 +35,7 @@ import {
 import { useWorkspaceStore } from "./stores/workspace-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { usePiStatusStore } from "./stores/pi-status-store";
-import { useApprovalStore } from "./stores/approval-store";
+import { bindApprovalEventSubscriptions, useApprovalStore } from "./stores/approval-store";
 import { useSessionStore } from "./stores/session-store";
 import { useAgentStore } from "./stores/agent-store";
 import { isFirstLaunch } from "./utils/first-launch";
@@ -221,6 +221,7 @@ function AppShell(): React.ReactElement {
         ensurePermissionSubscriptions();
         ensurePlanSubscriptions();
         ensureQueueSubscription();
+        return bindApprovalEventSubscriptions();
     }, []);
 
     useEffect(() => {
@@ -341,7 +342,7 @@ function AppShell(): React.ReactElement {
     }, [pendingApprovalCount]);
     const closeApproval = useCallback(() => {
         setApprovalVisible(false);
-        useApprovalStore.getState().clearChanges();
+        void useApprovalStore.getState().clearChanges();
     }, []);
     useEffect(() => {
         const onPrefill = (e: Event): void => {

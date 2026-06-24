@@ -194,6 +194,65 @@ describe("usePiStream", () => {
         });
     });
 
+    it("prepends session tool-permission guards for agent prompts", async () => {
+        useSessionStore.setState({
+            currentSessionId: "s1",
+            sessions: [
+                {
+                    id: "s1",
+                    title: "Session",
+                    workspaceId: "ws1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(0),
+                    messages: [],
+                    toolPermissions: {
+                        fileRead: true,
+                        fileWrite: true,
+                        shell: false,
+                        git: true,
+                        network: true,
+                        extensions: true,
+                    },
+                },
+            ],
+        });
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Session Agent",
+                    status: "idle",
+                    sessionId: "s1",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+        await act(async () => {
+            screen.getByText("send-agent-follow-up").click();
+        });
+
+        const [payload] = agentsPrompt.mock.calls[0] as Array<{
+            agentId: string;
+            message: string;
+            mode: string;
+        }>;
+        expect(payload.agentId).toBe("agent_1");
+        expect(payload.mode).toBe("build");
+        expect(payload.message).toContain("<tool-permissions>");
+        expect(payload.message).toContain("The user disabled: bash, PowerShell, and shell commands.");
+        expect(payload.message).toContain("agent follow up");
+    });
+
     it("treats selected Plan agent mode as plan clarification flow", async () => {
         useAgentModeStore.getState().setMode("ws1", "plan");
 
@@ -519,7 +578,11 @@ describe("usePiStream", () => {
         });
 
         const session = useSessionStore.getState().sessions[0];
-        expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up", { mode: "build" });
+        expect(sendPrompt).toHaveBeenCalledWith(
+            "ws1",
+            expect.stringContaining("follow up"),
+            { mode: "build" },
+        );
         expect(session.messages).toHaveLength(2);
         expect(session.messages[0]).toMatchObject({ role: "assistant", content: "partial answer" });
         expect(session.messages[1]).toMatchObject({ role: "user", content: "follow up" });
@@ -530,6 +593,45 @@ describe("usePiStream", () => {
     });
 
     it("queues agent follow-ups with explicit streaming behavior while streaming", async () => {
+        useSessionStore.setState({
+            currentSessionId: "s1",
+            sessions: [
+                {
+                    id: "s1",
+                    title: "Session",
+                    workspaceId: "ws1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(0),
+                    messages: [],
+                    toolPermissions: {
+                        fileRead: true,
+                        fileWrite: true,
+                        shell: false,
+                        git: true,
+                        network: true,
+                        extensions: true,
+                    },
+                },
+            ],
+        });
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Session Agent",
+                    status: "idle",
+                    sessionId: "s1",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
+
         await act(async () => {
             render(<AgentHookStateHost />);
         });
@@ -544,10 +646,17 @@ describe("usePiStream", () => {
 
         expect(agentsPrompt).toHaveBeenCalledWith({
             agentId: "agent_1",
-            message: "agent follow up",
+            message: expect.stringContaining("agent follow up"),
             mode: "build",
             streamingBehavior: "followUp",
         });
+        const [payload] = agentsPrompt.mock.calls[0] as Array<{
+            agentId: string;
+            message: string;
+            streamingBehavior: string;
+        }>;
+        expect(payload.message).toContain("<tool-permissions>");
+        expect(payload.message).toContain("The user disabled: bash, PowerShell, and shell commands.");
     });
 
     it("adds an optimistic agent user message before the main-process echo arrives", async () => {
@@ -586,7 +695,7 @@ describe("usePiStream", () => {
         ]);
         expect(agentsPrompt).toHaveBeenCalledWith({
             agentId: "agent_1",
-            message: "agent follow up",
+            message: expect.stringContaining("agent follow up"),
             mode: "build",
         });
         expect(useSessionStore.getState().sessions[0]?.messages).toMatchObject([
@@ -814,7 +923,11 @@ describe("usePiStream", () => {
             screen.getByText("send-follow-up").click();
         });
 
-        expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up", { mode: "build" });
+        expect(sendPrompt).toHaveBeenCalledWith(
+            "ws1",
+            expect.stringContaining("follow up"),
+            { mode: "build" },
+        );
     });
 
     it("stops showing the current turn as thinking once a plan card is waiting for a decision", async () => {
