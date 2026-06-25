@@ -32,7 +32,7 @@ import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 import { clearPendingExtensionUiRequests } from './services/extensions/extension-ui-bridge';
 import { setupAutoUpdater } from './services/updater';
 import { ptyManager } from './services/shell/pty-manager';
-import { DEFAULT_LONG_HORIZON_SETTINGS, type AppSettings, type Session } from '@shared';
+import { DEFAULT_APP_SETTINGS, DEFAULT_LONG_HORIZON_SETTINGS, resolveAppSettings, type AppSettings, type Session } from '@shared';
 import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
 import { ConfigManager } from './services/config/config-manager';
 import { CodexSessionImporter } from './services/codex-session/importer';
@@ -74,30 +74,14 @@ interface StoreSchema {
 }
 
 /** 当前持久化 schema 版本; 升级字段/重命名时递增并在 migrateStore 内补迁移步骤. */
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 
 const store = new Store<StoreSchema>({
   defaults: {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     workspaces: [],
     sessions: [],
-    settings: {
-      theme: 'light',
-      fontSize: 14,
-      model: '',
-      provider: '',
-      apiKey: '',
-      temperature: 0.7,
-      maxTokens: 4096,
-      autoSave: true,
-      showLineNumbers: true,
-      wordWrap: true,
-      permissionLevel: 'smart',
-      runtimeChannel: 'stable',
-      autoCompactionEnabled: false,
-      workspaceToolDefaults: {},
-      longHorizon: DEFAULT_LONG_HORIZON_SETTINGS
-    }
+    settings: DEFAULT_APP_SETTINGS
   }
 });
 
@@ -119,7 +103,10 @@ function migrateStore(): void {
     }));
     store.set('sessions', migrated);
   }
-  // 未来迁移: if (version < 2) { ... }
+  if (version < 2) {
+    store.set('settings', resolveAppSettings(store.get('settings')));
+  }
+  // 未来迁移: if (version < 3) { ... }
   store.set('schemaVersion', CURRENT_SCHEMA_VERSION);
 }
 migrateStore();

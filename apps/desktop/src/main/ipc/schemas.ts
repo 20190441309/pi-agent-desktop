@@ -81,6 +81,10 @@ const appSettingsSchema = z
             "network",
             "extensions",
         ]), z.boolean())).optional(),
+        visionProvider: z.string().optional(),
+        visionModel: z.string().optional(),
+        showThinking: z.boolean().optional(),
+        thinkingLevel: z.enum(["none", "low", "medium", "high"]).optional(),
         longHorizon: longHorizonSchema.optional(),
     })
     .strict();

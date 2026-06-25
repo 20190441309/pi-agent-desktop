@@ -2,7 +2,7 @@ import { BrowserWindow, ipcMain } from 'electron';
 import { join } from 'path';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import log from 'electron-log/main';
-import { ipcError } from '@shared';
+import { ipcError, resolveAppSettings } from '@shared';
 import type { AppSettings } from '@shared';
 import type { PiAgentConfig } from '../types';
 import { settingsSetSchema } from './schemas';
@@ -23,7 +23,7 @@ export function setupSettingsIpc(opts: {
   };
 
   ipcMain.handle('settings:get', async () => {
-    return store.get('settings');
+    return resolveAppSettings(store.get('settings'));
   });
 
   ipcMain.handle('settings:set', async (_, settings: Partial<AppSettings>) => {
@@ -36,8 +36,8 @@ export function setupSettingsIpc(opts: {
         `设置参数无效: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    const current = store.get('settings');
-    const updated = { ...current, ...settings };
+    const current = resolveAppSettings(store.get('settings'));
+    const updated = resolveAppSettings({ ...current, ...settings });
     store.set('settings', updated);
     broadcastSettingsChanged(updated);
     return updated;
@@ -64,13 +64,13 @@ export function setupSettingsIpc(opts: {
     } : null;
 
     if (currentModel) {
-      const currentSettings = store.get('settings');
+      const currentSettings = resolveAppSettings(store.get('settings'));
       if (!currentSettings.model && !currentSettings.provider) {
-        store.set('settings', {
+        store.set('settings', resolveAppSettings({
           ...currentSettings,
           model: currentModel.model,
           provider: currentModel.provider,
-        });
+        }));
         broadcastSettingsChanged(store.get('settings'));
       }
     }

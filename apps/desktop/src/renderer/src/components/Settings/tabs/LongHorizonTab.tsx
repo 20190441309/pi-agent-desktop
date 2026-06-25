@@ -1,30 +1,8 @@
 import React from "react";
-import { DEFAULT_LONG_HORIZON_SETTINGS, type AgentMode, type LongHorizonSettings, type LongHorizonToggle } from "@shared";
+import { mergeLongHorizonSettings, type AgentMode, type LongHorizonSettings, type LongHorizonToggle } from "@shared";
 import { useI18n } from "../../../i18n";
 import { useSettingsStore } from "../../../stores/settings-store";
 import { FieldRow, SectionTitle, SwitchControl } from "../_shared";
-
-function mergeLongHorizon(value: LongHorizonSettings | undefined): LongHorizonSettings {
-    const workflow = value?.workflow ?? value?.composeWorkflow;
-    return {
-        ...DEFAULT_LONG_HORIZON_SETTINGS,
-        ...value,
-        planMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.planMode, ...value?.planMode },
-        composeMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.composeMode, ...value?.composeMode },
-        maxMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.maxMode, ...value?.maxMode },
-        memory: { ...DEFAULT_LONG_HORIZON_SETTINGS.memory, ...value?.memory },
-        history: { ...DEFAULT_LONG_HORIZON_SETTINGS.history, ...value?.history },
-        checkpoint: { ...DEFAULT_LONG_HORIZON_SETTINGS.checkpoint, ...value?.checkpoint },
-        goal: { ...DEFAULT_LONG_HORIZON_SETTINGS.goal, ...value?.goal },
-        subagents: { ...DEFAULT_LONG_HORIZON_SETTINGS.subagents, ...value?.subagents },
-        task: { ...DEFAULT_LONG_HORIZON_SETTINGS.task, ...value?.task },
-        actor: { ...DEFAULT_LONG_HORIZON_SETTINGS.actor, ...value?.actor },
-        workflow: { ...DEFAULT_LONG_HORIZON_SETTINGS.workflow, ...workflow },
-        dream: { ...DEFAULT_LONG_HORIZON_SETTINGS.dream, ...value?.dream },
-        distill: { ...DEFAULT_LONG_HORIZON_SETTINGS.distill, ...value?.distill },
-        composeWorkflow: { ...DEFAULT_LONG_HORIZON_SETTINGS.composeWorkflow, ...value?.composeWorkflow },
-    };
-}
 
 type ToggleKey = {
     [K in keyof LongHorizonSettings]: LongHorizonSettings[K] extends LongHorizonToggle ? K : never;
@@ -39,11 +17,11 @@ function clampInt(value: string, fallback: number, min: number, max: number): nu
 export function LongHorizonTab(): React.JSX.Element {
     const { t } = useI18n();
     const { settings, updateSettings } = useSettingsStore();
-    const longHorizon = mergeLongHorizon(settings.longHorizon);
+    const longHorizon = mergeLongHorizonSettings(settings.longHorizon);
 
     const updateLongHorizon = (updates: Partial<LongHorizonSettings>): void => {
         updateSettings({
-            longHorizon: mergeLongHorizon({
+            longHorizon: mergeLongHorizonSettings({
                 ...longHorizon,
                 ...updates,
             }),
