@@ -9,7 +9,7 @@ import { MiniMaxCodeTitleBar } from './components/MiniMaxCode/MiniMaxCodeTitleBa
 import { applyTheme, watchSystemTheme, type Theme } from './utils/theme';
 
 function SettingsShell(): React.JSX.Element {
-    const { settings, loadPiConfig } = useSettingsStore();
+    const { settings, loadPiConfig, flushPendingSettingsWrite } = useSettingsStore();
     const [isMaximized, setIsMaximized] = React.useState(false);
 
     useEffect(() => {
@@ -36,6 +36,14 @@ function SettingsShell(): React.JSX.Element {
         return () => { if (typeof unsub === 'function') unsub(); };
     }, []);
 
+    const handleCloseWindow = React.useCallback(async () => {
+        try {
+            await flushPendingSettingsWrite();
+        } finally {
+            await window.piAPI?.windowClose?.();
+        }
+    }, [flushPendingSettingsWrite]);
+
     return (
         <div
             className="flex h-screen w-screen overflow-hidden bg-transparent p-0 text-[var(--mm-text-primary)]"
@@ -48,7 +56,7 @@ function SettingsShell(): React.JSX.Element {
                 data-mmcode-layout="window-frame"
                 data-mm-window-kind="settings"
             >
-                <MiniMaxCodeTitleBar title="系统设置" variant="settings" className="settings-window-titlebar" />
+                <MiniMaxCodeTitleBar title="系统设置" variant="settings" className="settings-window-titlebar" onClose={handleCloseWindow} />
                 <div className="flex min-h-0 flex-1 overflow-hidden">
                     <SettingsContent />
                 </div>

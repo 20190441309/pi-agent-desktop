@@ -1,11 +1,13 @@
 import { mkdir } from "fs/promises";
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const configDir = `${userDataDir}-pi-config`;
     await mkdir(configDir, { recursive: true });
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: {
             ...process.env,
@@ -33,7 +35,7 @@ async function prepareWorkspace(page: Page, workspacePath: string): Promise<void
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
     const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("button", { name: "打开设置窗口" }).click();
+    await page.getByRole("tab", { name: "设置" }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState("domcontentloaded");
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();

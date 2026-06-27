@@ -99,29 +99,30 @@ export function MiniMaxCodeSidebar({
         >
             {/* ============== 中间 scroll 区 ============== */}
             <nav
-                className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 pb-3 pt-5"
+                className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 pb-3 pt-0"
                 aria-label="会话列表"
             >
-                {/* 新建对话按钮 */}
-                <div className="mx-[11px] flex h-6 items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={() => onSectionChange("new-task")}
-                        aria-label={t("sidebar.newConversation")}
-                        aria-current={currentSection === "new-task" ? "page" : undefined}
-                        className="flex h-6 min-w-0 flex-1 items-center rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)] px-2 text-left text-[11px] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-secondary)] focus:outline-none"
-                        data-mmcode-section="new-task"
-                    >
-                        <span className="truncate">新对话</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => onSectionChange("new-task")}
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none"
-                        aria-label="快速新建对话"
-                    >
-                        <IconPlus />
-                    </button>
+                <div className="flex min-h-[42px] shrink-0 items-center">
+                    <div className="mx-[11px] flex h-7 w-full items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => onSectionChange("new-task")}
+                            aria-label={t("sidebar.newConversation")}
+                            aria-current={currentSection === "new-task" ? "page" : undefined}
+                            className="flex h-7 min-w-0 flex-1 items-center rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)] px-2 text-left text-[11px] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-secondary)] focus:outline-none"
+                            data-mmcode-section="new-task"
+                        >
+                            <span className="truncate">新对话</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onSectionChange("new-task")}
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none"
+                            aria-label="快速新建对话"
+                        >
+                            <IconPlus />
+                        </button>
+                    </div>
                 </div>
 
                 {/* 会话列表 */}

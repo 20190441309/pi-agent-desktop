@@ -73,6 +73,22 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(selected).toBe("new-task");
     });
 
+    it("reserves a 42px top strip so the sidebar header aligns with the workspace strip", () => {
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={() => undefined} />);
+
+        const nav = screen.getByRole("navigation", { name: "会话列表" });
+        const headerStrip = nav.firstElementChild as HTMLElement | null;
+        const newTaskRow = screen.getByRole("button", { name: "新建对话" }).parentElement;
+        const quickCreate = screen.getByRole("button", { name: "快速新建对话" });
+
+        expect(nav.className).not.toContain("pt-5");
+        expect(headerStrip?.className ?? "").toContain("min-h-[42px]");
+        expect(headerStrip?.className ?? "").toContain("items-center");
+        expect(newTaskRow?.className ?? "").toContain("h-7");
+        expect(quickCreate.className).toContain("h-7");
+        expect(screen.getByRole("button", { name: "新建对话" }).className).toContain("h-7");
+    });
+
     it("不在会话侧栏展示 pi-agent 在线状态", () => {
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" piAgentStatus="online" onSectionChange={() => undefined} />);
 

@@ -2,15 +2,21 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { LongHorizonDatabase } from "../database";
 import { GoalService } from "../goal-service";
+import { TaskService } from "../task-service";
 
 describe("GoalService", () => {
     const dirs: string[] = [];
     const services: GoalService[] = [];
+    const databases: LongHorizonDatabase[] = [];
 
     afterEach(() => {
         for (const service of services.splice(0)) {
             service.close();
+        }
+        for (const database of databases.splice(0)) {
+            database.close();
         }
         for (const dir of dirs.splice(0)) {
             rmSync(dir, { recursive: true, force: true });
@@ -21,16 +27,32 @@ describe("GoalService", () => {
         const dir = mkdtempSync(join(tmpdir(), "pi-goal-"));
         dirs.push(dir);
         const send = vi.fn();
-        const service = new GoalService(join(dir, "goals.json"), send);
+        const database = new LongHorizonDatabase(dir);
+        databases.push(database);
+        const service = new GoalService({
+            database,
+            rootDir: dir,
+            legacyStateFile: join(dir, "goals.json"),
+            send,
+            taskService: new TaskService(database),
+        });
         services.push(service);
         return { dir, send, service };
     }
 
-    it("persists a goal and emits a shared plan-progress T1 task", () => {
+    it("persists a goal and emits a shared plan-progress task keyed by goal id", () => {
         const { dir, send, service } = createService();
 
         const goal = service.set({ workspaceId: "ws1", condition: "完成长程能力" });
-        const reloaded = new GoalService(join(dir, "goals.json"), vi.fn());
+        const reloadedDb = new LongHorizonDatabase(dir);
+        databases.push(reloadedDb);
+        const reloaded = new GoalService({
+            database: reloadedDb,
+            rootDir: dir,
+            legacyStateFile: join(dir, "goals.json"),
+            send: vi.fn(),
+            taskService: new TaskService(reloadedDb),
+        });
         services.push(reloaded);
 
         expect(goal.status).toBe("running");
@@ -39,7 +61,7 @@ describe("GoalService", () => {
         expect(existsSync(join(dir, "long-horizon.db"))).toBe(true);
         expect(send).toHaveBeenCalledWith("goal:changed", "ws1", expect.objectContaining({ condition: "完成长程能力" }));
         expect(send).toHaveBeenCalledWith("plan:progress", "ws1", expect.objectContaining({
-            items: [expect.objectContaining({ id: "T1", text: "完成长程能力", status: "running" })],
+            items: [expect.objectContaining({ id: `goal:${goal.id}`, text: "完成长程能力", status: "running" })],
         }));
     });
 
@@ -102,6 +124,18 @@ describe("GoalService", () => {
 
         expect(service.get("ws1")).toMatchObject({ status: "checking", reason: "agent 检查" });
         expect(service.get("ws1", "agent-1")).toMatchObject({ status: "checking", reason: "agent 检查" });
+    });
+
+    it("allows agent-scoped and workspace-scoped goals to coexist without task id collisions", () => {
+        const { service } = createService();
+
+        expect(() => {
+            service.set({ workspaceId: "ws1", agentId: "agent-1", condition: "agent 目标" });
+            service.set({ workspaceId: "ws1", condition: "workspace 目标" });
+        }).not.toThrow();
+
+        expect(service.get("ws1", "agent-1")).toMatchObject({ condition: "agent 目标" });
+        expect(service.get("ws1")).toMatchObject({ condition: "workspace 目标" });
     });
 
     it("migrates a legacy goals.json file into long-horizon.db on first load", () => {

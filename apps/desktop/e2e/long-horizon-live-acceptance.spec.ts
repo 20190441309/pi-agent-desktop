@@ -2,6 +2,7 @@ import { test, expect, _electron, type ElectronApplication, type Page } from "@p
 import { electronMainEntry } from "../playwright.config";
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 const SCREENSHOT_DIR = join(__dirname, "..", "e2e-output", "long-horizon-live");
 const DEEP_API_KEY_ENV = "PI_DESKTOP_DEEP_API_KEY";
@@ -14,6 +15,15 @@ interface LiveContext {
     page: Page;
     workspaceId: string;
     workspacePath: string;
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isClosedPageError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /Target page, context or browser has been closed/i.test(message);
 }
 
 function resolveLongCatApiKey(): string {
@@ -86,6 +96,7 @@ async function launchLiveApp(): Promise<LiveContext> {
     seedWorkspace(workspacePath);
 
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: {
             ...process.env,
@@ -207,15 +218,109 @@ async function sendPrompt(page: Page, prompt: string): Promise<number> {
     return initialArticleCount;
 }
 
+function latestAssistantArticle(page: Page) {
+    return page.getByRole("article", { name: /Pi ·/ }).last();
+}
+
+async function latestAssistantFailure(page: Page): Promise<string | null> {
+    const alertFailure = page.getByRole("alert").filter({ hasText: "发送失败" }).first();
+    if (await alertFailure.isVisible().catch(() => false)) {
+        return (await alertFailure.textContent())?.trim() ?? "发送失败";
+    }
+
+    const assistant = latestAssistantArticle(page);
+    if (!await assistant.isVisible().catch(() => false)) return null;
+    const text = ((await assistant.textContent()) ?? "").replace(/\s+/g, " ").trim();
+    if (!text) return null;
+    if (text.includes("被用户拒绝") || text.includes("策略阻止了此次操作")) {
+        return text;
+    }
+    return null;
+}
+
+interface PermissionWatcher {
+    stop: () => Promise<void>;
+}
+
+function startPermissionWatcher(page: Page): PermissionWatcher {
+    let active = true;
+    let lastError: Error | null = null;
+    const loop = (async () => {
+        while (active) {
+            if (page.isClosed()) return;
+            try {
+                const dialog = page.getByRole("alertdialog", { name: /^权限请求 \d+$/ }).first();
+                if (await dialog.isVisible().catch(() => false)) {
+                    const previousText = ((await dialog.textContent()) ?? "").replace(/\s+/g, " ").trim();
+                    await dialog.getByRole("button", { name: "仅本对话" }).click();
+                    await expect.poll(async () => {
+                        if (!await dialog.isVisible().catch(() => false)) return "cleared";
+                        const nextText = ((await dialog.textContent()) ?? "").replace(/\s+/g, " ").trim();
+                        return nextText === previousText ? "same" : "advanced";
+                    }, { timeout: 5_000 }).not.toBe("same");
+                    continue;
+                }
+                await sleep(150);
+            } catch (error) {
+                if (!active || page.isClosed() || isClosedPageError(error)) return;
+                lastError = error instanceof Error ? error : new Error(String(error));
+                return;
+            }
+        }
+    })();
+
+    return {
+        async stop() {
+            active = false;
+            await loop;
+            if (lastError) throw lastError;
+        },
+    };
+}
+
+async function withPermissionWatcher<T>(page: Page, action: () => Promise<T>): Promise<T> {
+    const watcher = startPermissionWatcher(page);
+    try {
+        return await action();
+    } finally {
+        await watcher.stop();
+    }
+}
+
+async function executePendingPlan(page: Page): Promise<void> {
+    const directExecute = page.getByRole("button", { name: "执行计划" });
+    const optionButtons = page.getByRole("button", { name: /^选项 / });
+    const confirmExecute = page.getByRole("button", { name: "确认并执行" });
+
+    await expect.poll(async () => {
+        if (await directExecute.isVisible().catch(() => false)) return "direct";
+        if (await optionButtons.first().isVisible().catch(() => false)) return "options";
+        return "pending";
+    }, { timeout: 30_000 }).not.toBe("pending");
+
+    if (await directExecute.isVisible().catch(() => false)) {
+        await directExecute.click();
+        return;
+    }
+
+    await optionButtons.first().click();
+    await expect(confirmExecute).toBeEnabled({ timeout: 10_000 });
+    await confirmExecute.click();
+}
+
 async function waitForAssistantTurn(page: Page, initialArticleCount: number, timeout = 120_000): Promise<void> {
-    const failure = page.getByRole("alert").filter({ hasText: "发送失败" }).first();
     const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
-        if (await failure.isVisible().catch(() => false)) {
-            throw new Error((await failure.textContent())?.trim() ?? "发送失败");
+        const failure = await latestAssistantFailure(page);
+        if (failure) {
+            throw new Error(failure);
         }
         const articles = await page.locator("article").count();
         if (articles >= initialArticleCount + 2) {
+            const settledFailure = await latestAssistantFailure(page);
+            if (settledFailure) {
+                throw new Error(settledFailure);
+            }
             return;
         }
         await page.waitForTimeout(500);
@@ -225,18 +330,30 @@ async function waitForAssistantTurn(page: Page, initialArticleCount: number, tim
 
 async function waitForRunToFinish(page: Page, timeout = 240_000): Promise<void> {
     const stopButton = page.getByRole("button", { name: "停止生成" });
-    const failure = page.getByRole("alert").filter({ hasText: "发送失败" }).first();
+    const pauseButtons = page.getByRole("button", { name: "暂停执行" });
     const deadline = Date.now() + timeout;
-    const stopGraceDeadline = Date.now() + Math.min(timeout, 8_000);
+    let lastSignature = "";
+    let lastActivityAt = Date.now();
     while (Date.now() < deadline) {
-        if (await failure.isVisible().catch(() => false)) {
-            throw new Error((await failure.textContent())?.trim() ?? "发送失败");
+        const articleCount = await page.locator("article").count();
+        const alertCount = await page.getByRole("alert").count();
+        const permissionDialog = page.getByRole("alertdialog", { name: /^权限请求 \d+$/ }).first();
+        const permissionVisible = await permissionDialog.isVisible().catch(() => false);
+        const stopVisible = await stopButton.isVisible().catch(() => false);
+        const pauseVisible = await pauseButtons.first().isVisible().catch(() => false);
+        const busyVisible = stopVisible || pauseVisible;
+        const signature = `${articleCount}|${alertCount}|${permissionVisible}|${busyVisible}`;
+        if (signature !== lastSignature) {
+            lastSignature = signature;
+            lastActivityAt = Date.now();
         }
-        if (await stopButton.isVisible().catch(() => false)) {
-            await expect(stopButton).toBeHidden({ timeout: Math.max(1_000, deadline - Date.now()) });
-            return;
+
+        const failure = await latestAssistantFailure(page);
+        if (failure) {
+            throw new Error(failure);
         }
-        if (Date.now() >= stopGraceDeadline) {
+
+        if (!busyVisible && !permissionVisible && Date.now() - lastActivityAt >= 2_000) {
             return;
         }
         await page.waitForTimeout(250);
@@ -305,22 +422,26 @@ liveDescribe("Pi Desktop long-horizon live acceptance", () => {
         await takeScreenshot(page, "04-right-rail-opened");
 
         await selectMode(page, "Build");
-        const buildArticleCount = await sendPrompt(page, "请创建一个 build_probe.txt 文件，内容只有 BUILD_OK。完成后只用一句中文说明。");
-        await waitForAssistantTurn(page, buildArticleCount);
-        await waitForRunToFinish(page);
-        await expect.poll(() => existsSync(join(workspacePath, "build_probe.txt"))).toBe(true);
+        await withPermissionWatcher(page, async () => {
+            const buildArticleCount = await sendPrompt(page, "请创建一个 build_probe.txt 文件，内容只有 BUILD_OK。完成后只用一句中文说明。");
+            await waitForAssistantTurn(page, buildArticleCount);
+            await waitForRunToFinish(page);
+            await expect.poll(() => existsSync(join(workspacePath, "build_probe.txt")), { timeout: 30_000 }).toBe(true);
+        });
         await takeScreenshot(page, "05-build-mode-finished");
 
         await selectMode(page, "Plan");
-        const planArticleCount = await sendPrompt(page, "请为当前工作区生成一个简短计划：1. 创建 plan_probe.txt，内容为 PLAN_OK。2. 验证文件存在。生成计划后等待执行，不要自己直接执行。");
-        await waitForAssistantTurn(page, planArticleCount);
-        await waitForRunToFinish(page);
-        await expect(page.getByRole("button", { name: "执行计划" })).toBeVisible({ timeout: 120_000 });
-        await takeScreenshot(page, "06-plan-mode-plan-card");
-        await page.getByRole("button", { name: "执行计划" }).click();
-        await waitForAssistantTurn(page, planArticleCount + 2, 180_000);
-        await waitForRunToFinish(page, 300_000);
-        await expect.poll(() => existsSync(join(workspacePath, "plan_probe.txt"))).toBe(true);
+        await withPermissionWatcher(page, async () => {
+            const planArticleCount = await sendPrompt(page, "请为当前工作区生成一个简短计划：1. 创建 plan_probe.txt，内容为 PLAN_OK。2. 验证文件存在。生成计划后等待执行，不要自己直接执行。");
+            await waitForAssistantTurn(page, planArticleCount);
+            await waitForRunToFinish(page);
+            await takeScreenshot(page, "06-plan-mode-plan-card");
+            const executionStartArticleCount = await page.locator("article").count();
+            await executePendingPlan(page);
+            await waitForAssistantTurn(page, executionStartArticleCount, 180_000);
+            await waitForRunToFinish(page, 300_000);
+            await expect.poll(() => existsSync(join(workspacePath, "plan_probe.txt")), { timeout: 30_000 }).toBe(true);
+        });
         await takeScreenshot(page, "07-plan-mode-executed");
 
         await page.getByRole("tab", { name: "任务" }).click();
@@ -336,12 +457,15 @@ liveDescribe("Pi Desktop long-horizon live acceptance", () => {
 
         await page.getByRole("tab", { name: "对话" }).click();
         await selectMode(page, "Compose");
-        const composeArticleCount = await sendPrompt(page, "请审查 build_probe.txt 和 plan_probe.txt，输出三段：观察、风险、下一步。不要修改任何文件。");
-        await waitForAssistantTurn(page, composeArticleCount);
-        await waitForRunToFinish(page);
-        await expect(page.getByRole("heading", { name: "观察" })).toBeVisible({ timeout: 30_000 });
-        await expect(page.getByRole("heading", { name: "风险" })).toBeVisible();
-        await expect(page.getByRole("heading", { name: "下一步" })).toBeVisible();
+        await withPermissionWatcher(page, async () => {
+            const composeArticleCount = await sendPrompt(page, "请审查 build_probe.txt 和 plan_probe.txt，输出三段：观察、风险、下一步。不要修改任何文件。");
+            await waitForAssistantTurn(page, composeArticleCount);
+            await waitForRunToFinish(page);
+        });
+        const composeReviewArticle = page.locator("article").last();
+        await expect(composeReviewArticle.getByText("观察", { exact: true })).toBeVisible({ timeout: 30_000 });
+        await expect(composeReviewArticle.getByText("风险", { exact: true })).toBeVisible();
+        await expect(composeReviewArticle.getByText("下一步", { exact: true })).toBeVisible();
         await takeScreenshot(page, "10-compose-mode-finished");
 
         const disabledSettings = await openSettingsWindow(app, page);

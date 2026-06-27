@@ -15,10 +15,11 @@ const clearError = vi.fn();
 const startStreaming = vi.fn(async () => undefined);
 const stopStreaming = vi.fn();
 let mockedStreamError: string | null = "上一轮错误";
+let mockedIsStreaming = false;
 
 vi.mock("../../hooks/usePiStream", () => ({
   usePiStream: () => ({
-    isStreaming: false,
+    isStreaming: mockedIsStreaming,
     isConnected: true,
     streamingMessageId: null,
     startStreaming,
@@ -49,11 +50,13 @@ vi.mock("./MessageBubble", () => ({
   MessageBubble: ({
     message,
     onPlanAction,
+    isSearchTarget,
   }: {
     message: { id: string; content: string; planAction?: { status?: string } };
     onPlanAction?: (message: { id: string; content: string; planAction?: { status?: string } }, action: "execute" | "pause" | "resume" | "cancel" | "refine") => Promise<void>;
+    isSearchTarget?: boolean;
   }) => (
-    <div data-testid="message-bubble">
+    <div data-testid="message-bubble" data-message-id={message.id} data-search-target={String(Boolean(isSearchTarget))}>
       {message.content}
       {message.planAction?.status === "pending" && (
         <button type="button" onClick={() => void onPlanAction?.(message, "execute")}>
@@ -75,6 +78,7 @@ describe("ChatView", () => {
     startStreaming.mockClear();
     stopStreaming.mockClear();
     mockedStreamError = "上一轮错误";
+    mockedIsStreaming = false;
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
     window.HTMLElement.prototype.scrollTo = vi.fn();
     Object.defineProperty(window, "piAPI", {
@@ -205,6 +209,298 @@ describe("ChatView", () => {
     expect(screen.queryByTestId("plan-card")).toBeNull();
   });
 
+  it("waits for the current stream to finish before surfacing a pending execute-plan card", async () => {
+    mockedStreamError = null;
+    mockedIsStreaming = true;
+    usePlanStore.setState({
+      activeCard: {
+        id: "card_1",
+        title: "测试计划",
+        filename: "test-plan.md",
+        content: "- 检查\n- 修改",
+        createdAt: Date.now(),
+      },
+      renderedPlanCardIds: [],
+      decisionRequest: null,
+      activeExecution: null,
+      steps: [],
+      status: "idle",
+    });
+
+    const { rerender } = render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByText("execute-plan")).toBeNull();
+
+    mockedIsStreaming = false;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                ...session.messages,
+                {
+                  id: "assistant-plan-summary",
+                  role: "assistant",
+                  content: "计划已保存至 `.pi/plans/test-plan.md`。\n\n使用 `/execute_plan` 执行该计划，或 `/plan` 退出计划模式。",
+                  timestamp: new Date(1),
+                },
+              ],
+            }
+          : session
+      )),
+    }));
+    rerender(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("execute-plan")).toBeTruthy();
+    });
+  });
+
+  it("surfaces the structured execute-plan card even when the assistant summary omits slash-command text", async () => {
+    mockedStreamError = null;
+    usePlanStore.setState({
+      activeCard: {
+        id: "card_wait_execute",
+        title: "测试计划",
+        filename: "test-plan.md",
+        content: "- 创建 plan_probe.txt\n- 验证文件存在",
+        createdAt: Date.now(),
+      },
+      renderedPlanCardIds: [],
+      decisionRequest: null,
+      activeExecution: null,
+      steps: [],
+      status: "idle",
+    });
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                ...session.messages,
+                {
+                  id: "assistant-plan-summary-no-slash",
+                  role: "assistant",
+                  content: "计划已生成：test-plan.md（草稿）。两个步骤：创建 plan_probe.txt，然后验证文件存在。等待执行。",
+                  timestamp: new Date(1),
+                },
+              ],
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("execute-plan")).toBeTruthy();
+    });
+  });
+
+  it("surfaces a fallback execute-plan card after plan_write fails but the structured plan payload exists", async () => {
+    mockedStreamError = null;
+    usePlanStore.setState({
+      activeCard: {
+        id: "failed_card_1",
+        title: "探针计划",
+        filename: "probe-plan",
+        content: "---\ntitle: 探针计划\ntype: chore\n---\n\n1. 创建 `plan_probe.txt`，内容为 `PLAN_OK`\n2. 验证文件存在且内容正确\n",
+        createdAt: Date.now(),
+      },
+      renderedPlanCardIds: [],
+      decisionRequest: null,
+      activeExecution: null,
+      steps: [],
+      status: "idle",
+    });
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                ...session.messages,
+                {
+                  id: "assistant-plan-write-error",
+                  role: "assistant",
+                  content: "",
+                  timestamp: new Date(1),
+                  toolCalls: [
+                    {
+                      id: "call_plan_error",
+                      name: "plan_write",
+                      status: "error",
+                    },
+                  ],
+                },
+              ],
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("execute-plan")).toBeTruthy();
+    });
+  });
+
+  it("reuses the existing pending plan message when the same plan card is retried", async () => {
+    mockedStreamError = null;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                {
+                  id: "plan-message-existing",
+                  role: "assistant",
+                  content: "old plan body",
+                  timestamp: new Date(0),
+                  planAction: {
+                    id: "plan_action_old",
+                    title: "探针计划",
+                    filename: "probe-plan",
+                    status: "pending",
+                  },
+                },
+              ],
+            }
+          : session
+      )),
+    }));
+    usePlanStore.setState({
+      activeCard: {
+        id: "retry_card_2",
+        title: "探针计划",
+        filename: "probe-plan",
+        content: "- 新步骤\n- 新验证",
+        createdAt: Date.now(),
+      },
+      renderedPlanCardIds: [],
+      decisionRequest: null,
+      activeExecution: {
+        activePlanId: "retry_card_1",
+        title: "探针计划",
+        filename: "probe-plan",
+        sourceMessageId: "plan-message-existing",
+        phase: "awaiting_confirmation",
+      },
+      steps: [],
+      status: "waiting_decision",
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => {
+      const planMessages = useSessionStore.getState().sessions[0].messages.filter((message) => Boolean(message.planAction));
+      expect(planMessages).toHaveLength(1);
+      expect(planMessages[0]).toMatchObject({
+        id: "plan-message-existing",
+        content: "- 新步骤\n- 新验证",
+        planAction: expect.objectContaining({
+          title: "探针计划",
+          filename: "probe-plan",
+          status: "pending",
+        }),
+      });
+      expect(usePlanStore.getState().activeExecution?.sourceMessageId).toBe("plan-message-existing");
+    });
+  });
+
+  it("does not reopen waiting confirmation when the same plan card re-emits during execution", async () => {
+    mockedStreamError = null;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                {
+                  id: "plan-message-running",
+                  role: "assistant",
+                  content: "old running plan",
+                  timestamp: new Date(0),
+                  planAction: {
+                    id: "plan_action_running",
+                    title: "测试计划",
+                    filename: "probe-plan",
+                    status: "executing",
+                  },
+                },
+              ],
+            }
+          : session
+      )),
+    }));
+    usePlanStore.setState({
+      activeCard: {
+        id: "retry_card_running",
+        title: "创建并验证 plan_probe.txt",
+        filename: "probe-plan",
+        content: "- 更新后的步骤\n- 更新后的验证",
+        createdAt: Date.now(),
+      },
+      renderedPlanCardIds: [],
+      decisionRequest: null,
+      activeExecution: {
+        activePlanId: "plan_action_running",
+        title: "测试计划",
+        filename: "probe-plan",
+        sourceMessageId: "plan-message-running",
+        phase: "executing",
+      },
+      steps: [],
+      status: "executing",
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => {
+      const planMessages = useSessionStore.getState().sessions[0].messages.filter((message) => Boolean(message.planAction));
+      expect(planMessages).toHaveLength(1);
+      expect(planMessages[0]).toMatchObject({
+        id: "plan-message-running",
+        content: "- 更新后的步骤\n- 更新后的验证",
+        planAction: expect.objectContaining({
+          title: "创建并验证 plan_probe.txt",
+          filename: "probe-plan",
+          status: "executing",
+        }),
+      });
+      expect(usePlanStore.getState().activeExecution?.phase).toBe("executing");
+      expect(usePlanStore.getState().activeExecution?.sourceMessageId).toBe("plan-message-running");
+    });
+  });
+
   it("keeps the input outside the scroll region and the message region as the only scroller", () => {
     mockedStreamError = null;
     useSessionStore.setState((state) => ({
@@ -258,7 +554,7 @@ describe("ChatView", () => {
     expect(screen.queryByTestId("external-model-selector")).toBeNull();
   });
 
-  it("shows compact token usage in the top strip instead of model details", () => {
+  it("shows compact token usage in the top strip without collapsing small values to zero", () => {
     mockedStreamError = null;
     useSessionStore.setState((state) => ({
       sessions: state.sessions.map((session) => (
@@ -285,8 +581,165 @@ describe("ChatView", () => {
 
     expect(screen.queryByText(/模型:/)).toBeNull();
     expect(screen.getByText(/Token:/).textContent).toContain("1.5K");
-    expect(screen.getByText(/输入 1.2K/)).toBeTruthy();
-    expect(screen.getByText(/输出 300/)).toBeTruthy();
+    expect(screen.queryByText(/输入 /)).toBeNull();
+    expect(screen.queryByText(/输出 /)).toBeNull();
+  });
+
+  it("keeps very small token counts readable in the top strip", () => {
+    mockedStreamError = null;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              usage: {
+                inputTokens: 10,
+                outputTokens: 2,
+                totalTokens: 12,
+                updatedAt: Date.now(),
+              },
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText(/Token:/).textContent).toContain("12");
+  });
+
+  it("animates token totals instead of jumping straight to the final cumulative value", () => {
+    mockedStreamError = null;
+    const rafCallbacks: FrameRequestCallback[] = [];
+    const originalRaf = window.requestAnimationFrame;
+    const originalCancelRaf = window.cancelAnimationFrame;
+
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      rafCallbacks.push(callback);
+      return rafCallbacks.length;
+    });
+    window.cancelAnimationFrame = vi.fn();
+
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              usage: {
+                inputTokens: 500_000,
+                outputTokens: 500_000,
+                totalTokens: 1_000_000,
+                estimatedCostUsd: 0.01,
+                updatedAt: Date.now(),
+              },
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText(/Token:/).textContent).toContain("1M");
+
+    act(() => {
+      useSessionStore.setState((state) => ({
+        sessions: state.sessions.map((session) => (
+          session.id === "s1"
+            ? {
+                ...session,
+                usage: {
+                  inputTokens: 900_000,
+                  outputTokens: 1_100_000,
+                  totalTokens: 2_000_000,
+                  estimatedCostUsd: 0.02,
+                  updatedAt: Date.now(),
+                },
+              }
+            : session
+        )),
+      }));
+    });
+
+    expect(screen.getByText(/Token:/).textContent).toContain("1M");
+    expect(rafCallbacks.length).toBeGreaterThan(0);
+
+    act(() => {
+      rafCallbacks.shift()?.(performance.now() + 500);
+    });
+
+    expect(screen.getByText(/Token:/).textContent).toContain("2M");
+
+    window.requestAnimationFrame = originalRaf;
+    window.cancelAnimationFrame = originalCancelRaf;
+  });
+
+  it("renders the connection status before the right rail toggle in the top strip", () => {
+    mockedStreamError = null;
+    const onToggleRightRail = vi.fn();
+
+    render(
+      <I18nProvider>
+        <ChatView rightRailCollapsed onToggleRightRail={onToggleRightRail} />
+      </I18nProvider>,
+    );
+
+    const statusText = screen.getByText("已连接");
+    const toggleButton = screen.getByRole("button", { name: "展开右侧栏" });
+
+    expect(statusText.compareDocumentPosition(toggleButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(toggleButton);
+    expect(onToggleRightRail).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the input surface instead of the gray main background for the chat canvas and top strip", () => {
+    mockedStreamError = null;
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    const root = screen.getByTestId("chat-view-root");
+    const topStrip = root.firstElementChild as HTMLElement | null;
+
+    expect(root.className).toContain("bg-[var(--mm-bg-input)]");
+    expect(root.className).not.toContain("bg-[var(--mm-bg-main)]");
+    expect(topStrip?.className ?? "").toContain("bg-[var(--mm-bg-input)]");
+    expect(topStrip?.className ?? "").not.toContain("bg-[var(--mm-bg-main)]");
+  });
+
+  it("normalizes the top strip items to a shared control height instead of mixing buttons with raw text lines", () => {
+    mockedStreamError = null;
+
+    render(
+      <I18nProvider>
+        <ChatView rightRailCollapsed onToggleRightRail={() => undefined} />
+      </I18nProvider>,
+    );
+
+    const permissionItem = screen.getByText("权限:").parentElement;
+    const tokenItem = screen.getByText(/Token:/);
+    const statusItem = screen.getByRole("status");
+
+    expect(permissionItem?.className ?? "").toContain("inline-flex");
+    expect(permissionItem?.className ?? "").toContain("h-7");
+    expect(permissionItem?.className ?? "").toContain("items-center");
+    expect(tokenItem.className).toContain("inline-flex");
+    expect(tokenItem.className).toContain("h-7");
+    expect(tokenItem.className).toContain("items-center");
+    expect(statusItem.className).toContain("inline-flex");
+    expect(statusItem.className).toContain("h-7");
+    expect(statusItem.className).toContain("items-center");
   });
 
   it("auto-scrolls only the chat scroll region instead of the outer document", () => {
@@ -344,6 +797,84 @@ describe("ChatView", () => {
     await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws1", "draft hello", {
       agentId: `agent_${createdSessionId}`,
     }));
+  });
+
+  it("persists follow-up user prompts into the current session when using a session-bound agent", async () => {
+    mockedStreamError = null;
+    useAgentStore.setState({
+      agents: [
+        {
+          id: "agent_s1",
+          workspaceId: "ws1",
+          title: "Session 1 Agent",
+          status: "idle",
+          sessionId: "s1",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      currentAgentId: "agent_s1",
+      messagesByAgent: {},
+      runtimeByAgent: {},
+      initialized: true,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId("chat-input"));
+
+    await waitFor(() => {
+      expect(useSessionStore.getState().sessions[0]?.messages).toHaveLength(2);
+    });
+    expect(useSessionStore.getState().sessions[0]?.messages[1]).toMatchObject({
+      role: "user",
+      content: "draft hello",
+    });
+    expect(startStreaming).toHaveBeenCalledWith("ws1", "draft hello", {
+      agentId: "agent_s1",
+    });
+  });
+
+  it("scrolls a searched message into view when focusMessageId is provided", async () => {
+    mockedStreamError = null;
+    const scrollIntoView = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    render(
+      <I18nProvider>
+        <ChatView focusMessageId="u1" />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+  });
+
+  it("keeps the searched message highlighted briefly before clearing the focus target", async () => {
+    mockedStreamError = null;
+    vi.useFakeTimers();
+    const onFocusMessageHandled = vi.fn();
+
+    render(
+      <I18nProvider>
+        <ChatView focusMessageId="u1" onFocusMessageHandled={onFocusMessageHandled} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("message-bubble").getAttribute("data-search-target")).toBe("true");
+    expect(onFocusMessageHandled).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(onFocusMessageHandled).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   it("uses the agent that belongs to the current workspace", async () => {
@@ -497,7 +1028,7 @@ describe("ChatView", () => {
     expect(screen.queryByText("Let me first understand the pi agent project.")).toBeNull();
   });
 
-  it("materializes the plan file before executing even when the plan metadata already has a filename", async () => {
+  it("executes a saved plan without re-materializing a duplicate plan file", async () => {
     mockedStreamError = null;
     useAgentModeStore.getState().setMode("ws1", "plan");
     window.piAPI.planMaterialize = vi.fn(async () => ({
@@ -537,17 +1068,25 @@ describe("ChatView", () => {
     fireEvent.click(screen.getByText("execute-plan"));
 
     await waitFor(() => {
-      expect(window.piAPI.planMaterialize).toHaveBeenCalledWith({
-        workspaceId: "ws1",
-        title: "测试计划",
-        content: "- 检查\n- 修改",
-        preferredFilename: "test-plan.md",
-      });
-      expect(startStreaming).toHaveBeenCalledWith("ws1", "/execute_plan test-plan.md", {
-        agentId: "agent_s1",
-        visibleContent: "执行计划：test-plan.md",
-      });
+      const [workspaceId, outboundPrompt] = startStreaming.mock.calls.at(-1) as unknown as [
+        string,
+        string,
+        { agentId: string; visibleContent: string; waitForAgentIdle?: boolean },
+      ];
+      expect(workspaceId).toBe("ws1");
+      expect(outboundPrompt).toContain("计划文件：test-plan.md");
+      expect(outboundPrompt).toContain("[PLAN_DONE]");
+      expect(startStreaming).toHaveBeenCalledWith(
+        "ws1",
+        expect.stringContaining("计划文件：test-plan.md"),
+        {
+          agentId: "agent_s1",
+          visibleContent: "执行计划：test-plan.md",
+          waitForAgentIdle: true,
+        },
+      );
     });
+    expect(window.piAPI.planMaterialize).not.toHaveBeenCalled();
     expect(window.piAPI.planSetEnabled).not.toHaveBeenCalled();
     expect(useAgentModeStore.getState().getMode("ws1")).toBe("build");
   });
@@ -592,10 +1131,15 @@ describe("ChatView", () => {
         title: "内联计划",
         content: "- 创建 plan_probe.txt\n- 验证文件存在",
       });
-      expect(startStreaming).toHaveBeenCalledWith("ws1", "/execute_plan inline-plan.md", {
-        agentId: "agent_s1",
-        visibleContent: "执行计划：inline-plan.md",
-      });
+      expect(startStreaming).toHaveBeenCalledWith(
+        "ws1",
+        expect.stringContaining("计划文件：inline-plan.md"),
+        {
+          agentId: "agent_s1",
+          visibleContent: "执行计划：inline-plan.md",
+          waitForAgentIdle: true,
+        },
+      );
     });
     expect(window.piAPI.planSetEnabled).not.toHaveBeenCalled();
     expect(useAgentModeStore.getState().getMode("ws1")).toBe("build");

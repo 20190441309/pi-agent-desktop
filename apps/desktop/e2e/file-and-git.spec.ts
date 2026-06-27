@@ -3,6 +3,7 @@
  */
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { join } from 'path';
 import { mkdirSync, writeFileSync } from 'fs';
 
@@ -10,6 +11,7 @@ const TEST_TIMEOUT = 60_000;
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
@@ -119,7 +121,8 @@ test.describe('Pi Desktop — File & Git Workflow', () => {
         }, { wsPath });
         await reloadAppShell(page);
 
-        await page.getByRole('tab', { name: 'Git' }).click();
+        await page.getByRole("button", { name: "展开右侧栏" }).click();
+        await page.getByRole("button", { name: "提交或推送，打开 Git 面板" }).click();
         await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 10_000 });
         await expect(page.getByText(/0 staged \/ 1 changes/)).toBeVisible({ timeout: 10_000 });
 

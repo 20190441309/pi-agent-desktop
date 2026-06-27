@@ -2,6 +2,7 @@ import { test, expect, _electron, type ElectronApplication, type Page } from "@p
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { electronMainEntry } from "../playwright.config";
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 const ACCEPTANCE_DIR = join(process.cwd(), "..", "..", "docs", "compose", "acceptance");
 const SESSION_ID = "m1-bound-session";
@@ -9,6 +10,7 @@ const SESSION_TITLE = "M1 Bound Session";
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });

@@ -13,6 +13,7 @@
  */
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from './support/electron-launch';
 
 test.describe('Pi Desktop launch', () => {
     let app: ElectronApplication;
@@ -32,6 +33,7 @@ test.describe('Pi Desktop launch', () => {
     test('starts main process, shows window with title "Pi Desktop"', async () => {
         const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             // Forward our existing env (e.g. PATH) so the spawned Electron
             // binary can find node-pty / native deps. CI flag also helps

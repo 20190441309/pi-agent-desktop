@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { isIpcError } from "@shared";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
@@ -101,5 +104,33 @@ describe("workspace:select", () => {
         if (isIpcError(result)) {
             expect(result.code).toBe("ipcErrors.workspace.selectFailed");
         }
+    });
+});
+
+describe("workspace:create-empty", () => {
+    beforeEach(() => {
+        handlers.clear();
+    });
+
+    it("creates a new empty directory under the chosen parent and registers it", async () => {
+        const parentDir = mkdtempSync(join(tmpdir(), "pi-desktop-empty-ws-"));
+        const store = makeStore([]);
+        setupWorkspaceIpc({
+            store,
+            getMainWindow: () => null,
+        });
+
+        const handler = handlers.get("workspace:create-empty");
+        expect(handler).toBeTruthy();
+
+        const result = await handler?.({}, "BlankProject", parentDir);
+
+        expect(isIpcError(result)).toBe(false);
+        expect(store.raw).toHaveLength(1);
+        expect(store.raw[0]?.name).toBe("BlankProject");
+        expect(store.raw[0]?.path).toBe(join(parentDir, "BlankProject"));
+        expect(existsSync(join(parentDir, "BlankProject"))).toBe(true);
+
+        rmSync(parentDir, { recursive: true, force: true });
     });
 });

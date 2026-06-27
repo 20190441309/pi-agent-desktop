@@ -339,6 +339,38 @@ describe("createApprovalInterceptor", () => {
         expect(send.mock.calls.filter((call) => call[0] === "plan:card")).toHaveLength(1);
     });
 
+    it("allows pi-openplan plan_write filename-only calls in plan mode", async () => {
+        interceptor = createApprovalInterceptor("ws_1", {
+            abort,
+            pendingEdits,
+            send,
+            workspacePath: "C:/workspace",
+            getMode: () => "plan",
+        });
+
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_plan_slug",
+            toolName: "plan_write",
+            args: {
+                filename: "create-plan-probe",
+                title: "创建并验证 plan_probe.txt",
+                content: "- 写入 plan_probe.txt",
+            },
+        });
+
+        expect(abort).not.toHaveBeenCalled();
+        expect(send).toHaveBeenCalledWith(
+            "plan:card",
+            "ws_1",
+            expect.objectContaining({
+                id: "tc_plan_slug",
+                title: "创建并验证 plan_probe.txt",
+                filename: "create-plan-probe",
+            }),
+        );
+    });
+
     it("blocks prior mutating toolcall_start args when plan-mode tool_execution_start omits args", async () => {
         interceptor = createApprovalInterceptor("ws_1", {
             abort,

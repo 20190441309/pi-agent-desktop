@@ -2,24 +2,19 @@
 // 为每个 workspace 创建一个 Pi AgentSession 实例
 // 不起子进程, 直接 in-process 调用
 
-import {
-    AuthStorage,
-    createAgentSession,
-    createEventBus,
-    DefaultResourceLoader,
-    ModelRegistry,
-    SessionManager,
-    SettingsManager,
-    getAgentDir,
-    type AgentSession,
-    type ExtensionUIContext,
-    type ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
 import { createRequire } from "module";
 import { existsSync } from "fs";
 import { dirname, join } from "path";
 import log from "electron-log/main";
+import type {
+    AgentSession,
+    AuthStorage,
+    ExtensionUIContext,
+    ModelRegistry,
+    ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import type { PiAgentConfig } from "../../types";
+import { loadPiSdk } from "./sdk-runtime";
 
 const require = createRequire(__filename);
 type RegisteredProviderConfig = Parameters<ModelRegistry["registerProvider"]>[1];
@@ -51,18 +46,21 @@ export interface CreateSessionOpts {
     desktopExtensions?: string[];
 }
 
+type SendUserMessageFn = AgentSession["sendUserMessage"];
+
 export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<WorkspaceSession> {
-    const agentDir = opts.agentDir ?? getAgentDir();
-    const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
-    const modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
+    const sdk = await loadPiSdk();
+    const agentDir = opts.agentDir ?? sdk.getAgentDir();
+    const authStorage = sdk.AuthStorage.create(join(agentDir, "auth.json"));
+    const modelRegistry = sdk.ModelRegistry.create(authStorage, join(agentDir, "models.json"));
     await registerConfiguredProviders(modelRegistry, authStorage, opts.piAgentConfig, opts.provider);
     const selectedModel = opts.provider && opts.modelId
         ? modelRegistry.find(opts.provider, opts.modelId)
         : undefined;
-    const settingsManager = SettingsManager.create(opts.workspacePath, agentDir);
+    const settingsManager = sdk.SettingsManager.create(opts.workspacePath, agentDir);
     const additionalExtensionPaths = resolveDesktopExtensionPaths(opts.desktopExtensions);
-    const eventBus = createEventBus();
-    const resourceLoader = new DefaultResourceLoader({
+    const eventBus = sdk.createEventBus();
+    const resourceLoader = new sdk.DefaultResourceLoader({
         cwd: opts.workspacePath,
         agentDir,
         eventBus,
@@ -71,7 +69,7 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
     });
     await resourceLoader.reload();
 
-    const { session } = await createAgentSession({
+    const { session } = await sdk.createAgentSession({
         cwd: opts.workspacePath,
         agentDir,
         authStorage,
@@ -82,8 +80,9 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
         noTools: opts.noTools,
         customTools: opts.customTools,
         resourceLoader,
-        sessionManager: opts.sessionPath ? SessionManager.open(opts.sessionPath) : undefined,
+        sessionManager: opts.sessionPath ? sdk.SessionManager.open(opts.sessionPath) : undefined,
     });
+    patchExtensionSendUserMessage(session);
     if (opts.uiContext) {
         await session.bindExtensions({ uiContext: opts.uiContext });
     }
@@ -101,6 +100,30 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
     };
 }
 
+function patchExtensionSendUserMessage(session: AgentSession): void {
+    const target = session as AgentSession & {
+        isStreaming?: boolean;
+        sendUserMessage?: SendUserMessageFn;
+        __piDesktopPatchedSendUserMessage?: boolean;
+    };
+    if (target.__piDesktopPatchedSendUserMessage) return;
+    if (typeof target.sendUserMessage !== "function") return;
+    const original = target.sendUserMessage.bind(session) as SendUserMessageFn;
+    target.sendUserMessage = (async (content, options) => {
+        if (options?.deliverAs) {
+            await original(content, options);
+            return;
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        if (target.isStreaming) {
+            await original(content, { deliverAs: "followUp" });
+            return;
+        }
+        await original(content, options);
+    }) as SendUserMessageFn;
+    target.__piDesktopPatchedSendUserMessage = true;
+}
+
 function safeResolve(packageName: string, map: (resolved: string) => string = (resolved) => resolved): string | undefined {
     try {
         return map(require.resolve(packageName));
@@ -114,7 +137,7 @@ export function resolveBundledDesktopExtensionPaths(
 ): string[] {
     const paths: Array<string | undefined> = [];
     if (options.planModeEnabled) {
-        paths.push(safeResolve("pi-openplan/package.json", (packageJson) => join(dirname(packageJson), "extensions")));
+        paths.push(safeResolve("pi-openplan/package.json", (packageJson) => dirname(packageJson)));
     }
     if (options.composeModeEnabled) {
         paths.push(resolveBundledComposeExtensionPath());
@@ -124,9 +147,9 @@ export function resolveBundledDesktopExtensionPaths(
 
 export function resolveBundledComposeExtensionPath(baseDir = __dirname): string | undefined {
     const candidates = [
-        join(baseDir, "../../../../extensions/compose-mode"),
-        join(baseDir, "../../../extensions/compose-mode"),
-        join(baseDir, "../../extensions/compose-mode"),
+        join(baseDir, "../../../../extensions/compose-mode/index.ts"),
+        join(baseDir, "../../../extensions/compose-mode/index.ts"),
+        join(baseDir, "../../extensions/compose-mode/index.ts"),
     ];
     return candidates.find((candidate) => existsSync(candidate));
 }

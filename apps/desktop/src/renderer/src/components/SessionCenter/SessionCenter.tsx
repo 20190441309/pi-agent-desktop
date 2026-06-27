@@ -61,7 +61,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
   const [tagDraftById, setTagDraftById] = useState<Record<string, string>>({});
   const [titleDraftById, setTitleDraftById] = useState<Record<string, string>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [exportSessionId, setExportSessionId] = useState<string | null>(null);
+  const [exportRequest, setExportRequest] = useState<{ sessionId?: string } | null>(null);
   const [notice, setNotice] = useState<{ message: string; undo?: () => void; tone?: "success" | "error" } | null>(null);
   const [continuingKey, setContinuingKey] = useState<string | null>(null);
   const { t } = useI18n();
@@ -201,21 +201,30 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--mm-bg-main)] px-6 py-6 text-[var(--mm-text-primary)]">
       <div className="mb-5 flex items-center justify-between gap-4 border-b border-[var(--mm-border)] pb-4">
-        <div>
+        <div className="max-w-[240px] min-w-[180px] shrink-0">
           <h1 className="m-0 text-lg font-semibold">会话中心</h1>
           <p className="m-0 mt-1 text-xs text-[var(--mm-text-secondary)]">
             管理历史任务、标签、收藏和只读恢复，适合回到长任务上下文。
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3">
-          <span className="text-[12px] text-[var(--mm-text-tertiary)]" aria-hidden="true">⌕</span>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索标题、消息、标签"
-            className="h-9 w-[280px] border-0 bg-transparent text-sm outline-none"
-            aria-label="搜索会话"
-          />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setExportRequest({})}
+            className="min-w-[72px] shrink-0 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-sidebar)]"
+          >
+            <span className="block whitespace-nowrap [word-break:keep-all]">批量导出</span>
+          </button>
+          <div className="flex items-center gap-2 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3">
+            <span className="text-[12px] text-[var(--mm-text-tertiary)]" aria-hidden="true">⌕</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索标题、消息、标签"
+              className="h-9 w-[280px] border-0 bg-transparent text-sm outline-none"
+              aria-label="搜索会话"
+            />
+          </div>
         </div>
       </div>
       {notice && (
@@ -379,7 +388,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                             >
                               {continuingKey === `${session.id}:latest` ? "继续中" : "继续"}
                             </button>
-                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => setExportSessionId(session.id)}>导出</button>
+                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => setExportRequest({ sessionId: session.id })}>导出</button>
                             <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => toggleArchive(session)}>
                               {session.archived ? "恢复" : "归档"}
                             </button>
@@ -403,9 +412,9 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
         )}
       </div>
       <SessionExportDialog
-        isOpen={exportSessionId !== null}
-        onClose={() => setExportSessionId(null)}
-        sessionId={exportSessionId ?? undefined}
+        isOpen={exportRequest !== null}
+        onClose={() => setExportRequest(null)}
+        sessionId={exportRequest?.sessionId}
       />
     </div>
   );

@@ -12,6 +12,7 @@
  */
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { mkdir } from 'fs/promises';
 
 const TEST_TIMEOUT = 60_000;
@@ -20,6 +21,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
     const configDir = `${userDataDir}-pi-config`;
     await mkdir(configDir, { recursive: true });
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: {
             ...process.env,
@@ -45,7 +47,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
 
 async function openConfigWindow(app: ElectronApplication, page: Page): Promise<Page> {
     const settingsWindowPromise = app.waitForEvent('window');
-    await page.getByRole('button', { name: '打开设置窗口' }).click();
+    await page.getByRole('tab', { name: '设置' }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState('domcontentloaded');
     await settingsWindow.getByRole('tab', { name: '配置文件' }).click();

@@ -6,7 +6,7 @@ import {
   type LoadState, type ViewMode, type GitMark, type SaveConflict,
   basename, formatBytes, flattenTree, makeConflictDiff, lineRows,
   modeLabel, modeDescription, nonEditableReason, shellActionFailure,
-  normalizePath, relativeToWorkspace, makeGitMarks,
+  normalizePath, relativeToWorkspace, resolveWorkspacePath, makeGitMarks,
 } from "./file-workspace-utils";
 
 interface FileWorkspaceProps {
@@ -500,15 +500,16 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
   };
 
   const openSearchResult = async (file: FileEntry): Promise<void> => {
+    const resolvedPath = resolveWorkspacePath(file.path, workspacePath);
     if (!file.isDirectory) {
-      await openFile(file.path);
+      await openFile(resolvedPath);
       return;
     }
     if (isDirty) {
       const shouldDiscard = window.confirm("当前文件有未保存修改，切换目录将丢弃这些修改。继续？");
       if (!shouldDiscard) return;
     }
-    setSelectedPath(file.path);
+    setSelectedPath(resolvedPath);
     setContent(null);
     setDraft("");
     setSaveMessage(null);
@@ -520,7 +521,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
     setContentState("idle");
     setActionError(null);
     setActionMessage("已选中目录");
-    setExpanded((current) => new Set([...current, file.path]));
+    setExpanded((current) => new Set([...current, resolvedPath]));
     window.setTimeout(() => setActionMessage(null), 1600);
   };
 

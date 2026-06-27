@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { usePermissionStore } from "../../stores/permission-store";
 import { Popover } from "../common/Popover";
 
@@ -42,8 +43,13 @@ export function PermissionRequestStack({ workspaceId, agentId = null }: Permissi
 
   if (visiblePending.length === 0) return null;
 
-  return (
-    <div className="mx-auto mb-2 max-w-[768px] space-y-2">
+  const stack = (
+    <div
+      data-testid="permission-request-overlay"
+      className="pointer-events-none fixed inset-x-0 z-[80] flex justify-center px-4"
+      style={{ bottom: "calc(var(--pi-global-composer-height, 103px) + 12px)" }}
+    >
+      <div className="pointer-events-auto w-full max-w-[768px] space-y-2">
       {visiblePending.map((request, index) => (
         <div
           key={request.requestId}
@@ -121,6 +127,13 @@ export function PermissionRequestStack({ workspaceId, agentId = null }: Permissi
           </div>
         </div>
       ))}
+      </div>
     </div>
   );
+
+  if (typeof document === "undefined") {
+    return stack;
+  }
+
+  return createPortal(stack, document.body);
 }

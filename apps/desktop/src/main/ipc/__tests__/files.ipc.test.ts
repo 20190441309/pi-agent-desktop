@@ -127,4 +127,22 @@ describe("files IPC", () => {
             expect(listResult.code).toBe("ipcErrors.files.listInvalid");
         }
     });
+
+    it("searches critical dotfiles and hidden config directories", async () => {
+        const workspace = makeWorkspace();
+        mkdirSync(join(workspace, ".github", "workflows"), { recursive: true });
+        writeFileSync(join(workspace, ".gitignore"), "node_modules/\n", "utf-8");
+        writeFileSync(join(workspace, ".github", "workflows", "ci.yml"), "name: ci\n", "utf-8");
+
+        const searchHandler = handlers.get("files:search")!;
+        const result = await searchHandler({}, workspace, ".g", { limit: 20 });
+
+        expect(isIpcError(result)).toBe(false);
+        if (!isIpcError(result)) {
+            expect(result).toEqual(expect.arrayContaining([
+                expect.objectContaining({ path: ".gitignore", name: ".gitignore" }),
+                expect.objectContaining({ path: ".github/workflows/ci.yml", name: "ci.yml" }),
+            ]));
+        }
+    });
 });

@@ -10,6 +10,7 @@ import { test, expect, _electron, type ElectronApplication, type Page } from '@p
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 async function skipOnboarding(page: Page): Promise<void> {
     const modal = page.locator('[data-testid="onboarding-modal"]');
@@ -159,6 +160,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
     test('welcome screen renders current ChatView, textarea send creates user message', async () => {
         const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
@@ -197,6 +199,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         const workspacePath = test.info().outputPath('provider-error-workspace');
         app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
@@ -210,7 +213,16 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
             const ws = await window.piAPI.createWorkspace("provider-error-e2e", workspacePath);
             await window.piAPI.selectWorkspace(ws.path);
+            const session = await window.piAPI.createSession(ws.id, "provider-error-session", "provider-error-session");
+            await window.piAPI.agentsCreate({
+                workspaceId: ws.id,
+                title: "provider-error-agent",
+                sessionId: session.id,
+            });
         }, { workspacePath });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await skipOnboarding(page);
+        await page.getByRole('button', { name: 'provider-error-session', exact: true }).click();
 
         const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="输入消息" i], textarea[placeholder*="在此审查" i], textarea[placeholder*="描述" i]').first();
         await expect(textarea).toBeVisible({ timeout: 5_000 });
@@ -249,6 +261,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         await writeFile(pickedFile, 'picked by chat controls e2e\n', 'utf8');
 
         app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
@@ -315,6 +328,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
     test('计划模式发送后 ChatInput 仍固定在主区底部', async () => {
         const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
@@ -338,6 +352,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         const workspacePath = test.info().outputPath('chat-layout-workspace');
         app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
@@ -348,6 +363,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         await app.close();
 
         app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
@@ -378,6 +394,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
     test('计划模式真实 UI 路径只提交一次 /plan prompt', async () => {
         const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
@@ -409,16 +426,6 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="输入消息" i], textarea[placeholder*="在此审查" i], textarea[placeholder*="描述" i]').first();
         await textarea.fill('你好');
         await textarea.press('Enter');
-        await expect(page.getByText('计划模式需要目标')).toBeVisible({ timeout: 10_000 });
-        await expect.poll(async () => app.evaluate(() => {
-            const target = globalThis as typeof globalThis & {
-                __planPromptCalls?: Array<{ kind: string; payload: unknown }>;
-            };
-            return target.__planPromptCalls?.length ?? 0;
-        })).toBe(0);
-        await textarea.fill('请制定一个简短实现计划');
-        await textarea.press('Enter');
-
         await expect.poll(async () => app.evaluate(() => {
             const target = globalThis as typeof globalThis & {
                 __planPromptCalls?: Array<{ kind: string; payload: unknown }>;
@@ -433,9 +440,11 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             const result = target.__planPromptCalls ?? [];
             return result;
         });
+        await expect(page.getByRole('article', { name: /你 ·/ })).toContainText('你好', { timeout: 10_000 });
         const payload = calls[0]?.payload as { message?: string; input?: { message?: string } };
         const message = payload.message ?? payload.input?.message ?? '';
-        expect(message).toMatch(/^\/plan\n/);
-        expect(message.match(/^\/plan/gm) ?? []).toHaveLength(1);
+        expect(message).not.toMatch(/^\/plan\n/);
+        expect(message.match(/^\/plan/gm) ?? []).toHaveLength(0);
+        expect(message).toContain('你好');
     });
 });

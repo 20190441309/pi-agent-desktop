@@ -81,6 +81,15 @@ describe("settingsSetSchema", () => {
         }])).not.toThrow();
     });
 
+    it("accepts persisted thinking and vision settings", () => {
+        expect(() => settingsSetSchema.parse([{
+            showThinking: false,
+            thinkingLevel: "high",
+            visionProvider: "minimax",
+            visionModel: "MiniMax-VL",
+        }])).not.toThrow();
+    });
+
     it("rejects invalid long-horizon budgets and unknown feature fields", () => {
         expect(() => settingsSetSchema.parse([{
             longHorizon: {

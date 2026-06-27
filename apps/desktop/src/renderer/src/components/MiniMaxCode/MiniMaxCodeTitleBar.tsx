@@ -13,6 +13,7 @@ export interface MiniMaxCodeTitleBarProps {
     leftWidth?: number;
     variant?: "main" | "settings";
     className?: string;
+    onClose?: () => void | Promise<void>;
 }
 
 const MinimizeIcon: React.FC = () => (
@@ -62,6 +63,7 @@ export function MiniMaxCodeTitleBar({
     leftWidth,
     variant = "main",
     className = "",
+    onClose,
 }: MiniMaxCodeTitleBarProps): React.JSX.Element {
     const [isMaximized, setIsMaximized] = useState(false);
     const [platform, setPlatform] = useState<NodeJS.Platform | "browser">("browser");
@@ -154,7 +156,13 @@ export function MiniMaxCodeTitleBar({
                         </TitleBarButton>
                         <TitleBarButton
                             ariaLabel="关闭窗口"
-                            onClick={() => void window.piAPI?.windowClose()}
+                            onClick={() => {
+                                if (onClose) {
+                                    void onClose();
+                                    return;
+                                }
+                                void window.piAPI?.windowClose();
+                            }}
                             className="hover:!bg-[#e81123] hover:!text-white"
                         >
                             <CloseIcon />

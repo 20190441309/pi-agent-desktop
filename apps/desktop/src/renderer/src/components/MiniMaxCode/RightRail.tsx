@@ -33,14 +33,7 @@ interface QueueRailItem {
   sessionId?: string;
 }
 
-interface RecentToolItem {
-  id: string;
-  name: string;
-  status: string;
-  command?: string;
-  label: string;
-  commandMode?: ReturnType<typeof classifyTerminalCommand>;
-}
+const FILE_OUTPUT_TOOL_NAMES = new Set(["write", "edit", "file_write", "file_edit"]);
 
 function countDiffStats(diff: string): DiffStats {
   return diff.split(/\r?\n/).reduce<DiffStats>((acc, line) => {
@@ -108,13 +101,19 @@ function getCommandText(value: unknown): string | undefined {
   return typeof command === "string" && command.trim() ? command.trim() : undefined;
 }
 
-function toolLabel(name: string, command?: string): string {
-  if (name === "bash" || name === "shell" || name === "command") return command || "运行命令";
-  if (name === "read") return "读取文件";
-  if (name === "write") return "写入文件";
-  if (name === "edit") return "编辑文件";
-  if (name === "grep") return "搜索内容";
-  return name || "工具";
+function shouldReadToolInputAsOutput(name: string, status: string): boolean {
+  return status === "completed" && FILE_OUTPUT_TOOL_NAMES.has(name.toLowerCase());
+}
+
+function extractOutputPathsFromCommand(command: string): string[] {
+  const results = new Set<string>();
+  const redirectionPattern = /(?:^|[^\w-])(?:\d?>>?|\d?>|>>|>)\s*(?:"([^"]+)"|'([^']+)'|([^\s|&;]+))/g;
+  for (const match of command.matchAll(redirectionPattern)) {
+    const candidate = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+    if (!candidate || /^(?:nul|\/dev\/null|\$null)$/i.test(candidate)) continue;
+    extractPathsFromValue(candidate).forEach((path) => results.add(path));
+  }
+  return [...results];
 }
 
 function shellActionFailure(result: unknown): string | null {
@@ -154,7 +153,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
   const [diffStats, setDiffStats] = useState<DiffStats>({ additions: 0, deletions: 0 });
   const [filesExpanded, setFilesExpanded] = useState(false);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
-  const { steps, activeCard, goal } = usePlanStore();
+  const { steps, goal } = usePlanStore();
   const queue = useQueueStore();
   const currentSession = useSessionStore((state) =>
     state.currentSessionId
@@ -255,33 +254,23 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         extractPathsFromValue(message.content).forEach((path) => add(path, "回复"));
       }
       message.toolCalls?.forEach((toolCall) => {
-        extractPathsFromValue(toolCall.output ?? toolCall.result ?? toolCall.input).forEach((path) =>
-          add(path, toolCall.name || "工具"),
-        );
-      });
-    });
-    if (activeCard?.filename) add(activeCard.filename, "计划");
-    changedFiles.slice(0, 8).forEach((item) => add(item.path, "Git 变更"));
-    return [...byPath.values()].slice(0, 10);
-  }, [activeCard?.filename, changedFiles, currentSession?.lastOutputPaths, currentSession?.messages, workspacePath]);
-  const recentTools = useMemo<RecentToolItem[]>(() => {
-    const tools: RecentToolItem[] = [];
-    currentSession?.messages.forEach((message) => {
-      message.toolCalls?.forEach((toolCall) => {
-        const command = getCommandText(toolCall.input ?? toolCall.args);
-        const name = toolCall.name || "tool";
-        tools.push({
-          id: `${message.id}:${toolCall.id}`,
-          name,
-          status: toolCall.status,
-          command,
-          label: toolLabel(name, command),
-          commandMode: command ? classifyTerminalCommand(command) : undefined,
+        const values: unknown[] = [toolCall.output, toolCall.result];
+        if (shouldReadToolInputAsOutput(toolCall.name || "", toolCall.status)) {
+          values.push(toolCall.input ?? toolCall.args);
+        }
+        values.forEach((value) => {
+          extractPathsFromValue(value).forEach((path) => add(path, toolCall.name || "工具"));
         });
+        if (toolCall.status === "completed" && /^(?:bash|shell|powershell|command)$/i.test(toolCall.name || "")) {
+          const command = getCommandText(toolCall.input ?? toolCall.args);
+          if (command) {
+            extractOutputPathsFromCommand(command).forEach((path) => add(path, toolCall.name || "工具"));
+          }
+        }
       });
     });
-    return tools.slice(-5).reverse();
-  }, [currentSession?.messages]);
+    return [...byPath.values()].slice(0, 10);
+  }, [currentSession?.lastOutputPaths, currentSession?.messages, workspacePath]);
 
   const copyPath = async (path: string): Promise<void> => {
     try {
@@ -405,9 +394,12 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
   const openGitPanel = (): void => {
     window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "git" } }));
   };
+  const openFilesPanel = (): void => {
+    window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "files" } }));
+  };
 
   return (
-    <aside className="flex min-h-full w-full flex-col gap-3 bg-transparent px-4 py-4 text-[var(--mm-text-primary)]">
+    <aside className="flex h-full w-full flex-col gap-3 overflow-y-auto px-1 py-1 text-[var(--mm-text-primary)]">
       {railActionStatus && (
         <div
           className={`rounded-[14px] border px-3 py-2 text-xs ${
@@ -420,7 +412,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
           {railActionStatus.message}
         </div>
       )}
-      <section className="rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
+      <section className="rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">环境信息</h2>
         </div>
@@ -516,7 +508,16 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
               </svg>
             </RowIcon>
             <span>项目文件</span>
-            <span className="ml-auto text-[11px] text-[var(--mm-text-tertiary)]">{changeCount}</span>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openFilesPanel}
+                className="rounded-md px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
+              >
+                浏览全部文件
+              </button>
+              <span className="text-[11px] text-[var(--mm-text-tertiary)]">{changeCount}</span>
+            </div>
           </div>
           {visibleChangedFiles.length > 0 && (
             <div className="space-y-1 border-t border-[#f2f2f0] pt-2">
@@ -557,7 +558,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
 
       <ToolPermissionsPanel workspaceId={workspaceId} />
 
-      <section className="min-h-0 rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
+      <section className="min-h-0 rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">进度</h2>
           <span className="rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
@@ -651,51 +652,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         )}
       </section>
 
-      <section className="min-h-0 rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="m-0 text-[13px] font-medium">最近工具</h2>
-          <span className="rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
-            {recentTools.length}
-          </span>
-        </div>
-        {recentTools.length > 0 ? (
-          <ul className="m-0 max-h-[180px] list-none space-y-1.5 overflow-y-auto p-0">
-            {recentTools.map((item) => (
-              <li key={item.id} className="rounded-lg border border-[var(--mm-border)] px-2.5 py-2">
-                <div className="mb-1 flex min-w-0 items-center gap-2">
-                  <ProgressStatusIcon status={item.status} />
-                  <span className="min-w-0 flex-1 truncate text-xs" title={item.label}>
-                    {item.label}
-                  </span>
-                </div>
-                {item.command && (
-                  <div className="flex items-center gap-1">
-                    <code className="min-w-0 flex-1 truncate rounded bg-[var(--mm-bg-panel)] px-1.5 py-1 font-mono text-[10px] text-[var(--mm-text-secondary)]">
-                      {item.command}
-                    </code>
-                    <button
-                      type="button"
-                      onClick={() => runCommandInTerminal(item.command!)}
-                      className={`shrink-0 rounded px-1.5 py-1 text-[11px] hover:bg-[var(--mm-bg-sidebar)] ${
-                        item.commandMode === "draft" ? "text-amber-700" : "text-[var(--mm-text-secondary)]"
-                      }`}
-                      title={item.commandMode === "draft" ? "高风险命令只填入终端，不自动执行" : "在终端中执行此命令"}
-                    >
-                      {item.commandMode === "draft" ? "填入" : "复跑"}
-                    </button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="m-0 rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-3 text-xs leading-5 text-[var(--mm-text-secondary)]">
-            Pi 调用工具后，这里会保留最近的命令和文件操作，方便复跑或回看。
-          </p>
-        )}
-      </section>
-
-      <section className="min-h-0 rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
+      <section className="min-h-0 rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">文件输出</h2>
         </div>

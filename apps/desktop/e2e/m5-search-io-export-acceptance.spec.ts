@@ -1,5 +1,6 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { execSync } from "child_process";
 import { mkdirSync, writeFileSync } from "fs";
 import { mkdir as mkdirAsync } from "fs/promises";
@@ -13,6 +14,7 @@ async function ensureAcceptanceDir(): Promise<string> {
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
@@ -108,9 +110,8 @@ test.describe("M5 acceptance — critical dotfiles, async Git/File paths and bat
         await reloadAppShell(page);
         await expect(page.getByRole("button", { name: "切换工作区：m5-acceptance" }).first()).toBeVisible({ timeout: 15_000 });
 
-        await page.evaluate(() => {
-            window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "files" } }));
-        });
+        await page.getByRole("button", { name: "展开右侧栏" }).click();
+        await page.getByRole("button", { name: "浏览全部文件" }).click();
         const fileSearch = page.getByRole("textbox", { name: "搜索文件" });
         await expect(fileSearch).toBeVisible({ timeout: 5_000 });
 
@@ -119,22 +120,29 @@ test.describe("M5 acceptance — critical dotfiles, async Git/File paths and bat
         await expect(page.locator('button[title=".github/workflows/ci.yml"]')).toBeVisible({ timeout: 5_000 });
         await page.locator('button[title=".github/workflows/ci.yml"]').click();
         await expect(page.getByLabel("文件只读预览")).toContainText("name: ci", { timeout: 5_000 });
-        await page.screenshot({ path: join(acceptanceDir, "2026-06-24-m5-01-dotfile-search.png"), fullPage: true });
+        await page.screenshot({ path: join(acceptanceDir, "2026-06-27-m5-01-dotfile-search-current-ui.png"), fullPage: true });
 
         await fileSearch.fill(".env");
-        await expect(page.getByText("没有匹配文件")).toBeVisible({ timeout: 5_000 });
+        await expect(page.locator('button[title=".env.local"]')).toBeVisible({ timeout: 5_000 });
+        await page.locator('button[title=".env.local"]').click();
+        await expect(page.getByText("敏感配置或凭据文件暂不允许直接读取").first()).toBeVisible({ timeout: 5_000 });
         await fileSearch.fill(".v");
         await expect(page.locator('button[title=".vscode/settings.json"]')).toBeVisible({ timeout: 5_000 });
 
-        await page.getByRole("tab", { name: "Git" }).click();
+        await page.getByRole("tab", { name: "对话" }).click();
+        await page.getByRole("button", { name: "提交或推送，打开 Git 面板" }).click();
         await expect(page.getByRole("region", { name: "Git 面板" })).toBeVisible({ timeout: 5_000 });
         await page.getByRole("button", { name: "刷新 Git 状态" }).click();
         await expect(page.getByText(/0 staged \/ 1 changes/)).toBeVisible({ timeout: 10_000 });
         await page.getByRole("button", { name: "打开 README.md diff" }).click();
         await expect(page.getByText("README changed for Git panel screenshot.")).toBeVisible({ timeout: 10_000 });
-        await page.screenshot({ path: join(acceptanceDir, "2026-06-24-m5-02-file-git-panel.png"), fullPage: true });
+        await page.screenshot({ path: join(acceptanceDir, "2026-06-27-m5-02-file-git-panel-current-ui.png"), fullPage: true });
 
-        await page.getByRole("tab", { name: "历史" }).click();
+        await page.keyboard.press("Control+K");
+        const palette = page.getByRole("dialog", { name: "命令面板" });
+        await expect(palette).toBeVisible({ timeout: 5_000 });
+        await palette.getByRole("tab", { name: "命令" }).click();
+        await palette.getByRole("button", { name: "打开 Sessions" }).click();
         await expect(page.getByRole("heading", { name: "会话中心" })).toBeVisible({ timeout: 5_000 });
         await page.getByRole("button", { name: "批量导出" }).click();
         const exportDialog = page.locator("div.fixed.inset-0");
@@ -143,6 +151,6 @@ test.describe("M5 acceptance — critical dotfiles, async Git/File paths and bat
         await exportDialog.locator("label", { hasText: "M5 Export Session B" }).click();
         await expect(exportDialog.getByText("选择会话 (2 已选择)")).toBeVisible({ timeout: 5_000 });
         await expect(exportDialog.getByRole("button", { name: "导出" })).toBeEnabled();
-        await page.screenshot({ path: join(acceptanceDir, "2026-06-24-m5-03-batch-export.png"), fullPage: true });
+        await page.screenshot({ path: join(acceptanceDir, "2026-06-27-m5-03-batch-export-current-ui.png"), fullPage: true });
     });
 });

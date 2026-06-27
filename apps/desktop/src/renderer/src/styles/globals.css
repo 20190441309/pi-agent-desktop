@@ -217,10 +217,6 @@ html, body {
   background: #f3f3f3 !important;
 }
 
-[data-mm-window-kind="main"] [data-testid="chat-view-root"] {
-  background: linear-gradient(180deg, #f4f4f4 0%, #f4f4f4 52%, #f8f8f8 100%) !important;
-}
-
 .app-region-no-drag {
   -webkit-app-region: no-drag;
 }
@@ -1080,10 +1076,6 @@ code {
 [data-theme="dark"] .settings-window-titlebar {
   background: #191c20 !important;
   border-color: var(--mm-border) !important;
-}
-
-[data-theme="dark"] [data-testid="chat-view-root"] {
-  background: linear-gradient(180deg, #17191c 0%, #17191c 58%, #1b1e23 100%) !important;
 }
 
 [data-theme="dark"] .pi-sidebar-surface {

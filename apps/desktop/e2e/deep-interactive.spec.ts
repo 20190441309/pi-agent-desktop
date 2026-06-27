@@ -18,6 +18,7 @@
  */
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { join } from 'path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
@@ -145,6 +146,7 @@ async function launchApp(): Promise<DeepAppContext> {
     writeDeepWorkspace(workspacePath);
 
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: {
             ...process.env,
@@ -240,7 +242,7 @@ deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
         await takeScreenshot(page, '01-launch');
 
         const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('button', { name: '打开设置窗口' }).click();
+        await page.getByRole('tab', { name: '设置' }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState('domcontentloaded');
 

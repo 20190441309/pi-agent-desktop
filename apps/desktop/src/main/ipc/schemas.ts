@@ -73,6 +73,10 @@ const appSettingsSchema = z
         managedRuntimePath: z.string().optional(),
         runtimeChannel: z.enum(["stable", "latest"]).optional(),
         autoCompactionEnabled: z.boolean().optional(),
+        visionProvider: z.string().optional(),
+        visionModel: z.string().optional(),
+        showThinking: z.boolean().optional(),
+        thinkingLevel: z.enum(["none", "low", "medium", "high"]).optional(),
         workspaceToolDefaults: z.record(z.string(), z.record(z.enum([
             "fileRead",
             "fileWrite",
@@ -369,7 +373,7 @@ export const agentsCreateSchema = z.object({
 export const agentsPromptSchema = z.object({
     agentId: z.string().min(1, "agentId must be a non-empty string"),
     message: z.string().min(1, "message must be a non-empty string"),
-    streamingBehavior: z.enum(["followUp", "newTurn"]).optional(),
+    streamingBehavior: z.enum(["steer", "followUp"]).optional(),
     mode: agentModeSchema.optional(),
 });
 

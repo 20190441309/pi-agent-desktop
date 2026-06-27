@@ -1,20 +1,24 @@
 /**
- * Session Center Tests — Pi Desktop 会话中心
+ * Session History Entry Tests — Pi Desktop 当前会话历史入口
  *
  * 覆盖:
- *   1. 会话列表加载
+ *   1. 当前历史搜索覆盖层入口
  *   2. 创建新会话
  *   3. 切换会话
  *   4. 会话搜索
  */
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { join } from 'path';
+import { mkdirSync } from 'fs';
 
 const TEST_TIMEOUT = 60_000;
+const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
@@ -32,18 +36,26 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
     return { app, page };
 }
 
-test.describe('Pi Desktop — Session Center', () => {
+test.describe('Pi Desktop — Session History Entry', () => {
     test.setTimeout(TEST_TIMEOUT);
 
-    test('session center UI loads', async () => {
+    test('open-sessions entrypoint now restores the real session center surface', async () => {
+        mkdirSync(ACCEPTANCE_DIR, { recursive: true });
         const userDataDir = test.info().outputPath(`session-ui-${Date.now()}`);
         const { app, page } = await launchApp(userDataDir);
 
-        await page.getByRole('tab', { name: '历史' }).click();
-        await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeVisible({ timeout: 5000 });
-        await expect(page.getByRole('button', { name: '关闭搜索' })).toBeVisible();
-        await page.getByRole('button', { name: '关闭搜索' }).click();
-        await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeHidden({ timeout: 3000 });
+        await page.evaluate(() => {
+            window.dispatchEvent(new CustomEvent("slash-command:open-sessions"));
+        });
+        await expect(page.getByRole('heading', { name: '会话中心' })).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('button', { name: '批量导出' })).toBeVisible();
+        await expect(page.getByRole('textbox', { name: '搜索会话' })).toBeVisible();
+        await page.getByRole('button', { name: '批量导出' }).click();
+        await expect(page.getByRole('heading', { name: '导出会话' })).toBeVisible({ timeout: 5000 });
+        await page.screenshot({
+            path: join(ACCEPTANCE_DIR, "2026-06-26-session-center-restored.png"),
+            fullPage: true,
+        });
 
         await app.close();
     });

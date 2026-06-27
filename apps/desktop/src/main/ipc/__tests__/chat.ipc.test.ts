@@ -384,6 +384,38 @@ describe("setupChatIpc", () => {
         ]));
     });
 
+    it("does not advertise desktop-unsupported builtin slash commands in the picker list", async () => {
+        const session = {
+            extensionRunner: { getRegisteredCommands: vi.fn(() => []) },
+            promptTemplates: [],
+            resourceLoader: { getSkills: vi.fn(() => ({ skills: [] })) },
+        };
+        const registry = {
+            get: vi.fn(async () => ({ session })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("pi:list-slash-commands");
+        const result = await handler?.({}, "ws_1") as Array<{ name: string; desktopAction?: string }>;
+
+        expect(result.some((command) => command.name === "tree")).toBe(false);
+        expect(result.some((command) => command.name === "clone")).toBe(false);
+        expect(result.some((command) => command.name === "import")).toBe(false);
+        expect(result.some((command) => command.name === "share")).toBe(false);
+        expect(result.some((command) => command.name === "session")).toBe(false);
+        expect(result).toEqual(expect.arrayContaining([
+            expect.objectContaining({ name: "model", desktopAction: "open-models" }),
+            expect.objectContaining({ name: "settings", desktopAction: "open-settings" }),
+        ]));
+    });
+
     it("runs compact and reload builtin slash commands against the workspace session", async () => {
         const compact = vi.fn(async () => ({ summary: "ok" }));
         const reload = vi.fn(async () => undefined);
@@ -648,7 +680,105 @@ describe("setupChatIpc", () => {
                 path: join(workspacePath, ".pi", "plans", "plan-123.md"),
             });
             expect(existsSync(result.path)).toBe(true);
-            expect(readFileSync(result.path, "utf8")).toContain("- 创建文件");
+            const written = readFileSync(result.path, "utf8");
+            expect(written).toContain("Plan:");
+            expect(written).toContain("1. 创建文件");
+            expect(written).toContain("2. 验证结果");
+        } finally {
+            rmSync(workspacePath, { force: true, recursive: true });
+        }
+    });
+
+    it("normalizes plan-card markdown into an executable plan format without duplicating nested frontmatter", async () => {
+        const workspacePath = mkdtempSync(join(tmpdir(), "pi-desktop-plan-normalize-"));
+        try {
+            setupChatIpc({
+                registry: { get: vi.fn(), has: vi.fn() } as any,
+                getWorkspace: () => ({ id: "ws_1", name: "demo", path: workspacePath }),
+                getDefaultWorkspace: () => undefined,
+                pendingEdits: { autoApprove: false } as any,
+            });
+
+            const handler = handlers.get("plan:materialize-inline");
+            const result = await handler?.({}, {
+                workspaceId: "ws_1",
+                title: "创建 plan_probe.txt 并验证",
+                content: [
+                    "---",
+                    "title: 创建 plan_probe.txt 并验证",
+                    "type: chore",
+                    "---",
+                    "",
+                    "## 步骤",
+                    "",
+                    "| 步骤 | 操作 | 输出 |",
+                    "|------|------|------|",
+                    "| 1 | 写入 plan_probe.txt | PLAN_OK |",
+                    "| 2 | read 验证文件存在 | 确认内容 |",
+                    "",
+                    "## 验证",
+                    "",
+                    "- `plan_probe.txt` 存在于当前工作区",
+                    "- 内容为 `PLAN_OK`",
+                ].join("\n"),
+                preferredFilename: "create-plan-probe.md",
+            }) as { filename: string; path: string };
+
+            const written = readFileSync(result.path, "utf8");
+            expect(written).toContain('title: "创建 plan_probe.txt 并验证"');
+            expect(written).toContain("type: chore");
+            expect(written).toContain("Plan:\n1. 写入 plan_probe.txt\n2. read 验证文件存在");
+            expect(written).not.toContain("---\n---");
+            expect(written).not.toContain("\n---\ntitle: 创建 plan_probe.txt 并验证\ntype: chore\n---");
+        } finally {
+            rmSync(workspacePath, { force: true, recursive: true });
+        }
+    });
+
+    it("extracts executable steps from step headings instead of plan detail bullets", async () => {
+        const workspacePath = mkdtempSync(join(tmpdir(), "pi-desktop-plan-headings-"));
+        try {
+            setupChatIpc({
+                registry: { get: vi.fn(), has: vi.fn() } as any,
+                getWorkspace: () => ({ id: "ws_1", name: "demo", path: workspacePath }),
+                getDefaultWorkspace: () => undefined,
+                pendingEdits: { autoApprove: false } as any,
+            });
+
+            const handler = handlers.get("plan:materialize-inline");
+            const result = await handler?.({}, {
+                workspaceId: "ws_1",
+                title: "创建并验证 plan_probe.txt",
+                content: [
+                    "## 步骤",
+                    "",
+                    "### 步骤 1：创建 plan_probe.txt",
+                    "- **操作**：写入文件 `plan_probe.txt`",
+                    "- **内容**：`PLAN_OK`（单行，无换行符）",
+                    "- **路径**：`<workspace>/plan_probe.txt`",
+                    "",
+                    "### 步骤 2：验证文件存在",
+                    "- **操作**：检查文件 `plan_probe.txt` 是否存在于工作区",
+                    "- **方法**：使用 `ls` 或 `read` 确认文件路径可访问",
+                    "- **预期**：文件存在且内容为 `PLAN_OK`",
+                    "",
+                    "## 验证",
+                    "- `ls` 输出包含 `plan_probe.txt`",
+                    "- `read` 文件返回 `PLAN_OK`",
+                    "",
+                    "## 风险",
+                    "- 无。单文件写入，无副作用。",
+                ].join("\n"),
+                preferredFilename: "create-plan-probe.md",
+            }) as { filename: string; path: string };
+
+            const written = readFileSync(result.path, "utf8");
+            expect(written).toContain("Plan:\n1. 创建 plan_probe.txt\n2. 验证文件存在");
+            expect(written).not.toContain("内容：PLAN_OK");
+            expect(written).not.toContain("路径：<workspace>/plan_probe.txt");
+            expect(written).not.toContain("方法：使用 ls 或 read");
+            expect(written).not.toContain("预期：文件存在且内容为 PLAN_OK");
+            expect(written).not.toContain("无。单文件写入，无副作用。");
         } finally {
             rmSync(workspacePath, { force: true, recursive: true });
         }

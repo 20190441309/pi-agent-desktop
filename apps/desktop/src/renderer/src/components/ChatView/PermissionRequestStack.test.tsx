@@ -99,4 +99,13 @@ describe("PermissionRequestStack", () => {
     });
     expect(permissionRespond).not.toHaveBeenCalledWith("perm_hidden", expect.anything());
   });
+
+  it("renders the permission stack in a top-level overlay above the floating right rail", () => {
+    render(<PermissionRequestStack workspaceId="ws1" />);
+
+    const overlay = screen.getByTestId("permission-request-overlay");
+
+    expect(overlay.className).toContain("fixed");
+    expect(overlay.className).toContain("z-[80]");
+  });
 });

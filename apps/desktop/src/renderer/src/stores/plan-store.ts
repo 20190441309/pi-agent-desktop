@@ -74,6 +74,38 @@ function stripInlineThinking(content: string): string {
     .trim();
 }
 
+function normalizePlanIdentity(value?: string): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function samePlanIdentity(
+  left: { title?: string; filename?: string },
+  right: { title?: string; filename?: string },
+): boolean {
+  const leftFilename = normalizePlanIdentity(left.filename);
+  const rightFilename = normalizePlanIdentity(right.filename);
+  if (leftFilename && rightFilename) {
+    return leftFilename === rightFilename;
+  }
+  const leftTitle = normalizePlanIdentity(left.title);
+  const rightTitle = normalizePlanIdentity(right.title);
+  return Boolean(leftTitle && rightTitle && leftTitle === rightTitle);
+}
+
+function shouldPreservePlanExecution(
+  activeExecution: ActivePlanExecution | null,
+  incoming: { title?: string; filename?: string },
+): activeExecution is ActivePlanExecution {
+  if (!activeExecution) return false;
+  if (!samePlanIdentity(activeExecution, incoming)) return false;
+  return (
+    activeExecution.phase === "executing"
+    || activeExecution.phase === "pausing"
+    || activeExecution.phase === "paused"
+    || activeExecution.phase === "completed"
+  );
+}
+
 export const usePlanStore = create<PlanState>((set, get) => ({
   enabled: false,
   activeCard: null,
@@ -112,21 +144,29 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     set((state) => ({
       activeCard: cleanCard,
       steps: stepsFromMarkdown(cleanCard.content),
-      status: "waiting_decision",
-      activeExecution: {
-        activePlanId: cleanCard.id,
-        title: cleanCard.title,
-        filename: cleanCard.filename,
-        phase: "awaiting_confirmation",
-      },
-      decisionRequest: state.decisionRequest && !state.decisionRequest.card
-        ? state.decisionRequest
+      status: shouldPreservePlanExecution(state.activeExecution, cleanCard) ? state.status : "waiting_decision",
+      activeExecution: shouldPreservePlanExecution(state.activeExecution, cleanCard)
+        ? {
+            ...state.activeExecution,
+            title: cleanCard.title,
+            filename: cleanCard.filename ?? state.activeExecution.filename,
+          }
         : {
-            requestId: `plan_decision_${cleanCard.id}`,
-            card: cleanCard,
-            source: "plan",
-            createdAt: Date.now(),
+            activePlanId: cleanCard.id,
+            title: cleanCard.title,
+            filename: cleanCard.filename,
+            phase: "awaiting_confirmation",
           },
+      decisionRequest: shouldPreservePlanExecution(state.activeExecution, cleanCard)
+        ? state.decisionRequest
+        : state.decisionRequest && !state.decisionRequest.card
+          ? state.decisionRequest
+          : {
+              requestId: `plan_decision_${cleanCard.id}`,
+              card: cleanCard,
+              source: "plan",
+              createdAt: Date.now(),
+            },
     }));
   },
 
@@ -145,17 +185,31 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     status: "idle",
   }),
 
-  setAwaitingConfirmation: (input) => set((state) => ({
-    activeExecution: {
-      ...state.activeExecution,
-      activePlanId: input.activePlanId,
-      title: input.title,
-      filename: input.filename,
-      sourceMessageId: input.sourceMessageId,
-      phase: "awaiting_confirmation",
-    },
-    status: "waiting_decision",
-  })),
+  setAwaitingConfirmation: (input) => set((state) => (
+    shouldPreservePlanExecution(state.activeExecution, input)
+      ? {
+          activeExecution: state.activeExecution
+            ? {
+                ...state.activeExecution,
+                title: input.title,
+                filename: input.filename ?? state.activeExecution.filename,
+                sourceMessageId: state.activeExecution.sourceMessageId ?? input.sourceMessageId,
+              }
+            : null,
+          status: state.status,
+        }
+      : {
+          activeExecution: {
+            ...(state.activeExecution ?? {}),
+            activePlanId: input.activePlanId,
+            title: input.title,
+            filename: input.filename,
+            sourceMessageId: input.sourceMessageId,
+            phase: "awaiting_confirmation",
+          },
+          status: "waiting_decision",
+        }
+  )),
 
   startExecution: (input) => set({
     activeExecution: {
@@ -194,6 +248,11 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       ? { ...state.activeExecution, phase: "completed" }
       : null,
     status: "completed",
+    steps: state.steps.map((step) => (
+      step.status === "failed"
+        ? step
+        : { ...step, status: "completed" }
+    )),
   })),
 
   markFailed: () => set((state) => ({
@@ -213,9 +272,21 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   }),
 
   setProgress: (update) => {
+    const current = get();
+    const nextSteps = update.items.length > 0 ? update.items : current.steps;
+    const isCompletedSignal = update.status === "completed"
+      || (
+        update.status === "idle"
+        && current.activeExecution?.phase === "executing"
+        && nextSteps.length > 0
+        && nextSteps.every((item) => item.status === "completed")
+      );
     set({
-      steps: update.items.length > 0 ? update.items : get().steps,
-      status: update.status ?? get().status,
+      steps: nextSteps,
+      status: isCompletedSignal ? "completed" : (update.status ?? current.status),
+      activeExecution: isCompletedSignal && current.activeExecution
+        ? { ...current.activeExecution, phase: "completed" }
+        : current.activeExecution,
     });
   },
 

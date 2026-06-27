@@ -165,6 +165,9 @@ export function isPlanModeToolAllowed(input: {
     if (toolName === "bash" || toolName === "shell" || toolName === "powershell") {
         return isReadOnlyShellCommand(getToolCommand(input.args));
     }
+    if (toolName === "plan_write") {
+        return isPlanFilePath(resolvePlanWritePath(input.args), input.workspacePath);
+    }
     if (WRITE_TOOLS.has(toolName)) return isPlanFilePath(getToolPath(input.args), input.workspacePath);
     if (MUTATING_OR_HIGH_RISK_TOOLS.has(toolName)) return false;
     return false;
@@ -180,6 +183,17 @@ function getToolCommand(args: Record<string, unknown> | undefined): string {
     if (!args) return "";
     const raw = args.command ?? args.cmd ?? args.script;
     return typeof raw === "string" ? raw.trim() : "";
+}
+
+function resolvePlanWritePath(args: Record<string, unknown> | undefined): string {
+    if (!args) return "";
+    const raw = typeof args.filename === "string" ? args.filename.trim() : "";
+    if (!raw) return "";
+    const normalized = raw.replace(/\\/g, "/").replace(/\/+$/g, "");
+    if (normalized.startsWith(".pi/plans/") || normalized.startsWith("./.pi/plans/")) {
+        return normalized;
+    }
+    return `.pi/plans/${normalized.endsWith(".md") ? normalized : `${normalized}.md`}`;
 }
 
 function isReadOnlyShellCommand(command: string): boolean {

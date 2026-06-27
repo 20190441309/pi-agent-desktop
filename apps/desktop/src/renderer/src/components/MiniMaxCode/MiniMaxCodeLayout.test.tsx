@@ -35,7 +35,7 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(document.querySelector('[data-mmcode-region="center"]')?.querySelector("#pi-global-composer-root")).toBeTruthy();
     });
 
-    it("pins sidebar collapse controls to the window edges and reserves content gutters", () => {
+    it("pins sidebar collapse controls to the window edges and aligns them with the compact 42px header controls", () => {
         render(
             <MiniMaxCodeLayout
                 leftSlot={<div>对话</div>}
@@ -47,8 +47,16 @@ describe("MiniMaxCode window chrome interactivity", () => {
             />,
         );
 
-        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("top-4");
-        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("top-4");
+        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("top-[calc((42px-1.75rem)/2)]");
+        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("top-[calc((42px-1.75rem)/2)]");
+        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).not.toContain("top-4");
+        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).not.toContain("top-4");
+        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("h-7");
+        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("h-7");
+        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("w-7");
+        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("w-7");
+        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).not.toContain("h-8");
+        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).not.toContain("h-8");
         expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("left-3");
         expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("right-3");
         expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("z-[80]");
@@ -143,5 +151,29 @@ describe("MiniMaxCode window chrome interactivity", () => {
 
         expect(composerClass).toContain("z-30");
         expect(rightFloatingClass).toContain("z-[60]");
+    });
+
+    it("can position a chrome-less right floating layer between the top strip and composer", () => {
+        render(
+            <MiniMaxCodeLayout
+                leftSlot={<div>对话</div>}
+                centerSlot={<div>主内容</div>}
+                rightSlot={<div>环境信息</div>}
+                rightFloatingOpen
+                rightFloatingChrome={false}
+                rightFloatingTopOffset="54px"
+                rightFloatingBottomOffset="calc(var(--pi-global-composer-height,103px) + 12px)"
+            />,
+        );
+
+        const rightFloating = document.querySelector('[data-mmcode-region="right-floating"]') as HTMLElement | null;
+
+        expect(rightFloating).toBeTruthy();
+        expect(rightFloating?.style.top).toBe("54px");
+        expect(rightFloating?.style.bottom).toBe("calc(var(--pi-global-composer-height,103px) + 12px)");
+        expect(rightFloating?.className ?? "").not.toContain("border");
+        expect(rightFloating?.className ?? "").not.toContain("rounded");
+        expect(rightFloating?.className ?? "").not.toContain("shadow");
+        expect(rightFloating?.className ?? "").not.toContain("bg-[var(--mm-bg-main)]");
     });
 });

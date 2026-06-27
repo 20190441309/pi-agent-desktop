@@ -19,7 +19,7 @@ interface CommandPaletteProps {
     workspacePath: string;
     workspaceId?: string;
     onSelectFile?: (path: string) => void;
-    onSelectHistory?: (sessionId: string) => void;
+    onSelectHistory?: (sessionId: string, messageId?: string) => void;
     onRunCommand?: (cmdId: string) => boolean | void | Promise<boolean | void>;
 }
 
@@ -393,7 +393,7 @@ export function CommandPalette({
                         title: s.title,
                         role: m.role === "user" ? t("messageBubble.userAuthor") : t("messageBubble.piAuthor"),
                     }),
-                    onSelect: () => onSelectHistory?.(s.id),
+                    onSelect: () => onSelectHistory?.(s.id, m.id),
                 });
                 if (all.length >= 30) break;
             }

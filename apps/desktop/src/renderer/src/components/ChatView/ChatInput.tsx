@@ -21,7 +21,7 @@ interface ChatInputProps {
   isConnected: boolean;
   isProcessing: boolean;
   runContext?: "plan_execution" | null;
-  onSend: (message: string) => Promise<void>;
+  onSend: (message: string, options?: { visibleContent?: string }) => Promise<void>;
   onStop: () => void;
   workspaceId?: string;
   workspacePath?: string;
@@ -66,6 +66,29 @@ function normalizePermissionMode(value: unknown): PermissionMode {
 function basename(p: string): string {
   const m = p.match(/[^\\/]+$/);
   return m ? m[0] : p;
+}
+
+function buildVisibleAttachmentSummary(inputValue: string, attachments: Array<{ kind: "file" | "image"; name: string; value: string }>): string {
+  const trimmedInput = inputValue.trim();
+  const lines: string[] = [];
+  const fileNames = attachments
+    .filter((attachment) => attachment.kind === "file")
+    .map((attachment) => basename(attachment.value))
+    .filter(Boolean);
+  const imageNames = attachments
+    .filter((attachment) => attachment.kind === "image")
+    .map((attachment) => attachment.name.trim())
+    .filter(Boolean);
+
+  if (trimmedInput) lines.push(trimmedInput);
+  if (fileNames.length > 0) {
+    lines.push(`附件: ${fileNames.join(", ")}`);
+  }
+  if (imageNames.length > 0) {
+    lines.push(`图片: ${imageNames.join(", ")}`);
+  }
+
+  return lines.join("\n").trim();
 }
 
 function errorMessage(value: unknown, fallback: string): string {
@@ -391,8 +414,15 @@ export function ChatInput({
     const outbound = prefixes.length > 0
       ? `${prefixes.join("\n")}\n${inputValue.trim()}`
       : inputValue.trim();
+    const visibleContent = prefixes.length > 0
+      ? buildVisibleAttachmentSummary(inputValue, attachments)
+      : undefined;
     try {
-      await onSend(outbound);
+      if (visibleContent) {
+        await onSend(outbound, { visibleContent });
+      } else {
+        await onSend(outbound);
+      }
     } catch (err) {
       setSendError(`发送失败: ${errorMessage(err, "未知错误")}`);
       sendingRef.current = false;

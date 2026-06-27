@@ -1,9 +1,9 @@
 // Settings Store - Manages application settings
 // v1.0.5: AppSettings / PiModelInfo 跟 @shared 重复, 改用 re-export + 本地 alias 保留 store 旧代码
 // v1.0.6: console 换 logger
-// v1.0.9: 写错误经 _onError listener 走 IpcError 路径, SettingsPanel 翻译后显示
+// v1.0.9: 写错误经 _onError listener 走 IpcError 路径, 设置窗口统一显示
 // v1.0.15: default model/provider 改成空串 — 不再 hardcode 'gpt-4' / 'openai' 假数据;
-//          启动时由 loadPiConfig 真从 Pi CLI 配置读;读不到时 Pi ChatInput / SettingsPanel 走空态
+//          启动时由 loadPiConfig 真从 Pi CLI 配置读;读不到时 Pi ChatInput / 设置页走空态
 
 import { create } from 'zustand';
 import { DEFAULT_LONG_HORIZON_SETTINGS, isIpcError, type AppSettings, type IpcError, type ToolPermissions } from '@shared';
@@ -30,19 +30,16 @@ interface PiConfigPayload {
 
 interface SettingsState {
   settings: AppSettings;
-  isOpen: boolean;
   piModels: PiModelInfo[] | null;
-  /** v1.0.9: 最近一次写错误 (IpcError | string | null). SettingsPanel 订阅后翻译显示. */
+  /** v1.0.9: 最近一次写错误 (IpcError | string | null). 设置窗口订阅后翻译显示. */
   lastWriteError: IpcError | string | null;
   rightRailCollapsed: boolean;
   sidebarGroupMode: 'date' | 'workspace';
 
   // Actions
   updateSettings: (updates: Partial<AppSettings>) => void;
+  flushPendingSettingsWrite: () => Promise<void>;
   resetSettings: () => void;
-  toggleSettings: () => void;
-  openSettings: () => void;
-  closeSettings: () => void;
   loadPiConfig: () => Promise<void>;
   /** 清除最近写错误 (用户点 close 后清) */
   clearWriteError: () => void;
@@ -174,6 +171,88 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     pendingSyncModelDefault = false;
   };
 
+  const consumePendingSettingsWrite = (): {
+    updatesToSave: Partial<AppSettings>;
+    previousSettings: AppSettings;
+    mergedSettings: AppSettings;
+    syncModelDefault: boolean;
+    revision: number;
+  } | null => {
+    const updatesToSave = pendingSettingsUpdates;
+    const previousSettings = pendingPreviousSettings;
+    const mergedSettings = pendingMergedSettings;
+    const syncModelDefault = pendingSyncModelDefault && Boolean(mergedSettings?.model && mergedSettings.provider);
+    const revision = settingsWriteRevision;
+    clearPendingSettingsWrite();
+    if (!updatesToSave || !previousSettings || !mergedSettings) return null;
+    return {
+      updatesToSave,
+      previousSettings,
+      mergedSettings,
+      syncModelDefault,
+      revision,
+    };
+  };
+
+  const commitSettingsWrite = async (
+    piAPI: Window["piAPI"],
+    {
+      updatesToSave,
+      previousSettings,
+      mergedSettings,
+      syncModelDefault,
+      revision,
+    }: {
+      updatesToSave: Partial<AppSettings>;
+      previousSettings: AppSettings;
+      mergedSettings: AppSettings;
+      syncModelDefault: boolean;
+      revision: number;
+    },
+  ): Promise<void> => {
+    try {
+      const result = await piAPI.setSettings(updatesToSave);
+      if (isIpcError(result)) {
+        if (revision === settingsWriteRevision) {
+          if (updatesToSave.theme !== undefined) {
+            applyAndCacheTheme(previousSettings.theme as Theme);
+          }
+          if (updatesToSave.fontSize !== undefined) {
+            applyAndCacheFontSize(previousSettings.fontSize);
+          }
+          set({ settings: previousSettings, lastWriteError: result });
+        } else {
+          set({ lastWriteError: result });
+        }
+        return;
+      }
+      if (syncModelDefault) {
+        await syncPiDefaultModel(piAPI, mergedSettings);
+      }
+      set({ lastWriteError: null });
+    } catch (e) {
+      logger.error('[settings-store] setSettings failed:', e);
+      if (revision === settingsWriteRevision) {
+        if (updatesToSave.theme !== undefined) {
+          applyAndCacheTheme(previousSettings.theme as Theme);
+        }
+        if (updatesToSave.fontSize !== undefined) {
+          applyAndCacheFontSize(previousSettings.fontSize);
+        }
+        set({ settings: previousSettings, lastWriteError: reportWriteError(e) });
+      } else {
+        set({ lastWriteError: reportWriteError(e) });
+      }
+      if (syncModelDefault && revision === settingsWriteRevision) {
+        void piAPI.setSettings({ model: previousSettings.model, provider: previousSettings.provider })
+          .catch((restoreError) => {
+            logger.error('[settings-store] restore model settings failed:', restoreError);
+          });
+      }
+      addToast(e instanceof Error ? e.message : "保存设置失败", "error");
+    }
+  };
+
   const scheduleSettingsWrite = (
     piAPI: Window["piAPI"],
     updates: Partial<AppSettings>,
@@ -189,56 +268,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 
     if (pendingSettingsWriteTimer) clearTimeout(pendingSettingsWriteTimer);
     pendingSettingsWriteTimer = setTimeout(() => {
-      const updatesToSave = pendingSettingsUpdates;
-      const previousSettings = pendingPreviousSettings;
-      const mergedSettings = pendingMergedSettings;
-      const syncModelDefault = pendingSyncModelDefault && Boolean(mergedSettings?.model && mergedSettings.provider);
-      clearPendingSettingsWrite();
-
-      if (!updatesToSave || !previousSettings || !mergedSettings) return;
+      const payload = consumePendingSettingsWrite();
+      if (!payload) return;
 
       void (async () => {
-        try {
-          const result = await piAPI.setSettings(updatesToSave);
-          if (isIpcError(result)) {
-            if (revision === settingsWriteRevision) {
-              if (updatesToSave.theme !== undefined) {
-                applyAndCacheTheme(previousSettings.theme as Theme);
-              }
-              if (updatesToSave.fontSize !== undefined) {
-                applyAndCacheFontSize(previousSettings.fontSize);
-              }
-              set({ settings: previousSettings, lastWriteError: result });
-            } else {
-              set({ lastWriteError: result });
-            }
-            return;
-          }
-          if (syncModelDefault) {
-            await syncPiDefaultModel(piAPI, mergedSettings);
-          }
-          set({ lastWriteError: null });
-        } catch (e) {
-          logger.error('[settings-store] setSettings failed:', e);
-          if (revision === settingsWriteRevision) {
-            if (updatesToSave.theme !== undefined) {
-              applyAndCacheTheme(previousSettings.theme as Theme);
-            }
-            if (updatesToSave.fontSize !== undefined) {
-              applyAndCacheFontSize(previousSettings.fontSize);
-            }
-            set({ settings: previousSettings, lastWriteError: reportWriteError(e) });
-          } else {
-            set({ lastWriteError: reportWriteError(e) });
-          }
-          if (syncModelDefault && revision === settingsWriteRevision) {
-            void piAPI.setSettings({ model: previousSettings.model, provider: previousSettings.provider })
-              .catch((restoreError) => {
-                logger.error('[settings-store] restore model settings failed:', restoreError);
-              });
-          }
-          addToast(e instanceof Error ? e.message : "保存设置失败", "error");
-        }
+        await commitSettingsWrite(piAPI, { ...payload, revision });
       })();
     }, SETTINGS_WRITE_DEBOUNCE_MS);
   };
@@ -273,7 +307,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 
   return {
     settings: defaultSettings,
-    isOpen: false,
     piModels: null,
     lastWriteError: null,
     rightRailCollapsed: true,
@@ -333,6 +366,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       scheduleSettingsWrite(piAPI, updates, previous, merged);
     },
 
+    flushPendingSettingsWrite: async () => {
+      const piAPI = getPiAPI();
+      if (!piAPI) {
+        clearPendingSettingsWrite();
+        return;
+      }
+      const payload = consumePendingSettingsWrite();
+      if (!payload) return;
+      await commitSettingsWrite(piAPI, payload);
+    },
+
     resetSettings: () => {
       const previous = get().settings;
       settingsWriteRevision += 1;
@@ -360,18 +404,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           set({ settings: previous, lastWriteError: reportWriteError(e) });
           addToast(e instanceof Error ? e.message : "重置设置失败", "error");
         });
-    },
-
-    toggleSettings: () => {
-      set((state) => ({ isOpen: !state.isOpen }));
-    },
-
-    openSettings: () => {
-      set({ isOpen: true });
-    },
-
-    closeSettings: () => {
-      set({ isOpen: false });
     },
 
     clearWriteError: () => {

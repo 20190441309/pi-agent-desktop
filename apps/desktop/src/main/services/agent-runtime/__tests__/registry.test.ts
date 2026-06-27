@@ -274,6 +274,23 @@ describe("AgentRuntimeRegistry", () => {
         expect(sessions[0].prompt).toHaveBeenCalledWith("follow later", { streamingBehavior: "followUp" });
     });
 
+    it("queues mode-exit commands with the same follow-up behavior before executing a queued prompt", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+
+        await registry.prompt({ agentId: agent.id, message: "先生成计划", mode: "plan" });
+        await registry.prompt({
+            agentId: agent.id,
+            message: "现在执行计划",
+            mode: "build",
+            streamingBehavior: "followUp",
+        });
+
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(1, "/plan");
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(2, "先生成计划", undefined);
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(3, "/plan", { streamingBehavior: "followUp" });
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(4, "现在执行计划", { streamingBehavior: "followUp" });
+    });
+
     it("restarts with the same session path and replaces runtime", async () => {
         const agent = await registry.create({
             workspaceId: "ws_1",

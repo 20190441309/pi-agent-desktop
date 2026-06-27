@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RightRail } from "./RightRail";
 import { usePlanStore } from "../../stores/plan-store";
@@ -293,6 +293,29 @@ describe("RightRail", () => {
     expect(screen.getByText("普通任务")).toBeTruthy();
   });
 
+  it("renders environment, tool permissions, progress, and file output cards", async () => {
+    getGitStatus.mockResolvedValue({
+      branch: "master",
+      modified: [],
+      added: [],
+      deleted: [],
+      untracked: [],
+      ahead: 0,
+      behind: 0,
+    });
+    gitDiff.mockResolvedValue("");
+
+    render(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
+
+    expect(await screen.findByText("环境信息")).toBeTruthy();
+    expect(screen.getByText("工具权限")).toBeTruthy();
+    expect(screen.getByText("Workspace")).toBeTruthy();
+    expect(screen.getByText("进度")).toBeTruthy();
+    expect(screen.getByText("文件输出")).toBeTruthy();
+    expect((screen.getByLabelText("网络") as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByText("最近工具")).toBeNull();
+  });
+
   it("shows the active goal above plan progress from the shared plan store", () => {
     usePlanStore.setState({
       goal: {
@@ -422,7 +445,7 @@ describe("RightRail", () => {
     expect(screen.getByText("Tool")).toBeTruthy();
   });
 
-  it("shows file outputs from session tool output and git changes", async () => {
+  it("shows file outputs from authoritative output sources and excludes planning or git heuristics", async () => {
     getGitStatus.mockResolvedValue({
       branch: "master",
       modified: ["src/generated.ts"],
@@ -447,7 +470,7 @@ describe("RightRail", () => {
             {
               id: "m1",
               role: "assistant",
-              content: "已生成 apps/desktop/src/new-file.ts",
+              content: "计划里提到 C:/repo/plan_probe.txt，但这还不是实际产物。",
               timestamp: new Date(),
               toolCalls: [
                 {
@@ -456,11 +479,33 @@ describe("RightRail", () => {
                   status: "completed",
                   output: "Wrote docs/result.md",
                 },
+                {
+                  id: "tc2",
+                  name: "plan_write",
+                  status: "completed",
+                  input: { filename: "create-plan-probe" },
+                },
+                {
+                  id: "tc3",
+                  name: "bash",
+                  status: "completed",
+                  input: { command: "echo PLAN_OK > \"C:/repo/plan_probe.txt\"" },
+                },
               ],
             },
           ],
         },
       ],
+    });
+    usePlanStore.setState({
+      ...usePlanStore.getState(),
+      activeCard: {
+        id: "plan_1",
+        title: "创建并验证 plan_probe.txt",
+        content: "1. 创建文件\n2. 验证存在",
+        filename: "create-plan-probe",
+        createdAt: Date.now(),
+      },
     });
 
     render(<RightRail workspacePath="C:/repo" />);
@@ -468,9 +513,14 @@ describe("RightRail", () => {
     await waitFor(() => {
       expect(screen.getByText("output.md")).toBeTruthy();
     });
-    expect(screen.getByText("new-file.ts")).toBeTruthy();
-    expect(screen.getByText("result.md")).toBeTruthy();
-    expect(screen.getByText("generated.ts")).toBeTruthy();
+    const fileOutputSection = screen.getByText("文件输出").closest("section");
+    expect(fileOutputSection).toBeTruthy();
+    const fileOutputs = within(fileOutputSection!);
+    expect(fileOutputs.getByText("output.md")).toBeTruthy();
+    expect(fileOutputs.getByText("result.md")).toBeTruthy();
+    expect(fileOutputs.getByText("plan_probe.txt")).toBeTruthy();
+    expect(fileOutputs.queryByText("create-plan-probe")).toBeNull();
+    expect(fileOutputs.queryByText("generated.ts")).toBeNull();
   });
 
   it("shows shell action errors for file outputs", async () => {
@@ -627,96 +677,7 @@ describe("RightRail", () => {
     window.removeEventListener("app:switch-section", switchSpy);
   });
 
-  it("shows recent tool activity and can rerun shell commands in the terminal", () => {
-    const runCommandSpy = vi.fn();
-    window.addEventListener("terminal:run-command", runCommandSpy);
-    useSessionStore.setState({
-      currentSessionId: "s1",
-      sessions: [
-        {
-          id: "s1",
-          workspaceId: "w1",
-          title: "任务",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          messages: [
-            {
-              id: "m1",
-              role: "assistant",
-              content: "",
-              timestamp: new Date(),
-              toolCalls: [
-                {
-                  id: "tc1",
-                  name: "bash",
-                  status: "completed",
-                  input: { command: "pnpm test -- RightRail" },
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    });
-
-    render(<RightRail workspacePath="C:/repo" />);
-
-    expect(screen.getByText("最近工具")).toBeTruthy();
-    expect(screen.getAllByText("pnpm test -- RightRail").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: "复跑" }));
-
-    expect(runCommandSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ detail: { command: "pnpm test -- RightRail", mode: "run" } }),
-    );
-    expect(screen.getByRole("status").textContent).toContain("已发送命令到终端");
-    window.removeEventListener("terminal:run-command", runCommandSpy);
-  });
-
-  it("marks dangerous recent shell commands as terminal drafts", () => {
-    const runCommandSpy = vi.fn();
-    window.addEventListener("terminal:run-command", runCommandSpy);
-    useSessionStore.setState({
-      currentSessionId: "s1",
-      sessions: [
-        {
-          id: "s1",
-          workspaceId: "w1",
-          title: "任务",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          messages: [
-            {
-              id: "m1",
-              role: "assistant",
-              content: "",
-              timestamp: new Date(),
-              toolCalls: [
-                {
-                  id: "tc1",
-                  name: "bash",
-                  status: "completed",
-                  input: { command: "git reset --hard HEAD" },
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    });
-
-    render(<RightRail workspacePath="C:/repo" />);
-
-    expect(screen.getAllByText("git reset --hard HEAD").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: "填入" }));
-
-    expect(runCommandSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ detail: { command: "git reset --hard HEAD", mode: "draft" } }),
-    );
-    expect(screen.getByRole("status").textContent).toContain("高风险命令已填入终端，请确认后手动执行");
-    window.removeEventListener("terminal:run-command", runCommandSpy);
-  });
-
-  it("puts environment controls first, opens Git for commit or push, and keeps runtime controls out of the rail", async () => {
+  it("puts environment controls first, keeps session tool permissions in the rail, and opens Files and Git from visible rail actions", async () => {
     const switchSpy = vi.fn();
     window.addEventListener("app:switch-section", switchSpy);
     getGitStatus.mockResolvedValue({
@@ -769,10 +730,18 @@ describe("RightRail", () => {
     expect(screen.queryByText("claude-sonnet")).toBeNull();
     expect(screen.queryByText("anthropic")).toBeNull();
     expect(screen.queryByText("输入 1.2K")).toBeNull();
-    expect(screen.getByText("环境信息").compareDocumentPosition(screen.getByText("工具权限")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText("工具权限")).toBeTruthy();
+    expect(await screen.findByText("工具权限")).toBeTruthy();
+    expect(screen.getByText("Session")).toBeTruthy();
     expect((screen.getByLabelText("文件写入") as HTMLInputElement).checked).toBe(false);
-    expect((screen.getByLabelText("Git") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText("网络") as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByText("最近工具")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "浏览全部文件" }));
+    expect(switchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: { section: "files" },
+      }),
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: /提交或推送/ }));
     expect(switchSpy).toHaveBeenCalledWith(

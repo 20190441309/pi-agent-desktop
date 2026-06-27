@@ -79,6 +79,20 @@ describe("PlanCard", () => {
     expect((executeBtn as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("does not turn ordinary plan bullet steps into fake choice options", () => {
+    render(
+      <PlanCard
+        title="探针计划"
+        content={"- 创建 `plan_probe.txt`\n- 验证文件存在\n\n请执行上述步骤。"}
+        status="pending"
+        onExecute={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("plan-options")).toBeNull();
+    expect(screen.getByRole("button", { name: "执行计划" })).toBeTruthy();
+  });
+
   it("calls onRefine with selected option when execute clicked after selection", () => {
     const onRefine = vi.fn();
     render(

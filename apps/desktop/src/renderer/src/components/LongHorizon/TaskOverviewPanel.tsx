@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
 import { usePlanStore } from "../../stores/plan-store";
 import { useRuntimeFeatureStore, isRuntimeFeatureEnabled } from "../../stores/runtime-feature-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
+import { useSessionStore } from "../../stores/session-store";
+import { useAgentStore } from "../../stores/agent-store";
 
 function statusLabel(status: "pending" | "running" | "completed" | "failed"): string {
   switch (status) {
@@ -20,11 +22,25 @@ function statusLabel(status: "pending" | "running" | "completed" | "failed"): st
 }
 
 export function TaskOverviewPanel(): React.JSX.Element {
-  const { tasks } = useTaskProgress();
+  const currentSessionId = useSessionStore((state) => state.currentSessionId);
+  const currentAgentId = useAgentStore((state) => state.currentAgentId);
+  const agents = useAgentStore((state) => state.agents);
   const goal = usePlanStore((state) => state.goal);
   const featureState = useRuntimeFeatureStore((state) => state.featureState);
   const longHorizon = useSettingsStore((state) => state.settings.longHorizon);
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
+  const scopedAgentId = useMemo(() => {
+    if (!currentWorkspace) return undefined;
+    if (currentSessionId) {
+      const sessionAgent = agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === currentSessionId);
+      if (sessionAgent) return sessionAgent.id;
+    }
+    const selectedAgent = currentAgentId
+      ? agents.find((agent) => agent.id === currentAgentId && agent.workspaceId === currentWorkspace.id)
+      : undefined;
+    return selectedAgent?.id ?? agents.find((agent) => agent.workspaceId === currentWorkspace.id && !agent.sessionId)?.id;
+  }, [agents, currentAgentId, currentSessionId, currentWorkspace]);
+  const { tasks } = useTaskProgress(scopedAgentId);
   const taskEnabled = isRuntimeFeatureEnabled(featureState, longHorizon, "task");
 
   return (

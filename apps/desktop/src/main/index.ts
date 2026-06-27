@@ -41,11 +41,16 @@ import { GoalService } from './services/long-horizon/goal-service';
 import { MemoryService } from './services/long-horizon/memory-service';
 import { CheckpointService } from './services/long-horizon/checkpoint-service';
 import { TaskService } from './services/long-horizon/task-service';
+import { getMostRecentlyActiveWorkspace } from './services/workspace-selection';
 import type { PiAgentConfig } from './types';
 
 let mainWindow: BrowserWindow | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
 let piDriver: PiDriver | null = null;
+
+type PiDesktopTestGlobals = typeof globalThis & {
+  __PI_DESKTOP_TEST_AGENT_REGISTRY__?: AgentRuntimeRegistry;
+};
 
 // Pi session (long-lived AgentSession per workspace)
 const piRegistry = new WorkspaceRegistry();
@@ -159,6 +164,9 @@ const agentRegistry = new AgentRuntimeRegistry({
   getMemoryService: () => memoryService,
   getModeOptions: getLongHorizonModeOptions,
 });
+if (process.env.CI === "1" || process.env.NODE_ENV === "test") {
+  (globalThis as PiDesktopTestGlobals).__PI_DESKTOP_TEST_AGENT_REGISTRY__ = agentRegistry;
+}
 const configManager = new ConfigManager(PI_AGENT_DIR);
 const codexSessionImporter = new CodexSessionImporter();
 const claudeSessionImporter = new ClaudeSessionImporter();
@@ -247,8 +255,7 @@ function setupIPC(): void {
     getSettings: () => store.get('settings'),
     getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
     getDefaultWorkspace: () => {
-      const ws = store.get('workspaces');
-      return ws.length > 0 ? ws[0] : undefined;
+      return getMostRecentlyActiveWorkspace(store.get('workspaces'));
     },
   });
 
@@ -275,8 +282,7 @@ function setupIPC(): void {
   // Skills panel (SkillHub integration)
   setupSkillsIpc({
     getWorkspacePath: () => {
-      const ws = store.get('workspaces');
-      return ws.length > 0 ? ws[0].path : undefined;
+      return getMostRecentlyActiveWorkspace(store.get('workspaces'))?.path;
     },
     getStateFile: () => join(app.getPath('userData'), 'skills-state.json'),
   });
@@ -388,6 +394,7 @@ app.on('window-all-closed', () => {
   piPendingEdits.clear();
   piRegistry.disposeAll();
   agentRegistry.disposeAll();
+  delete (globalThis as PiDesktopTestGlobals).__PI_DESKTOP_TEST_AGENT_REGISTRY__;
 
   // 清理所有终端进程 (M4: 走 ptyManager)
   ptyManager.closeAll();

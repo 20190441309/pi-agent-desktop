@@ -13,9 +13,11 @@
 
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
   const app = await _electron.launch({
+      executablePath: resolveElectronExecutablePath(),
     args: [electronMainEntry],
     env: { ...process.env, CI: '1' },
   });
@@ -59,7 +61,7 @@ test.describe('Pi Desktop 完整功能演示', () => {
     await page.screenshot({ path: 'e2e-output/demo-02-skills.png' });
 
     const settingsWindowPromise = app.waitForEvent('window');
-    await page.getByRole('button', { name: '打开设置窗口' }).click();
+    await page.getByRole('tab', { name: '设置' }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState('domcontentloaded');
     await settingsWindow.screenshot({ path: 'e2e-output/demo-03-settings.png' });
@@ -111,7 +113,7 @@ test.describe('Pi Desktop 完整功能演示', () => {
 
     // ── 7. 设置 Model Tab ───────────────────────
     const modelSettingsWindowPromise = app.waitForEvent('window');
-    await page.getByRole('button', { name: '打开设置窗口' }).click();
+    await page.getByRole('tab', { name: '设置' }).click();
     const modelSettingsWindow = await modelSettingsWindowPromise;
     await modelSettingsWindow.waitForLoadState('domcontentloaded');
 

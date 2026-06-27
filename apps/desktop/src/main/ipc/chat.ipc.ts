@@ -98,6 +98,165 @@ function escapeYamlDoubleQuoted(value: string): string {
     return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+type InlinePlanType = "feature" | "fix" | "refactor" | "chore";
+
+function isInlinePlanType(value: string): value is InlinePlanType {
+    return value === "feature" || value === "fix" || value === "refactor" || value === "chore";
+}
+
+function parseInlinePlanDocument(raw: string): {
+    title?: string;
+    type?: InlinePlanType;
+    body: string;
+} {
+    let body = raw.trim();
+    let title: string | undefined;
+    let type: InlinePlanType | undefined;
+
+    while (true) {
+        const match = body.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+        if (!match) break;
+        for (const line of match[1].split(/\r?\n/)) {
+            const kv = line.match(/^(\w+):\s*"?(.+?)"?\s*$/);
+            if (!kv) continue;
+            const key = kv[1];
+            const value = kv[2].trim();
+            if (!title && key === "title" && value) title = value;
+            if (!type && key === "type" && isInlinePlanType(value)) type = value;
+        }
+        body = body.slice(match[0].length).trimStart();
+    }
+
+    return {
+        title,
+        type,
+        body: body.trim(),
+    };
+}
+
+function stripLeadingTitleHeading(body: string, title: string): string {
+    const lines = body.split(/\r?\n/);
+    const first = lines[0]?.trim() ?? "";
+    if (/^#\s+/.test(first) && first.replace(/^#\s+/, "").trim() === title.trim()) {
+        return lines.slice(1).join("\n").trim();
+    }
+    return body.trim();
+}
+
+function cleanInlinePlanText(text: string): string {
+    return text
+        .replace(/`/g, "")
+        .replace(/\*\*/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function dedupePlanLines(lines: string[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const line of lines) {
+        const normalized = cleanInlinePlanText(line);
+        if (!normalized || seen.has(normalized)) continue;
+        seen.add(normalized);
+        result.push(normalized);
+    }
+    return result;
+}
+
+function extractInlinePlanStepHeadings(lines: string[]): string[] {
+    return dedupePlanLines(
+        lines
+            .map((line) => {
+                const match = line.match(/^#{1,6}\s+(?:步骤|step)\s*\d+\s*[：:.-]?\s*(.+)$/i);
+                return match?.[1] ?? "";
+            })
+            .filter(Boolean),
+    );
+}
+
+function extractInlinePlanSteps(body: string): string[] {
+    const tableSteps = dedupePlanLines(
+        body
+            .split(/\r?\n/)
+            .map((line) => {
+                const match = line.match(/^\|\s*\d+\s*\|\s*([^|]+?)\s*\|/);
+                return match?.[1] ?? "";
+            }),
+    );
+    if (tableSteps.length > 0) return tableSteps;
+
+    const lines = body.split(/\r?\n/);
+    const stepHeadings = extractInlinePlanStepHeadings(lines);
+    if (stepHeadings.length > 0) return stepHeadings;
+    const scopedSteps: string[] = [];
+    let inStepSection = false;
+    for (const rawLine of lines) {
+        const heading = rawLine.match(/^#{1,6}\s+(.+)$/);
+        if (heading) {
+            inStepSection = /^(步骤|step|steps|plan|changes|implementation|approach)$/i.test(heading[1].trim());
+            continue;
+        }
+        if (!inStepSection) continue;
+        const numbered = rawLine.match(/^\s*\d+[.)]\s+(.+)$/);
+        if (numbered) {
+            scopedSteps.push(numbered[1]);
+            continue;
+        }
+        const bullet = rawLine.match(/^\s*[-*]\s+(.+)$/);
+        if (bullet) scopedSteps.push(bullet[1]);
+    }
+    const dedupedScoped = dedupePlanLines(scopedSteps);
+    if (dedupedScoped.length > 0) return dedupedScoped;
+
+    return dedupePlanLines(
+        lines
+            .map((line) => line.match(/^\s*\d+[.)]\s+(.+)$/)?.[1] ?? line.match(/^\s*[-*]\s+(.+)$/)?.[1] ?? ""),
+    );
+}
+
+function extractInlinePlanValidation(body: string): string[] {
+    const lines = body.split(/\r?\n/);
+    const validation: string[] = [];
+    let inValidationSection = false;
+    for (const rawLine of lines) {
+        const heading = rawLine.match(/^#{1,6}\s+(.+)$/);
+        if (heading) {
+            inValidationSection = /^(验证|validation|check|checks)$/i.test(heading[1].trim());
+            continue;
+        }
+        if (!inValidationSection) continue;
+        const bullet = rawLine.match(/^\s*[-*]\s+(.+)$/);
+        if (bullet) validation.push(bullet[1]);
+    }
+    return dedupePlanLines(validation);
+}
+
+function buildExecutableInlinePlan(body: string, title: string): {
+    type: InlinePlanType;
+    content: string;
+} {
+    const parsed = parseInlinePlanDocument(body);
+    const resolvedTitle = parsed.title?.trim() || title.trim() || "plan";
+    const cleanedBody = stripLeadingTitleHeading(parsed.body, resolvedTitle);
+    const steps = extractInlinePlanSteps(cleanedBody);
+    const validation = extractInlinePlanValidation(cleanedBody);
+    const contentLines = [`# ${resolvedTitle}`, "", "Plan:"];
+    if (steps.length > 0) {
+        contentLines.push(...steps.map((step, index) => `${index + 1}. ${step}`));
+    } else if (cleanedBody) {
+        contentLines.push(`1. ${cleanInlinePlanText(cleanedBody.split(/\r?\n/).find((line) => line.trim()) ?? "执行计划")}`);
+    } else {
+        contentLines.push("1. 执行计划");
+    }
+    if (validation.length > 0) {
+        contentLines.push("", "Validation:", ...validation.map((item) => `- ${item}`));
+    }
+    return {
+        type: parsed.type ?? "feature",
+        content: contentLines.join("\n").trim(),
+    };
+}
+
 function materializeInlinePlan(
     workspacePath: string,
     title: string,
@@ -112,18 +271,16 @@ function materializeInlinePlan(
     const filename = preferredBaseName ? `${baseName}.md` : `${baseName}-${Date.now()}.md`;
     const planPath = join(plansDir, filename);
     const now = new Date().toISOString();
-    const body = /^#\s+/m.test(content.trimStart())
-        ? content.trim()
-        : `# ${safeTitle}\n\n${content.trim()}`;
+    const normalizedPlan = buildExecutableInlinePlan(content, safeTitle);
     const fileContent = [
         "---",
         `title: "${escapeYamlDoubleQuoted(safeTitle)}"`,
         "status: draft",
         `created: "${now}"`,
-        "type: feature",
+        `type: ${normalizedPlan.type}`,
         "---",
         "",
-        body,
+        normalizedPlan.content,
         "",
     ].join("\n");
     writeFileSync(planPath, fileContent, "utf8");
@@ -167,6 +324,10 @@ const UNSUPPORTED_DESKTOP_COMMANDS = new Set([
     "session",
 ]);
 
+function isDesktopAdvertisedBuiltinSlashCommand(command: Pick<PiSlashCommand, "name">): boolean {
+    return !UNSUPPORTED_DESKTOP_COMMANDS.has(command.name);
+}
+
 function builtinDesktopAction(command: string): PiSlashCommand["desktopAction"] {
     switch (command) {
         case "settings":
@@ -196,13 +357,15 @@ function builtinDesktopAction(command: string): PiSlashCommand["desktopAction"] 
 }
 
 function builtinSlashCommands(): PiSlashCommand[] {
-    return BUILTIN_SLASH_COMMANDS.map((command) => ({
-        name: command.name,
-        description: command.description,
-        source: "builtin",
-        desktopAction: builtinDesktopAction(command.name),
-        requiresArgument: command.name === "compact" || command.name === "export" || command.name === "name",
-    }));
+    return BUILTIN_SLASH_COMMANDS
+        .filter(isDesktopAdvertisedBuiltinSlashCommand)
+        .map((command) => ({
+            name: command.name,
+            description: command.description,
+            source: "builtin",
+            desktopAction: builtinDesktopAction(command.name),
+            requiresArgument: command.name === "compact" || command.name === "export" || command.name === "name",
+        }));
 }
 
 function collectDynamicSlashCommands(session: SlashSession): PiSlashCommand[] {

@@ -1,5 +1,6 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 async function skipOnboarding(page: Page): Promise<void> {
   const modal = page.locator('[data-testid="onboarding-modal"]');
@@ -11,7 +12,10 @@ async function skipOnboarding(page: Page): Promise<void> {
 async function installTestIpc(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ ipcMain }) => {
     const target = globalThis as typeof globalThis & {
-      __currentUiPromptCalls?: Array<{ kind: "legacy"; workspaceId: string; message: string } | { kind: "agent"; input: { agentId: string; message: string } }>;
+      __currentUiPromptCalls?: Array<
+        | { kind: "legacy"; workspaceId: string; message: string }
+        | { kind: "agent"; input: { agentId: string; message: string; mode?: "build" | "plan" | "compose" } }
+      >;
       __currentUiSelectedFiles?: unknown[];
       __currentUiStopCalls?: string[];
       __currentUiAgentAbortCalls?: string[];
@@ -46,7 +50,7 @@ async function installTestIpc(app: ElectronApplication): Promise<void> {
     });
 
     ipcMain.removeHandler("agents:prompt");
-    ipcMain.handle("agents:prompt", async (_event, input: { agentId: string; message: string }) => {
+    ipcMain.handle("agents:prompt", async (_event, input: { agentId: string; message: string; mode?: "build" | "plan" | "compose" }) => {
       target.__currentUiPromptCalls?.push({ kind: "agent", input });
       return undefined;
     });
@@ -166,10 +170,11 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     }
   });
 
-  test("attachment button + plan mode sends project exploration as one /plan prompt", async () => {
+  test("attachment button + plan mode forwards attachment context without leaking wrappers into chat", async () => {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const workspacePath = test.info().outputPath("workspace");
     app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
       args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
       env: { ...process.env, CI: "1" },
     });
@@ -231,18 +236,27 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     })).toBe(1);
     const calls = await app.evaluate(() => {
       const target = globalThis as typeof globalThis & {
-        __currentUiPromptCalls?: Array<{ kind: "legacy"; workspaceId: string; message: string } | { kind: "agent"; input: { agentId: string; message: string } }>;
+        __currentUiPromptCalls?: Array<
+          | { kind: "legacy"; workspaceId: string; message: string }
+          | { kind: "agent"; input: { agentId: string; message: string; mode?: "build" | "plan" | "compose" } }
+        >;
       };
       return target.__currentUiPromptCalls ?? [];
     });
-    const sentMessage = calls[0].kind === "agent" ? calls[0].input.message : calls[0].message;
-    expect(sentMessage).toMatch(/^\/plan\n/);
-    expect(sentMessage.match(/^\/plan/gm) ?? []).toHaveLength(1);
-    expect(sentMessage).toContain("用户请求:");
-    expect(sentMessage).toContain("了解一下这个项目");
-    expect(sentMessage).toContain("先只读探索");
+    const sentInput = calls[0].kind === "agent"
+      ? calls[0].input
+      : { message: calls[0].message, mode: undefined };
+    expect(sentInput.mode).toBe("plan");
+    expect(sentInput.message).not.toMatch(/^\/plan\n/);
+    expect(sentInput.message).toContain("附加文件:");
+    expect(sentInput.message).toContain("@C:\\ai\\pi-agent-desktop\\package.json");
+    expect(sentInput.message).toContain("用户消息:");
+    expect(sentInput.message).toContain("了解一下这个项目");
+    expect(sentInput.message).not.toContain("先只读探索");
     const visibleUserArticle = page.getByRole("article", { name: /你 ·/ }).filter({ hasText: "了解一下这个项目" });
     await expect(visibleUserArticle).not.toContainText("用户请求:");
+    await expect(visibleUserArticle).toContainText("附件: package.json");
+    await expect(visibleUserArticle).not.toContainText("附加文件:");
     await expect(visibleUserArticle).not.toContainText("先只读探索");
 
     await app.evaluate(({ BrowserWindow }) => {
@@ -282,6 +296,7 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const workspacePath = test.info().outputPath("thinking-workspace");
     app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
       args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
       env: { ...process.env, CI: "1" },
     });

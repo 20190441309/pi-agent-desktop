@@ -15,7 +15,6 @@ import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { PersistenceBanner } from "./components/PersistenceBanner/PersistenceBanner";
 import { ToastContainer } from "./components/Toast/ToastContainer";
 import { WorkspaceNoticeBanner, emitWorkspaceNotice } from "./components/WorkspaceNoticeBanner/WorkspaceNoticeBanner";
-import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import { CommandPalette } from "./components/CommandPalette/CommandPalette";
 import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet/ShortcutsCheatsheet";
 import { SkillsPanel } from "./components/SkillsPanel/SkillsPanel";
@@ -28,6 +27,7 @@ import { ChatView } from "./components/ChatView/ChatView";
 import { MemoryPanel } from "./components/LongHorizon/MemoryPanel";
 import { TaskOverviewPanel } from "./components/LongHorizon/TaskOverviewPanel";
 import { SearchHistory } from "./components/SearchHistory/SearchHistory";
+import { SessionCenter } from "./components/SessionCenter/SessionCenter";
 import { TopTabBar } from "./components/TopTabBar/TopTabBar";
 import {
     MiniMaxCodeLayout,
@@ -53,14 +53,14 @@ import type { TerminalCommandMode } from "./utils/terminal-command";
 import { isIpcError } from "@shared";
 import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 
-type MainPanel = "chat" | "skills" | "git" | "files" | "tasks" | "memory";
+type MainPanel = "chat" | "skills" | "git" | "files" | "tasks" | "memory" | "history";
 
 /**
  * Canonical section identifiers for the center panel router.
  *
  * - "chat" / "tools" / "git" / "files" / "tasks" / "memory" map to center panels
  * - "new-task" renders ChatView in blank-slate mode (no current session)
- * - "history" shows the SearchHistory overlay (center stays on previous panel)
+ * - "history" renders the full SessionCenter management surface
  * - `session:<id>` is a transient navigation action — resolved to "chat" after
  *   switching the current session; never stored as activeSection.
  *
@@ -116,7 +116,7 @@ function panelForSection(section: SectionId): MainPanel {
         case "memory": return "memory";
         case "chat": return "chat";
         case "new-task": return "chat";
-        case "history": return "chat";
+        case "history": return "history";
     }
 }
 
@@ -175,8 +175,10 @@ function AppShell(): React.ReactElement {
     const [workspaceHasRoomForRightRail, setWorkspaceHasRoomForRightRail] = useState(false);
     const [terminalCommandTarget, setTerminalCommandTarget] = useState<TerminalCommandTarget | null>(null);
     const [fileWorkspaceTarget, setFileWorkspaceTarget] = useState<FileWorkspaceTarget | null>(null);
+    const [searchTarget, setSearchTarget] = useState<{ sessionId: string; messageId: string } | null>(null);
     const sessions = useSessionStore((s) => s.sessions);
     const currentSessionId = useSessionStore((s) => s.currentSessionId);
+    const sessionsLoading = useSessionStore((s) => s.sessionsLoading);
     const currentSession = useSessionStore((s) =>
         s.currentSessionId
             ? s.sessions.find((session) => session.id === s.currentSessionId) ?? null
@@ -184,6 +186,7 @@ function AppShell(): React.ReactElement {
     );
 
     const { getCurrentWorkspace, workspaces } = useWorkspaceStore();
+    const workspacesLoaded = useWorkspaceStore((state) => state.loaded);
     const workspaceError = useWorkspaceStore((state) => state.lastError);
     const clearWorkspaceError = useWorkspaceStore((state) => state.clearError);
     const { loadPiConfig, settings, rightRailCollapsed, sidebarGroupMode } = useSettingsStore();
@@ -199,6 +202,7 @@ function AppShell(): React.ReactElement {
     const createAgent = useAgentStore((s) => s.createAgent);
     const currentWorkspace = getCurrentWorkspace();
     const pendingDefaultAgentWorkspaces = useRef<Set<string>>(new Set());
+    const pendingSessionAgentSessions = useRef<Set<string>>(new Set());
     const rightRailManualPreferenceRef = useRef<"open" | "collapsed" | null>(null);
     const activePanel = panelForSection(activeSection);
     const setLeftSidebarWidth = useCallback((width: number): void => {
@@ -223,7 +227,8 @@ function AppShell(): React.ReactElement {
     }, [clearWorkspaceError, workspaceError]);
 
     useEffect(() => {
-        if (!currentWorkspace || !agentsInitialized) return;
+        if (!currentWorkspace || !agentsInitialized || sessionsLoading) return;
+        if (currentSession?.workspaceId === currentWorkspace.id) return;
         if (agents.some((agent) => agent.workspaceId === currentWorkspace.id)) return;
         if (pendingDefaultAgentWorkspaces.current.has(currentWorkspace.id)) return;
 
@@ -231,7 +236,24 @@ function AppShell(): React.ReactElement {
         void createAgent(currentWorkspace.id, `${currentWorkspace.name} Agent`).finally(() => {
             pendingDefaultAgentWorkspaces.current.delete(currentWorkspace.id);
         });
-    }, [agents, agentsInitialized, createAgent, currentWorkspace]);
+    }, [agents, agentsInitialized, createAgent, currentSession?.workspaceId, currentWorkspace, sessionsLoading]);
+
+    useEffect(() => {
+        if (!currentWorkspace || !currentSession || !agentsInitialized || sessionsLoading) return;
+        if (currentSession.workspaceId !== currentWorkspace.id || currentSession.readOnly) return;
+        if (agents.some((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === currentSession.id)) return;
+        if (pendingSessionAgentSessions.current.has(currentSession.id)) return;
+
+        pendingSessionAgentSessions.current.add(currentSession.id);
+        void createAgent(
+            currentWorkspace.id,
+            `${currentSession.title || "未命名会话"} Agent`,
+            undefined,
+            currentSession.id,
+        ).finally(() => {
+            pendingSessionAgentSessions.current.delete(currentSession.id);
+        });
+    }, [agents, agentsInitialized, createAgent, currentSession, currentWorkspace, sessionsLoading]);
 
     useEffect(() => {
         if (!currentWorkspace) return;
@@ -365,14 +387,17 @@ function AppShell(): React.ReactElement {
         void loadPiConfigRef.current();
     }, []);
 
-    // 首启检测：localStorage 没标完成 OR 当前没 workspace → 展示引导
+    // 首启检测：fresh user 直接显示；非首启则等 workspace 初始恢复完成后再决定
     const showOnboardingRef = useRef(setShowOnboarding);
     showOnboardingRef.current = setShowOnboarding;
     useEffect(() => {
-        if (isFirstLaunch() || (!currentWorkspace && workspaces.length === 0)) {
+        if (isFirstLaunch()) {
             showOnboardingRef.current(true);
+            return;
         }
-    }, [workspaces.length, currentWorkspace]);
+        if (!workspacesLoaded) return;
+        showOnboardingRef.current(!currentWorkspace && workspaces.length === 0);
+    }, [workspacesLoaded, workspaces.length, currentWorkspace]);
 
     // v1.0.14: SkillsPanel 等子组件用 window event 触发切到 chat + 注入 prompt
     //   (绕开"通过 prop 链层层传递" — 简单解耦,跟已有 skills-panel:set-tab 事件一致风格)
@@ -456,9 +481,10 @@ function AppShell(): React.ReactElement {
             new CustomEvent("chatpanel:prefill", { detail: { text: `@${path} ` } }),
         );
     }, []);
-    const handleSelectHistory = useCallback((sessionId: string) => {
+    const handleSelectHistory = useCallback((sessionId: string, messageId?: string) => {
         setActiveSection("chat");
         useSessionStore.getState().setCurrentSession(sessionId);
+        setSearchTarget(messageId ? { sessionId, messageId } : null);
     }, []);
     const routeSection = useCallback((section: string) => {
         if (section === "settings") {
@@ -474,7 +500,7 @@ function AppShell(): React.ReactElement {
             return;
         }
         if (section === "history") {
-            setShowSearchHistory(true);
+            setActiveSection("history");
             return;
         }
         if (section === "new-task") {
@@ -595,7 +621,7 @@ function AppShell(): React.ReactElement {
             }, 0);
         };
         const onOpenHotkeys = (): void => setShowCheatsheet(true);
-        const onOpenSessions = (): void => setShowSearchHistory(true);
+        const onOpenSessions = (): void => routeSection("history");
         const onNewTask = (): void => routeSection("new-task");
 
         window.addEventListener("slash-command:open-settings-tab", onOpenSettingsTab);
@@ -670,7 +696,7 @@ function AppShell(): React.ReactElement {
                 topBarSlot={
                     <TopTabBar
                         activeTab={
-                            activeSection === "new-task"
+                            activeSection === "new-task" || activeSection === "history"
                                 ? "chat"
                                 : activeSection
                         }
@@ -682,8 +708,10 @@ function AppShell(): React.ReactElement {
                 rightCollapsed={activePanel !== "chat" || rightRailCollapsed}
                 leftWidth={leftSidebarWidth}
                 rightFloatingOpen={activePanel === "chat"}
+                rightFloatingTopOffset="54px"
+                rightFloatingBottomOffset="calc(var(--pi-global-composer-height,103px) + 12px)"
+                rightFloatingChrome={false}
                 onCollapseLeft={() => setLeftCollapsed((v) => !v)}
-                onCollapseRight={activePanel === "chat" ? handleToggleRightRail : undefined}
                 onLeftWidthChange={setLeftSidebarWidth}
                 leftSlot={
                     <MiniMaxCodeSidebar
@@ -699,7 +727,14 @@ function AppShell(): React.ReactElement {
                     <>
                         {activePanel === "chat" && (
                             <ErrorBoundary fallback={panelFallback("聊天")}>
-                                <ChatView prefillText={chatPrefill} onPrefillConsumed={() => setChatPrefill(null)} />
+                                <ChatView
+                                    prefillText={chatPrefill}
+                                    onPrefillConsumed={() => setChatPrefill(null)}
+                                    focusMessageId={searchTarget?.sessionId === currentSessionId ? searchTarget.messageId : null}
+                                    onFocusMessageHandled={() => setSearchTarget(null)}
+                                    rightRailCollapsed={rightRailCollapsed}
+                                    onToggleRightRail={handleToggleRightRail}
+                                />
                             </ErrorBoundary>
                         )}
                         {activePanel === "skills" && (
@@ -717,6 +752,11 @@ function AppShell(): React.ReactElement {
                         {activePanel === "memory" && (
                             <ErrorBoundary fallback={panelFallback("记忆")}>
                                 <MemoryPanel />
+                            </ErrorBoundary>
+                        )}
+                        {activePanel === "history" && (
+                            <ErrorBoundary fallback={panelFallback("会话中心")}>
+                                <SessionCenter onOpenChat={() => setActiveSection("chat")} />
                             </ErrorBoundary>
                         )}
                         {activePanel === "git" && currentWorkspace && (
@@ -752,7 +792,6 @@ function AppShell(): React.ReactElement {
             {portalTarget &&
                 createPortal(
                     <>
-                        <SettingsPanel />
                         <CommandPalette
                             isOpen={paletteOpen}
                             onClose={() => setPaletteOpen(false)}
@@ -769,8 +808,18 @@ function AppShell(): React.ReactElement {
                         <SearchHistory
                             isOpen={showSearchHistory}
                             onClose={() => setShowSearchHistory(false)}
-                            onNavigate={(sessionId) => {
-                                useSessionStore.setState({ currentSessionId: sessionId });
+                            onNavigate={(sessionId, messageId) => {
+                                const session = useSessionStore.getState().sessions.find((item) => item.id === sessionId);
+                                const workspace = session
+                                    ? useWorkspaceStore.getState().workspaces.find((item) => item.id === session.workspaceId)
+                                    : undefined;
+                                setActiveSection("chat");
+                                useSessionStore.getState().setCurrentSession(sessionId);
+                                if (workspace) {
+                                    useWorkspaceStore.getState().setCurrentWorkspace(workspace.id);
+                                    void selectWorkspaceForRoute(workspace.path);
+                                }
+                                setSearchTarget({ sessionId, messageId });
                                 setShowSearchHistory(false);
                             }}
                         />

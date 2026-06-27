@@ -921,6 +921,7 @@ export interface PiAPI {
     // Workspace
     listWorkspaces(): Promise<Workspace[] | IpcError>;
     createWorkspace(name: string, path: string): Promise<Workspace | IpcError>;
+    createEmptyWorkspace(name: string, parentPath: string): Promise<Workspace | IpcError>;
     deleteWorkspace(id: string): Promise<void>;
     selectWorkspace(path: string): Promise<void | IpcError>;
     selectDirectory(): Promise<string | null | IpcError>;

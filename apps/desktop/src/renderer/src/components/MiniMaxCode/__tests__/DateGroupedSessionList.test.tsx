@@ -186,7 +186,7 @@ describe("DateGroupedSessionList", () => {
         expect(onSelect).toHaveBeenCalledWith("s1");
     });
 
-    it("会话操作按钮悬浮覆盖且标题不为按钮预留右侧空隙", () => {
+    it("会话操作层隐藏时不拦截点击，悬浮时再接管交互", () => {
         const longTitle = "了解一下这个项目并检查所有关键入口";
         useSessionStore.setState({
             sessions: [makeSession({ id: "s_long", title: longTitle, updatedAt: new Date() })],
@@ -206,8 +206,13 @@ describe("DateGroupedSessionList", () => {
         expect(titleButton.className).toContain("pr-0");
         expect(actions?.className ?? "").toContain("absolute");
         expect(actions?.className ?? "").toContain("right-1");
+        expect(actions?.className ?? "").toContain("pointer-events-none");
+        expect(actions?.className ?? "").toContain("group-hover:pointer-events-auto");
+        expect(actions?.className ?? "").toContain("group-focus-within:pointer-events-auto");
         expect(actions?.querySelector("button")?.className ?? "").toContain("pointer-events-none");
         expect(actions?.querySelector("button")?.className ?? "").toContain("group-hover:pointer-events-auto");
+        expect(actions?.querySelector("button")?.className ?? "").toContain("h-[26px]");
+        expect(actions?.querySelector("button")?.className ?? "").toContain("w-[26px]");
     });
 
     it("会话行不显示相对时间", () => {

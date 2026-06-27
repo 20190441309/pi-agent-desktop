@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import { logger } from '../utils/logger';
 import { isNumberOrUndefined } from '../utils/format';
 import { isIpcError } from '@shared';
+import { useSessionStore } from './session-store';
 import { addToast } from './toast-store';
 
 export interface Workspace {
@@ -33,10 +34,12 @@ interface WorkspaceState {
   workspaces: Workspace[];
   currentWorkspaceId: string | null;
   lastError: string | null;
+  loaded: boolean;
 
   // Actions
   addWorkspace: (name: string, path: string, id?: string) => Workspace;
   createWorkspace: (name: string, path: string) => Promise<Workspace | null>;
+  createEmptyWorkspace: (name: string, parentPath: string) => Promise<Workspace | null>;
   removeWorkspace: (workspaceId: string) => void;
   setCurrentWorkspace: (workspaceId: string) => void;
   updateWorkspace: (workspaceId: string, updates: Partial<Workspace>) => void;
@@ -54,33 +57,35 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
   const loadWorkspaces = async () => {
     try {
       const piAPI = getPiAPI();
-      if (piAPI) {
-        const wsList = await piAPI.listWorkspaces();
-        if (isIpcError(wsList)) {
-          logger.error('[workspace-store] listWorkspaces failed:', wsList.fallback);
-          set({ lastError: wsList.fallback });
-          return;
-        }
-        const workspaces = wsList.map((ws) => {
-          const w = ws as { id: string; name: string; path: string; createdAt: number; lastActiveAt?: number };
-          // v1.0.9: 守卫复用 isNumberOrUndefined — undefined 时降级 createdAt
-          const lastActive = w.lastActiveAt ?? w.createdAt;
-          return {
-            id: w.id,
-            name: w.name,
-            path: w.path,
-            createdAt: new Date(w.createdAt),
-            lastActiveAt: new Date(isNumberOrUndefined(lastActive) ? lastActive : w.createdAt),
-          };
-        });
-        const currentWorkspace = workspaces
-          .slice()
-          .sort((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime())[0];
-        set({ workspaces, currentWorkspaceId: currentWorkspace?.id ?? null, lastError: null });
+      if (!piAPI) {
+        set({ loaded: true });
+        return;
       }
+      const wsList = await piAPI.listWorkspaces();
+      if (isIpcError(wsList)) {
+        logger.error('[workspace-store] listWorkspaces failed:', wsList.fallback);
+        set({ lastError: wsList.fallback, loaded: true });
+        return;
+      }
+      const workspaces = wsList.map((ws) => {
+        const w = ws as { id: string; name: string; path: string; createdAt: number; lastActiveAt?: number };
+        // v1.0.9: 守卫复用 isNumberOrUndefined — undefined 时降级 createdAt
+        const lastActive = w.lastActiveAt ?? w.createdAt;
+        return {
+          id: w.id,
+          name: w.name,
+          path: w.path,
+          createdAt: new Date(w.createdAt),
+          lastActiveAt: new Date(isNumberOrUndefined(lastActive) ? lastActive : w.createdAt),
+        };
+      });
+      const currentWorkspace = workspaces
+        .slice()
+        .sort((a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime())[0];
+      set({ workspaces, currentWorkspaceId: currentWorkspace?.id ?? null, lastError: null, loaded: true });
     } catch (e) {
       logger.error('[workspace-store] Failed to load workspaces:', e);
-      set({ lastError: e instanceof Error ? e.message : String(e) });
+      set({ lastError: e instanceof Error ? e.message : String(e), loaded: true });
       addToast("工作区加载失败", "error");
     }
   };
@@ -90,6 +95,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
   workspaces: [],
   currentWorkspaceId: null,
   lastError: null,
+  loaded: false,
 
   addWorkspace: (name: string, path: string, id?: string) => {
     const now = new Date();
@@ -100,6 +106,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       createdAt: now,
       lastActiveAt: now
     };
+    const previousWorkspaceId = get().currentWorkspaceId;
+    if (previousWorkspaceId && previousWorkspaceId !== newWorkspace.id) {
+      useSessionStore.setState({ currentSessionId: null });
+    }
 
     set(state => ({
       workspaces: state.workspaces.some((w) => w.path === path)
@@ -132,6 +142,28 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       logger.error('[workspace-store] createWorkspace failed:', e);
       set({ lastError: e instanceof Error ? e.message : String(e) });
       addToast(e instanceof Error ? e.message : "创建工作区失败", "error");
+      return null;
+    }
+  },
+
+  createEmptyWorkspace: async (name: string, parentPath: string) => {
+    const piAPI = getPiAPI();
+    try {
+      if (!piAPI?.createEmptyWorkspace) {
+        const fullPath = `${parentPath.replace(/[\\/]+$/, "")}\\${name}`;
+        return get().addWorkspace(name, fullPath);
+      }
+      const result = await piAPI.createEmptyWorkspace(name, parentPath);
+      if (isIpcError(result)) {
+        logger.error('[workspace-store] createEmptyWorkspace failed:', result.fallback);
+        set({ lastError: result.fallback });
+        return null;
+      }
+      return get().addWorkspace(result.name, result.path, result.id);
+    } catch (e) {
+      logger.error('[workspace-store] createEmptyWorkspace failed:', e);
+      set({ lastError: e instanceof Error ? e.message : String(e) });
+      addToast(e instanceof Error ? e.message : "创建空白工作区失败", "error");
       return null;
     }
   },
@@ -179,6 +211,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
   },
   
   setCurrentWorkspace: (workspaceId: string) => {
+    if (get().currentWorkspaceId && get().currentWorkspaceId !== workspaceId) {
+      useSessionStore.setState({ currentSessionId: null });
+    }
     set(state => ({
       currentWorkspaceId: workspaceId,
       workspaces: state.workspaces.map(w => 

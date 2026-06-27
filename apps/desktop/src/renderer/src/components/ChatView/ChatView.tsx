@@ -15,7 +15,7 @@ import { usePlanStore } from '../../stores/plan-store';
 import { useAgentModeStore } from '../../stores/agent-mode-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { WorkspaceSwitcher } from '../TopTabBar/WorkspaceSwitcher';
-import { formatUsageCost, formatUsageNumber } from '../UsageStats/usage-aggregation';
+import { SEARCH_FOCUS_CLEAR_DELAY_MS } from './search-focus';
 import type { Message } from '../../stores/session-store';
 import { isIpcError, type AgentMessage } from '@shared';
 
@@ -24,6 +24,10 @@ interface ChatViewProps {
     prefillText?: string | null;
     /** prefill 已被 ChatInput 消费后回调 */
     onPrefillConsumed?: () => void;
+    focusMessageId?: string | null;
+    onFocusMessageHandled?: () => void;
+    rightRailCollapsed?: boolean;
+    onToggleRightRail?: () => void;
 }
 
 function hasVisibleAssistantContent(message: Message): boolean {
@@ -40,6 +44,42 @@ type ChatMessage = Message & {
 
 const EMPTY_AGENT_MESSAGES: AgentMessage[] = [];
 
+function cleanCompactValue(value: number): string {
+  return value.toFixed(1).replace(/\.0$/, "");
+}
+
+function formatTokenSummary(num: number): string {
+  if (num <= 0) return "0";
+  if (num < 1_000) return num.toLocaleString();
+  if (num < 1_000_000) return `${cleanCompactValue(num / 1_000)}K`;
+  return `${cleanCompactValue(num / 1_000_000)}M`;
+}
+
+function resolveTotalTokens(
+  usage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number },
+): number | undefined {
+  if (!usage) return undefined;
+  if (usage.totalTokens !== undefined) return usage.totalTokens;
+  if (usage.inputTokens !== undefined || usage.outputTokens !== undefined) {
+    return (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+  }
+  return undefined;
+}
+
+function RightRailToggleIcon({ collapsed }: { collapsed: boolean }): React.JSX.Element {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <line x1="10" y1="3" x2="10" y2="13" />
+      {collapsed ? (
+        <path d="M7.5 6 5.5 8 7.5 10" strokeLinecap="round" strokeLinejoin="round" />
+      ) : (
+        <path d="M5.5 6 7.5 8 5.5 10" strokeLinecap="round" strokeLinejoin="round" />
+      )}
+    </svg>
+  );
+}
+
 function stripThinking(content: string): string {
   return content
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
@@ -49,6 +89,89 @@ function stripThinking(content: string): string {
 
 function visibleText(message: Message): string {
   return stripThinking(message.content);
+}
+
+function stripPlanFrontmatter(content: string): string {
+  return content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n*/u, "").trim();
+}
+
+function buildPlanExecutionPrompt(input: {
+  title: string;
+  filename?: string;
+  content: string;
+}): string {
+  const planContent = stripPlanFrontmatter(input.content).trim();
+  return [
+    "请直接执行下面这份计划，不要重新生成计划。",
+    `计划标题：${input.title}`,
+    input.filename ? `计划文件：${input.filename}` : undefined,
+    "",
+    "执行要求：",
+    "1. 严格按顺序实施并验证每个步骤。",
+    "2. 每完成一个主要步骤，就输出一个 [DONE:n] 标记，n 从 1 开始递增。",
+    "3. 如果遇到阻塞，只说明阻塞点和原因，不要假装完成。",
+    "4. 完成全部步骤后，再用简短中文总结结果。",
+    "5. 只有全部步骤都完成时，先单独输出一行 [PLAN_DONE]，再输出最终中文总结。",
+    "",
+    "计划内容：",
+    planContent || "执行当前计划。",
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+type PlanIdentity = {
+  title?: string;
+  filename?: string;
+};
+
+type PlanMessageLike = {
+  id: string;
+  planAction?: Message["planAction"];
+};
+
+function normalizePlanIdentity(value?: string): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function samePlanIdentity(left: PlanIdentity, right: PlanIdentity): boolean {
+  const leftFilename = normalizePlanIdentity(left.filename);
+  const rightFilename = normalizePlanIdentity(right.filename);
+  if (leftFilename && rightFilename) {
+    return leftFilename === rightFilename;
+  }
+  const leftTitle = normalizePlanIdentity(left.title);
+  const rightTitle = normalizePlanIdentity(right.title);
+  return Boolean(leftTitle && rightTitle && leftTitle === rightTitle);
+}
+
+function isLockedPlanPhase(phase?: string): boolean {
+  return phase === "executing" || phase === "pausing" || phase === "paused" || phase === "completed";
+}
+
+function isReusablePlanStatus(status?: NonNullable<Message["planAction"]>["status"]): boolean {
+  return status !== "executed" && status !== "cancelled" && status !== "failed";
+}
+
+function findReusablePlanMessage<T extends PlanMessageLike>(
+  messages: T[],
+  target: PlanIdentity,
+  preferredMessageId?: string | null,
+): T | undefined {
+  if (preferredMessageId) {
+    const preferred = messages.find((message) => (
+      message.id === preferredMessageId
+      && message.planAction
+      && isReusablePlanStatus(message.planAction.status)
+      && samePlanIdentity(message.planAction, target)
+    ));
+    if (preferred) return preferred;
+  }
+  return [...messages]
+    .reverse()
+    .find((message) => (
+      message.planAction
+      && isReusablePlanStatus(message.planAction.status)
+      && samePlanIdentity(message.planAction, target)
+    ));
 }
 
 function EmptyConversationIntro({
@@ -168,9 +291,17 @@ function mergeAdjacentThinkingMessages(messages: Message[]): ChatMessage[] {
   return merged;
 }
 
-export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {}): React.JSX.Element {
+export function ChatView({
+  prefillText,
+  onPrefillConsumed,
+  focusMessageId,
+  onFocusMessageHandled,
+  rightRailCollapsed = true,
+  onToggleRightRail,
+}: ChatViewProps = {}): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRegionRef = useRef<HTMLDivElement>(null);
+  const focusHandledTimerRef = useRef<number | null>(null);
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
   const agents = useAgentStore((state) => state.agents);
   const currentAgentId = useAgentStore((state) => state.currentAgentId);
@@ -205,6 +336,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const initAgents = useAgentStore((state) => state.init);
   const agentMessages = useAgentStore((state) => agentId ? state.messagesByAgent[agentId] ?? EMPTY_AGENT_MESSAGES : EMPTY_AGENT_MESSAGES);
   const { t } = useI18n();
+  const currentSession = getCurrentSession();
   const [sendError, setSendError] = useState<string | null>(null);
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -214,15 +346,19 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const activePlanCard = usePlanStore((state) => state.activeCard);
   const renderedPlanCardIds = usePlanStore((state) => state.renderedPlanCardIds);
   const activePlanExecution = usePlanStore((state) => state.activeExecution);
-
-  const currentSession = getCurrentSession();
+  const animatedTokenFrameRef = useRef<number | null>(null);
+  const animatedTokenSessionIdRef = useRef<string | null>(currentSession?.id ?? null);
+  const animatedTokenValueRef = useRef(0);
+  const [animatedTotalTokens, setAnimatedTotalTokens] = useState(() => resolveTotalTokens(currentSession?.usage) ?? 0);
   const hasAgent = Boolean(currentAgent);
+  const shouldUseSessionMessages = Boolean(currentSession);
 
   useEffect(() => {
+    if (focusMessageId) return;
     const scrollRegion = scrollRegionRef.current;
     if (!scrollRegion) return;
     scrollRegion.scrollTo({ top: scrollRegion.scrollHeight, behavior: 'smooth' });
-  }, [agentMessages, currentSession?.messages]);
+  }, [agentMessages, currentSession?.messages, focusMessageId]);
 
   useEffect(() => {
     void initAgents();
@@ -235,56 +371,107 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   }, [currentSession?.id, clearError]);
 
   useEffect(() => {
-    if (!activePlanCard || renderedPlanCardIds.includes(activePlanCard.id)) return;
-    const cleanContent = activePlanCard.content
-      .replace(/<think>[\s\S]*?<\/think>/gi, "")
-      .replace(/<think>[\s\S]*$/gi, "")
-      .trim();
+    if (
+      !activePlanCard
+      || renderedPlanCardIds.includes(activePlanCard.id)
+      || isStreaming
+    ) return;
+    const cleanContent = stripPlanFrontmatter(
+      activePlanCard.content
+        .replace(/<think>[\s\S]*?<\/think>/gi, "")
+        .replace(/<think>[\s\S]*$/gi, "")
+        .trim(),
+    );
     const planAction = {
       id: `plan_action_${activePlanCard.id}`,
       title: activePlanCard.title,
       filename: activePlanCard.filename,
       status: "pending" as const,
     };
-    if (hasAgent && currentAgent) {
-      const messageId = `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      useAgentStore.getState().appendStreamMessage(currentAgent.id, {
-        id: messageId,
-        agentId: currentAgent.id,
-        role: "assistant",
-        content: cleanContent,
-        createdAt: Date.now(),
-        planAction,
-      });
+    const shouldKeepCurrentExecution = Boolean(
+      activePlanExecution
+      && isLockedPlanPhase(activePlanExecution.phase)
+      && samePlanIdentity(activePlanExecution, activePlanCard),
+    );
+    if (!shouldUseSessionMessages && hasAgent && currentAgent) {
+      const reusableAgentMessage = findReusablePlanMessage(
+        agentMessages,
+        activePlanCard,
+        activePlanExecution?.sourceMessageId,
+      );
+      const messageId = reusableAgentMessage?.id ?? `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      if (reusableAgentMessage) {
+        useAgentStore.getState().updateStreamMessage(currentAgent.id, messageId, {
+          content: cleanContent,
+          planAction: {
+            ...(reusableAgentMessage.planAction ?? {}),
+            ...planAction,
+            title: activePlanCard.title,
+            filename: activePlanCard.filename ?? reusableAgentMessage.planAction?.filename,
+            status: reusableAgentMessage.planAction?.status ?? planAction.status,
+          },
+        });
+      } else {
+        useAgentStore.getState().appendStreamMessage(currentAgent.id, {
+          id: messageId,
+          agentId: currentAgent.id,
+          role: "assistant",
+          content: cleanContent,
+          createdAt: Date.now(),
+          planAction,
+        });
+      }
       usePlanStore.getState().markPlanCardRendered(activePlanCard.id);
-      usePlanStore.getState().setAwaitingConfirmation({
-        activePlanId: activePlanCard.id,
-        title: activePlanCard.title,
-        filename: activePlanCard.filename,
-        sourceMessageId: messageId,
-      });
+      if (!shouldKeepCurrentExecution) {
+        usePlanStore.getState().setAwaitingConfirmation({
+          activePlanId: activePlanCard.id,
+          title: activePlanCard.title,
+          filename: activePlanCard.filename,
+          sourceMessageId: messageId,
+        });
+      }
       return;
     }
     if (currentSession) {
-      const messageId = `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      useSessionStore.getState().addMessage(currentSession.id, {
-        id: messageId,
-        role: "assistant",
-        content: cleanContent,
-        timestamp: new Date(),
-        planAction,
-      });
+      const reusableSessionMessage = findReusablePlanMessage(
+        currentSession.messages,
+        activePlanCard,
+        activePlanExecution?.sourceMessageId,
+      );
+      const messageId = reusableSessionMessage?.id ?? `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      if (reusableSessionMessage) {
+        useSessionStore.getState().updateMessage(currentSession.id, messageId, {
+          content: cleanContent,
+          planAction: {
+            ...(reusableSessionMessage.planAction ?? {}),
+            ...planAction,
+            title: activePlanCard.title,
+            filename: activePlanCard.filename ?? reusableSessionMessage.planAction?.filename,
+            status: reusableSessionMessage.planAction?.status ?? planAction.status,
+          },
+        });
+      } else {
+        useSessionStore.getState().addMessage(currentSession.id, {
+          id: messageId,
+          role: "assistant",
+          content: cleanContent,
+          timestamp: new Date(),
+          planAction,
+        });
+      }
       usePlanStore.getState().markPlanCardRendered(activePlanCard.id);
-      usePlanStore.getState().setAwaitingConfirmation({
-        activePlanId: activePlanCard.id,
-        title: activePlanCard.title,
-        filename: activePlanCard.filename,
-        sourceMessageId: messageId,
-      });
+      if (!shouldKeepCurrentExecution) {
+        usePlanStore.getState().setAwaitingConfirmation({
+          activePlanId: activePlanCard.id,
+          title: activePlanCard.title,
+          filename: activePlanCard.filename,
+          sourceMessageId: messageId,
+        });
+      }
     }
-  }, [activePlanCard, currentAgent, currentSession, hasAgent, renderedPlanCardIds]);
+  }, [activePlanCard, activePlanExecution, agentMessages, currentAgent, currentSession, hasAgent, isStreaming, renderedPlanCardIds, shouldUseSessionMessages]);
 
-  const handleSend = async (message: string, options?: { visibleContent?: string }) => {
+  const handleSend = async (message: string, options?: { visibleContent?: string; waitForAgentIdle?: boolean }) => {
     if (!currentWorkspace) return;
     try {
       if (getCurrentSession()?.readOnly) {
@@ -304,7 +491,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         const agent = await createAgent(currentWorkspace.id, `${sessionForSend.title || "未命名会话"} Agent`, undefined, sessionForSend.id);
         agentIdForSend = agent.id;
       }
-      if (agentIdForSend && sessionForSend.messages.length === 0) {
+      if (agentIdForSend && !isStreaming) {
         useSessionStore.getState().addMessage(sessionForSend.id, {
           id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           role: "user",
@@ -347,8 +534,10 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
       setSessionActionError(`继续会话失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
-  const rawMessages = useMemo(() => hasAgent && agentMessages.length > 0
-    ? agentMessages.map((message) => ({
+  const rawMessages = useMemo(() => shouldUseSessionMessages
+    ? currentSession?.messages || []
+    : hasAgent && agentMessages.length > 0
+      ? agentMessages.map((message) => ({
         id: message.id,
         role: message.role === "assistant" || message.role === "system" || message.role === "user"
           ? message.role
@@ -358,7 +547,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         thinking: message.thinking,
         planAction: message.planAction,
       }))
-    : currentSession?.messages || [], [agentMessages, currentSession?.messages, hasAgent]);
+      : [], [agentMessages, currentSession?.messages, hasAgent, shouldUseSessionMessages]);
   const messages = useMemo(() => {
     const merged = mergeAdjacentThinkingMessages(rawMessages);
     // v1.0.14-fix: 过滤后端偶发的完全空白 assistant 消息(有 content/thinking/card/tools/plan 至少一个才保留)
@@ -374,6 +563,28 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
       return !isEmpty;
     });
   }, [rawMessages, isStreaming, streamingMessageId]);
+
+  useEffect(() => {
+    if (focusHandledTimerRef.current !== null) {
+      window.clearTimeout(focusHandledTimerRef.current);
+      focusHandledTimerRef.current = null;
+    }
+    if (!focusMessageId) return;
+    if (messages.length > 50) return;
+    const target = document.querySelector<HTMLElement>(`[data-message-id="${focusMessageId}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    focusHandledTimerRef.current = window.setTimeout(() => {
+      focusHandledTimerRef.current = null;
+      onFocusMessageHandled?.();
+    }, SEARCH_FOCUS_CLEAR_DELAY_MS);
+    return () => {
+      if (focusHandledTimerRef.current !== null) {
+        window.clearTimeout(focusHandledTimerRef.current);
+        focusHandledTimerRef.current = null;
+      }
+    };
+  }, [focusMessageId, messages, onFocusMessageHandled]);
   const workspaceSessions = sessions
     .filter((session) => !session.archived && session.workspaceId === currentWorkspace?.id)
     .slice()
@@ -394,19 +605,76 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
           : "中";
   const modelSummary = [settings.provider, settings.model].filter(Boolean).join(" / ") || "未配置模型";
   const workspaceControl = <WorkspaceSwitcher variant="inline" />;
-  const usage = currentSession?.usage;
-  const totalTokens = usage?.totalTokens ?? (
-    usage?.inputTokens !== undefined || usage?.outputTokens !== undefined
-      ? (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
-      : undefined
-  );
-  const usageSummary = totalTokens === undefined
-    ? "Token: -"
-    : `Token: ${formatUsageNumber(totalTokens, "compact")}`;
-  const inputUsage = `输入 ${formatUsageNumber(usage?.inputTokens, "compact")}`;
-  const outputUsage = `输出 ${formatUsageNumber(usage?.outputTokens, "compact")}`;
-  const costUsage = usage?.estimatedCostUsd !== undefined ? `费用 ${formatUsageCost(usage.estimatedCostUsd)}` : null;
+  const totalTokens = resolveTotalTokens(currentSession?.usage);
+  const toggleRightRailLabel = rightRailCollapsed ? "展开右侧栏" : "收起右侧栏";
   const shouldUseGlobalComposer = !currentSession?.readOnly;
+
+  useEffect(() => {
+    animatedTokenValueRef.current = animatedTotalTokens;
+  }, [animatedTotalTokens]);
+
+  useEffect(() => {
+    const nextSessionId = currentSession?.id ?? null;
+    if (animatedTokenSessionIdRef.current === nextSessionId) return;
+    animatedTokenSessionIdRef.current = nextSessionId;
+    setAnimatedTotalTokens(totalTokens ?? 0);
+    animatedTokenValueRef.current = totalTokens ?? 0;
+  }, [currentSession?.id, totalTokens]);
+
+  useEffect(() => {
+    if (animatedTokenFrameRef.current !== null) {
+      cancelAnimationFrame(animatedTokenFrameRef.current);
+      animatedTokenFrameRef.current = null;
+    }
+    if (totalTokens === undefined) return;
+
+    const from = animatedTokenValueRef.current;
+    const to = totalTokens;
+    if (from === to) {
+      setAnimatedTotalTokens(to);
+      animatedTokenValueRef.current = to;
+      return;
+    }
+
+    const durationMs = 480;
+    const startAt = performance.now();
+    const step = (now: number): void => {
+      const progress = Math.min((now - startAt) / durationMs, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = Math.round(from + (to - from) * eased);
+      animatedTokenValueRef.current = next;
+      setAnimatedTotalTokens(next);
+      if (progress < 1) {
+        animatedTokenFrameRef.current = requestAnimationFrame(step);
+      } else {
+        animatedTokenFrameRef.current = null;
+      }
+    };
+
+    animatedTokenFrameRef.current = requestAnimationFrame(step);
+
+    return () => {
+      if (animatedTokenFrameRef.current !== null) {
+        cancelAnimationFrame(animatedTokenFrameRef.current);
+        animatedTokenFrameRef.current = null;
+      }
+    };
+  }, [totalTokens]);
+
+  useEffect(() => {
+    return () => {
+      if (animatedTokenFrameRef.current !== null) {
+        cancelAnimationFrame(animatedTokenFrameRef.current);
+      }
+    };
+  }, []);
+
+  const displayedTotalTokens = totalTokens === undefined && !isStreaming
+    ? undefined
+    : animatedTotalTokens;
+  const usageSummary = displayedTotalTokens === undefined
+    ? "Token: -"
+    : `Token: ${formatTokenSummary(displayedTotalTokens)}`;
 
   useEffect(() => {
     const composerRoot = document.getElementById("pi-global-composer-root");
@@ -430,14 +698,14 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const updatePlanActionStatus = useCallback((message: Message, status: NonNullable<Message["planAction"]>["status"]): void => {
     if (!message.planAction) return;
     const nextAction = { ...message.planAction, status };
-    if (hasAgent && currentAgent) {
+    if (!shouldUseSessionMessages && hasAgent && currentAgent) {
       useAgentStore.getState().updateStreamMessage(currentAgent.id, message.id, { planAction: nextAction });
       return;
     }
     if (currentSession) {
       updateMessage(currentSession.id, message.id, { planAction: nextAction });
     }
-  }, [currentAgent, currentSession, hasAgent, updateMessage]);
+  }, [currentAgent, currentSession, hasAgent, shouldUseSessionMessages, updateMessage]);
 
   useEffect(() => {
     if (!activePlanExecution?.sourceMessageId) return;
@@ -461,12 +729,11 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     if (!message.planAction) return;
     if (!currentWorkspace) return;
     let filename = message.planAction.filename;
-    if (window.piAPI?.planMaterialize && message.content.trim()) {
+    if (!filename && window.piAPI?.planMaterialize && message.content.trim()) {
       const result = await window.piAPI.planMaterialize({
         workspaceId: currentWorkspace.id,
         title: message.planAction.title,
         content: message.content,
-        preferredFilename: message.planAction.filename,
       });
       if (isIpcError(result)) {
         setSendError(result.fallback);
@@ -476,7 +743,11 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
       filename = result.filename;
     }
     const name = filename ?? message.planAction.title;
-    const command = filename ? `/execute_plan ${filename}` : "/execute_plan";
+    const executionPrompt = buildPlanExecutionPrompt({
+      title: message.planAction.title,
+      filename,
+      content: message.content,
+    });
     const visibleContent = name ? `执行计划：${name}` : "执行计划";
     const nextMessage = filename && filename !== message.planAction.filename
       ? {
@@ -498,7 +769,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     if (currentWorkspace?.id) {
       useAgentModeStore.getState().setMode(currentWorkspace.id, "build");
     }
-    await handleSend(command, { visibleContent });
+    await handleSend(executionPrompt, { visibleContent, waitForAgentIdle: true });
   };
 
   const handlePlanAction = async (message: Message, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string): Promise<void> => {
@@ -563,23 +834,30 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const renderedComposer = composer && globalComposerRoot ? createPortal(composer, globalComposerRoot) : composer;
 
   return (
-    <div data-testid="chat-view-root" className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)]">
-      <div className="grid min-h-[42px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-4 text-[12px]">
+    <div data-testid="chat-view-root" className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-input)] text-[var(--mm-text-primary)]">
+      <div className="grid min-h-[42px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-4 text-[12px]">
         <div className="flex min-w-0 items-center gap-4 overflow-hidden whitespace-nowrap text-[var(--mm-text-secondary)]">
           <WorkspaceSwitcher variant="strip" />
-          <span className="shrink-0">权限: <span className="text-[var(--mm-text-primary)]">{permissionLabel}</span></span>
-          <span className="shrink-0 font-mono text-[var(--mm-text-primary)]">{usageSummary}</span>
-          {usage ? (
-            <>
-              <span className="shrink-0 text-[var(--mm-text-tertiary)]">{inputUsage}</span>
-              <span className="shrink-0 text-[var(--mm-text-tertiary)]">{outputUsage}</span>
-              {costUsage && <span className="shrink-0 text-[var(--mm-text-tertiary)]">{costUsage}</span>}
-            </>
-          ) : null}
+          <span className="inline-flex h-7 shrink-0 items-center gap-1 leading-none">
+            <span>权限:</span>
+            <span className="text-[var(--mm-text-primary)]">{permissionLabel}</span>
+          </span>
+          <span className={`inline-flex h-7 shrink-0 items-center font-mono tabular-nums leading-none text-[var(--mm-text-primary)] ${isStreaming ? "animate-pulse" : ""}`}>{usageSummary}</span>
         </div>
-        <div className="flex h-full shrink-0 items-center justify-end gap-1.5 text-[var(--mm-text-secondary)]" role="status" aria-label={isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}>
+        <div className="flex h-7 shrink-0 items-center justify-end gap-2 text-[var(--mm-text-secondary)]">
           <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />
-          <span>{isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}</span>
+          <span className="inline-flex h-7 items-center leading-none" role="status" aria-label={isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}>{isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}</span>
+          {onToggleRightRail ? (
+            <button
+              type="button"
+              onClick={onToggleRightRail}
+              aria-label={toggleRightRailLabel}
+              title={toggleRightRailLabel}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-main)] text-[var(--mm-text-tertiary)] shadow-[0_2px_8px_rgba(15,23,42,0.08)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+            >
+              <RightRailToggleIcon collapsed={rightRailCollapsed} />
+            </button>
+          ) : null}
         </div>
       </div>
       {messages.length > 0 && (
@@ -687,6 +965,8 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                 messages={messages}
                 isStreaming={isStreaming}
                 streamingMessageId={streamingMessageId}
+                focusMessageId={focusMessageId}
+                onFocusHandled={onFocusMessageHandled}
                 onPlanAction={handlePlanAction}
               />
             ) : (
@@ -695,6 +975,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                 key={message.id}
                 message={message}
                 isStreaming={isStreaming && message.id === streamingMessageId}
+                isSearchTarget={focusMessageId === message.id}
                 onPlanAction={handlePlanAction}
               />
             ))

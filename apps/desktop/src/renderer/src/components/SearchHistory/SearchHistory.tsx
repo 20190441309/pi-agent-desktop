@@ -5,6 +5,8 @@ import { useWorkspaceStore } from "../../stores/workspace-store";
 interface SearchResult {
   sessionId: string;
   sessionTitle: string;
+  workspaceId: string;
+  workspaceName: string;
   messageId: string;
   messageContent: string;
   messageRole: string;
@@ -35,22 +37,19 @@ function highlightMatch(text: string, matchIndex: number, matchLength: number): 
 
 export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProps): React.JSX.Element | null {
   const { sessions } = useSessionStore();
-  const { getCurrentWorkspace } = useWorkspaceStore();
+  const { workspaces, getCurrentWorkspace } = useWorkspaceStore();
   const currentWorkspace = getCurrentWorkspace();
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const searchResults = useMemo(() => {
-    if (!query.trim() || !currentWorkspace) return [];
+    if (!query.trim()) return [];
 
     const results: SearchResult[] = [];
     const lowerQuery = query.toLowerCase();
+    const workspaceNameById = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
 
-    const workspaceSessions = sessions.filter(
-      (s) => s.workspaceId === currentWorkspace.id && !s.archived,
-    );
-
-    for (const session of workspaceSessions) {
+    for (const session of sessions) {
       for (const message of session.messages) {
         const content = message.content.toLowerCase();
         let matchIndex = content.indexOf(lowerQuery);
@@ -59,6 +58,8 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
           results.push({
             sessionId: session.id,
             sessionTitle: session.title,
+            workspaceId: session.workspaceId,
+            workspaceName: workspaceNameById.get(session.workspaceId) ?? "未知工作区",
             messageId: message.id,
             messageContent: message.content,
             messageRole: message.role,
@@ -72,8 +73,15 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
       }
     }
 
-    return results.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 20);
-  }, [query, sessions, currentWorkspace]);
+    return results
+      .sort((a, b) => {
+        const workspacePriority =
+          Number(b.workspaceId === currentWorkspace?.id) - Number(a.workspaceId === currentWorkspace?.id);
+        if (workspacePriority !== 0) return workspacePriority;
+        return b.timestamp.getTime() - a.timestamp.getTime();
+      })
+      .slice(0, 20);
+  }, [currentWorkspace?.id, query, sessions, workspaces]);
 
   const handleSelect = useCallback(
     (result: SearchResult) => {
@@ -129,9 +137,14 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium text-[var(--mm-text-primary)]">
-                        {result.sessionTitle}
-                      </span>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-xs font-medium text-[var(--mm-text-primary)]">
+                          {result.sessionTitle}
+                        </span>
+                        <span className="shrink-0 rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
+                          {result.workspaceName}
+                        </span>
+                      </div>
                       <span className="shrink-0 text-[10px] text-[var(--mm-text-tertiary)]">
                         {result.messageRole === "user" ? "你" : "AI"}
                       </span>

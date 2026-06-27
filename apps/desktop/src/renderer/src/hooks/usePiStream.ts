@@ -64,6 +64,7 @@ export interface UsePiStreamReturn extends PiStreamState {
 export interface StartStreamingOptions {
     visibleContent?: string;
     agentId?: string;
+    waitForAgentIdle?: boolean;
 }
 
 type AssistantMessageEvent =
@@ -107,6 +108,66 @@ const CUSTOM_CARD_ACTIONS = new Set<CustomMessageCardAction["kind"]>([
 
 function asNumber(value: unknown): number | undefined {
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function maxDefined(current?: number, next?: number): number | undefined {
+    if (next === undefined) return current;
+    if (current === undefined) return next;
+    return Math.max(current, next);
+}
+
+function mergeUsageSnapshot(
+    current: SessionUsageSnapshot | undefined,
+    incoming: Partial<SessionUsageSnapshot>,
+): SessionUsageSnapshot {
+    const inputTokens = maxDefined(current?.inputTokens, incoming.inputTokens);
+    const outputTokens = maxDefined(current?.outputTokens, incoming.outputTokens);
+    const derivedTotalTokens = inputTokens !== undefined || outputTokens !== undefined
+        ? (inputTokens ?? 0) + (outputTokens ?? 0)
+        : undefined;
+    const totalTokens = maxDefined(maxDefined(current?.totalTokens, incoming.totalTokens), derivedTotalTokens);
+
+    return {
+        ...current,
+        provider: incoming.provider ?? current?.provider,
+        model: incoming.model ?? current?.model,
+        contextWindow: incoming.contextWindow ?? current?.contextWindow,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        estimatedCostUsd: maxDefined(current?.estimatedCostUsd, incoming.estimatedCostUsd),
+        compactionStatus: incoming.compactionStatus ?? current?.compactionStatus ?? "idle",
+        updatedAt: Date.now(),
+    };
+}
+
+function usageSnapshotFromRecord(
+    usage: Record<string, unknown>,
+    current?: SessionUsageSnapshot,
+    extra?: { provider?: string; model?: string; contextWindow?: number },
+): SessionUsageSnapshot {
+    const nestedCost = usage.cost && typeof usage.cost === "object" ? usage.cost as Record<string, unknown> : undefined;
+    const inputTokens = asNumber(usage.inputTokens ?? usage.promptTokens ?? usage.input_tokens ?? usage.input);
+    const outputTokens = asNumber(usage.outputTokens ?? usage.completionTokens ?? usage.output_tokens ?? usage.output);
+    const totalTokens = asNumber(usage.totalTokens ?? usage.total_tokens) ?? (
+        inputTokens !== undefined || outputTokens !== undefined
+            ? (inputTokens ?? 0) + (outputTokens ?? 0)
+            : undefined
+    );
+    return mergeUsageSnapshot(current, {
+        provider: typeof usage.provider === "string"
+            ? usage.provider
+            : extra?.provider,
+        model: typeof usage.model === "string"
+            ? usage.model
+            : extra?.model,
+        contextWindow: asNumber(usage.contextWindow ?? usage.context_window)
+            ?? extra?.contextWindow,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        estimatedCostUsd: asNumber(usage.estimatedCostUsd ?? usage.costUsd ?? usage.cost_usd ?? nestedCost?.total),
+    });
 }
 
 function sanitizeCustomCard(raw: unknown): CustomMessageCard {
@@ -157,25 +218,20 @@ function sanitizeCustomCard(raw: unknown): CustomMessageCard {
 function usageFromEvent(event: PiEvent, current?: SessionUsageSnapshot): SessionUsageSnapshot {
     const data = event as unknown as Record<string, unknown>;
     const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, unknown> : data;
-    const inputTokens = asNumber(usage.inputTokens ?? usage.promptTokens ?? usage.input_tokens);
-    const outputTokens = asNumber(usage.outputTokens ?? usage.completionTokens ?? usage.output_tokens);
-    const totalTokens = asNumber(usage.totalTokens ?? usage.total_tokens) ?? (
-        inputTokens !== undefined || outputTokens !== undefined
-            ? (inputTokens ?? 0) + (outputTokens ?? 0)
-            : undefined
-    );
-    return {
-        ...current,
-        provider: typeof usage.provider === "string" ? usage.provider : current?.provider,
-        model: typeof usage.model === "string" ? usage.model : current?.model,
-        contextWindow: asNumber(usage.contextWindow ?? usage.context_window) ?? current?.contextWindow,
-        inputTokens: inputTokens ?? current?.inputTokens,
-        outputTokens: outputTokens ?? current?.outputTokens,
-        totalTokens: totalTokens ?? current?.totalTokens,
-        estimatedCostUsd: asNumber(usage.estimatedCostUsd ?? usage.costUsd ?? usage.cost_usd) ?? current?.estimatedCostUsd,
-        compactionStatus: current?.compactionStatus ?? "idle",
-        updatedAt: Date.now(),
-    };
+    return usageSnapshotFromRecord(usage, current);
+}
+
+function usageFromAssistantMessage(message: unknown, current?: SessionUsageSnapshot): SessionUsageSnapshot | null {
+    if (!message || typeof message !== "object") return null;
+    const data = message as Record<string, unknown>;
+    if (data.role !== "assistant") return null;
+    const usage = data.usage && typeof data.usage === "object" ? data.usage as Record<string, unknown> : undefined;
+    if (!usage) return null;
+    return usageSnapshotFromRecord(usage, current, {
+        provider: typeof data.provider === "string" ? data.provider : undefined,
+        model: typeof data.model === "string" ? data.model : undefined,
+        contextWindow: asNumber(data.contextWindow ?? data.context_window),
+    });
 }
 
 function eventMessage(event: unknown, fallback: string): string {
@@ -208,6 +264,18 @@ function assistantTextFromMessageEnd(event: PiEvent): string {
     const data = message as Record<string, unknown>;
     if (data.role !== "assistant") return "";
     return textFromMessageContent(data.content);
+}
+
+const PLAN_COMPLETION_SENTINEL = "[PLAN_DONE]";
+
+function hasPlanCompletionSentinel(content: string): boolean {
+    return content.includes(PLAN_COMPLETION_SENTINEL);
+}
+
+function stripPlanCompletionSentinel(content: string): string {
+    return content
+        .replace(/\[PLAN_DONE\]\s*/g, "")
+        .trim();
 }
 
 function assistantErrorFromMessageEnd(event: PiEvent): string {
@@ -251,6 +319,23 @@ function describePermissionsForPrompt(sessionId: string | null, workspaceId: str
 
 function isExecutePlanCommand(content: string): boolean {
     return /^\/execute_plan(?:\s|$)/i.test(content.trimStart());
+}
+
+const EXECUTE_PLAN_IDLE_POLL_MS = 100;
+const EXECUTE_PLAN_IDLE_TIMEOUT_MS = 10_000;
+
+async function waitForAgentRuntimeIdle(agentId: string, timeoutMs = EXECUTE_PLAN_IDLE_TIMEOUT_MS): Promise<void> {
+    if (!window.piAPI?.agentsRuntimeState) return;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const runtime = await window.piAPI.agentsRuntimeState(agentId);
+        if (isIpcError(runtime)) return;
+        if (!runtime.isStreaming && runtime.status !== "running" && runtime.status !== "starting") {
+            return;
+        }
+        await new Promise<void>((resolve) => window.setTimeout(resolve, EXECUTE_PLAN_IDLE_POLL_MS));
+    }
+    throw new Error("上一轮仍未完成，暂时无法执行计划。");
 }
 
 export function usePiStream(agentId?: string | null): UsePiStreamReturn {
@@ -373,22 +458,52 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     useEffect(() => { agentIdRef.current = agentId ?? null; }, [agentId]);
     useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
 
+    const getPinnedSession = useCallback(() => {
+        const pinnedSessionId = sessionIdRef.current;
+        if (!pinnedSessionId) return null;
+        return useSessionStore.getState().sessions.find((session) => session.id === pinnedSessionId) ?? null;
+    }, []);
+
+    const getTargetSession = useCallback((targetAgentId?: string | null) => {
+        const pinnedSession = getPinnedSession();
+        if (pinnedSession) return pinnedSession;
+        const effectiveAgentId = targetAgentId ?? agentIdRef.current;
+        if (effectiveAgentId) {
+            const linkedSessionId = useAgentStore.getState().agents.find((agent) => agent.id === effectiveAgentId)?.sessionId;
+            if (!linkedSessionId) return null;
+            return useSessionStore.getState().sessions.find((session) => session.id === linkedSessionId) ?? null;
+        }
+        return useSessionStore.getState().getCurrentSession();
+    }, [getPinnedSession]);
+
     const updateCurrentUsage = useCallback((updates: Partial<SessionUsageSnapshot>) => {
-        const session = useSessionStore.getState().getCurrentSession();
+        const session = getTargetSession() ?? useSessionStore.getState().getCurrentSession();
         if (!session) return;
         useSessionStore.getState().updateSessionUsage(session.id, {
             ...(session.usage ?? { updatedAt: Date.now() }),
             ...updates,
             updatedAt: Date.now(),
         });
-    }, []);
+    }, [getTargetSession]);
+    const syncUsageFromAssistantMessage = useCallback((message: unknown) => {
+        const session = getTargetSession() ?? useSessionStore.getState().getCurrentSession();
+        if (!session) return;
+        const nextUsage = usageFromAssistantMessage(message, session.usage);
+        if (!nextUsage) return;
+        useSessionStore.getState().updateSessionUsage(session.id, nextUsage);
+    }, [getTargetSession]);
     const ensureAssistantMessage = useCallback(() => {
+        const linkedSession = getTargetSession();
+        if (linkedSession && !sessionIdRef.current) {
+            sessionIdRef.current = linkedSession.id;
+        }
         if (messageIdRef.current) return;
         const aid = agentIdRef.current;
+        if (!aid && !linkedSession) return;
+        const newId = `${aid ? "am" : "m"}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        messageIdRef.current = newId;
+        setStreamingMessageId(newId);
         if (aid) {
-            const newId = `am_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            messageIdRef.current = newId;
-            setStreamingMessageId(newId);
             useAgentStore.getState().appendStreamMessage(aid, {
                 id: newId,
                 agentId: aid,
@@ -396,22 +511,18 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 content: "",
                 createdAt: Date.now(),
             });
-            return;
         }
-        const session = useSessionStore.getState().getCurrentSession();
-        if (!session) return;
-        sessionIdRef.current = session.id;
-        const newId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        messageIdRef.current = newId;
-        setStreamingMessageId(newId);
-        // Persist empty assistant message (once on creation, low frequency)
-        addMessage(session.id, {
-            id: newId,
-            role: "assistant",
-            content: "",
-            timestamp: new Date(),
-        }, { persist: true });
-    }, [addMessage]);
+        if (linkedSession) {
+            sessionIdRef.current = linkedSession.id;
+            // Persist empty assistant message (once on creation, low frequency)
+            addMessage(linkedSession.id, {
+                id: newId,
+                role: "assistant",
+                content: "",
+                timestamp: new Date(),
+            }, { persist: true });
+        }
+    }, [addMessage, getTargetSession]);
 
     const appendAgentMessage = useCallback((agentId: string, role: "user" | "assistant", content: string) => {
         useAgentStore.getState().appendStreamMessage(agentId, {
@@ -513,6 +624,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
             case "message_update": {
                 const assistantEvent = getAssistantMessageEvent(event);
+                syncUsageFromAssistantMessage((event as { message?: unknown }).message);
                 if (!assistantEvent) break;
 
                 if (assistantEvent.type === "text_delta") {
@@ -525,7 +637,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
                             content: textRef.current,
                         });
-                    } else if (sessionIdRef.current && messageIdRef.current) {
+                    }
+                    if (sessionIdRef.current && messageIdRef.current) {
                         // In-memory update (for UI), persistence via debounce
                         updateMessage(sessionIdRef.current, messageIdRef.current, { content: textRef.current }, { persist: false });
                         if (!streamPersistRef.current ||
@@ -549,7 +662,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
                             thinking: thinkingRef.current,
                         });
-                    } else if (sessionIdRef.current && messageIdRef.current) {
+                    }
+                    if (sessionIdRef.current && messageIdRef.current) {
                         updateMessage(sessionIdRef.current, messageIdRef.current, { thinking: thinkingRef.current }, { persist: false });
                         if (!streamPersistRef.current ||
                             streamPersistRef.current.sessionId !== sessionIdRef.current ||
@@ -633,6 +747,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
 
             case "message_end": {
+                syncUsageFromAssistantMessage((event as { message?: unknown }).message);
                 const providerError = assistantErrorFromMessageEnd(event);
                 if (providerError) {
                     if (lastProviderErrorRef.current && isSdkAbortMessage(providerError)) {
@@ -644,20 +759,28 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 }
 
                 const finalText = assistantTextFromMessageEnd(event);
-                if (!finalText || finalText === textRef.current) break;
+                const planCompleted =
+                    usePlanStore.getState().activeExecution?.phase === "executing"
+                    && hasPlanCompletionSentinel(finalText);
+                const cleanedFinalText = stripPlanCompletionSentinel(finalText);
+                if (planCompleted) {
+                    usePlanStore.getState().markCompleted();
+                }
+                if (!cleanedFinalText || cleanedFinalText === textRef.current) break;
                 ensureAssistantMessage();
-                textRef.current = finalText;
-                setCurrentText(finalText);
+                textRef.current = cleanedFinalText;
+                setCurrentText(cleanedFinalText);
                 if (agentIdRef.current && messageIdRef.current) {
                     useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
-                        content: finalText,
+                        content: cleanedFinalText,
                     });
-                } else if (sessionIdRef.current && messageIdRef.current) {
-                    updateMessage(sessionIdRef.current, messageIdRef.current, { content: finalText }, { persist: false });
+                }
+                if (sessionIdRef.current && messageIdRef.current) {
+                    updateMessage(sessionIdRef.current, messageIdRef.current, { content: cleanedFinalText }, { persist: false });
                     streamPersistRef.current = {
                         sessionId: sessionIdRef.current,
                         messageId: messageIdRef.current,
-                        content: finalText,
+                        content: cleanedFinalText,
                     };
                     scheduleStreamPersist();
                 }
@@ -733,6 +856,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
 
             case "turn_end":
+                syncUsageFromAssistantMessage((event as { message?: unknown }).message);
                 // Force flush accumulated content/thinking/toolCalls
                 // 在 turn_end 这一刻把整个 assistant message 落盘一次
                 flushStreamPersist();
@@ -743,15 +867,11 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     messageIdRef.current = null;
                     sessionIdRef.current = null;
                 }
-                if (usePlanStore.getState().activeExecution?.phase === "executing") {
-                    usePlanStore.getState().markCompleted();
-                }
                 break;
 
             case "usage_update":
             case "context_update": {
-                if (agentIdRef.current) break;
-                const session = useSessionStore.getState().getCurrentSession();
+                const session = getTargetSession() ?? useSessionStore.getState().getCurrentSession();
                 if (session) {
                     useSessionStore.getState().updateSessionUsage(session.id, usageFromEvent(event, session.usage));
                 }
@@ -759,19 +879,25 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
 
             case "compaction_start":
-                if (agentIdRef.current) break;
                 updateCurrentUsage({ compactionStatus: "running" });
                 break;
 
             case "compaction_end":
-                if (agentIdRef.current) break;
                 updateCurrentUsage({ compactionStatus: "completed" });
                 break;
 
             case "custom_message": {
-                if (agentIdRef.current) break;
-                const session = useSessionStore.getState().getCurrentSession();
+                const session = getTargetSession();
                 if (!session) break;
+                const customType = typeof (event as unknown as { customType?: unknown }).customType === "string"
+                    ? (event as unknown as { customType: string }).customType
+                    : "";
+                if (customType === "plan-complete" && usePlanStore.getState().activeExecution?.phase === "executing") {
+                    usePlanStore.getState().markCompleted();
+                }
+                if (customType === "plan-pause" && usePlanStore.getState().activeExecution?.phase === "executing") {
+                    usePlanStore.getState().markPaused();
+                }
                 const card = sanitizeCustomCard((event as unknown as { card?: unknown; details?: unknown }).card ?? (event as unknown as { details?: unknown }).details ?? event);
                 addMessage(session.id, {
                     id: `cm_${card.id}`,
@@ -784,6 +910,15 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
 
             case "agent_end":
+                {
+                    const messages = (event as { messages?: unknown }).messages;
+                    const lastAssistantMessage = Array.isArray(messages)
+                        ? [...messages].reverse().find((message) => message && typeof message === "object" && (message as Record<string, unknown>).role === "assistant")
+                        : null;
+                    if (lastAssistantMessage) {
+                        syncUsageFromAssistantMessage(lastAssistantMessage);
+                    }
+                }
                 if (
                     !textRef.current &&
                     !thinkingRef.current &&
@@ -801,9 +936,6 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
                 sessionIdRef.current = null;
-                if (usePlanStore.getState().activeExecution?.phase === "executing") {
-                    usePlanStore.getState().markCompleted();
-                }
                 // Notify useTaskProgress: agent ended
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 // 声音和系统通知
@@ -828,7 +960,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
         }
-    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist, updateCurrentUsage, addMessage, pauseVisibleStreamingForPlanDecision]);
+    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist, syncUsageFromAssistantMessage, updateCurrentUsage, addMessage, getTargetSession]);
 
     useEffect(() => {
         handleEventRef.current = handleEvent;
@@ -854,15 +986,17 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         if (options.agentId) {
             agentIdRef.current = options.agentId;
         }
-        const session = aid ? null : getCurrentSession();
+        const session = aid ? getTargetSession(aid) : getCurrentSession();
         const selectedMode = useAgentModeStore.getState().getMode(workspaceId);
         const isFollowUpWhileStreaming = isStreamingRef.current || promptInFlightRef.current;
         const isSlashCommand = content.trimStart().startsWith("/");
         const visibleContent = options.visibleContent ?? content;
+        const shouldQueueAfterIdle = options.waitForAgentIdle || isExecutePlanCommand(content);
         if (isFollowUpWhileStreaming) {
             if (aid) {
                 appendAgentMessage(aid, "user", visibleContent);
-            } else if (session) {
+            }
+            if (session) {
                 addMessage(session.id, {
                     id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                     role: "user",
@@ -872,7 +1006,15 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
             try {
                 if (aid) {
-                    await window.piAPI.agentsPrompt({ agentId: aid, message: content, streamingBehavior: "followUp", mode: selectedMode });
+                    if (shouldQueueAfterIdle) {
+                        await waitForAgentRuntimeIdle(aid);
+                    }
+                    await window.piAPI.agentsPrompt({
+                        agentId: aid,
+                        message: content,
+                        streamingBehavior: "followUp",
+                        mode: selectedMode,
+                    });
                 } else {
                     const result = await window.piAPI.sendPrompt(workspaceId, content, { mode: selectedMode });
                     if (isIpcError(result)) {
@@ -893,7 +1035,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         thinkingRef.current = "";
         lastProviderErrorRef.current = null;
         messageIdRef.current = null;
-        sessionIdRef.current = null;
+        sessionIdRef.current = session?.id ?? null;
         streamPersistRef.current = null;
         toolCallsRef.current = new Map();
         setCurrentText("");
@@ -926,7 +1068,15 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 : describePermissionsForPrompt(sessionIdRef.current, workspaceId);
             const outbound = `${permissionPrefix}${content}`;
             if (aid) {
-                await window.piAPI.agentsPrompt({ agentId: aid, message: outbound, mode: selectedMode });
+                if (shouldQueueAfterIdle) {
+                    await waitForAgentRuntimeIdle(aid);
+                }
+                await window.piAPI.agentsPrompt({
+                    agentId: aid,
+                    message: outbound,
+                    mode: selectedMode,
+                    ...(shouldQueueAfterIdle ? { streamingBehavior: "followUp" as const } : {}),
+                });
             } else {
                 try {
                     const result = await window.piAPI.sendPrompt(workspaceId, outbound, { mode: selectedMode });
@@ -980,7 +1130,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             // Notify useTaskProgress: streaming error
             window.dispatchEvent(new CustomEvent("pi:stream-end"));
         }
-    }, [getCurrentSession, addMessage, appendAgentMessage]);
+    }, [getCurrentSession, addMessage, appendAgentMessage, getTargetSession]);
 
     const stopStreaming = useCallback((workspaceId: string) => {
         if (!window.piAPI) return;

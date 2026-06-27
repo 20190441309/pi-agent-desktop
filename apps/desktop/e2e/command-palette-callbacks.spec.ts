@@ -24,10 +24,12 @@ import { test, expect, _electron, type ElectronApplication, type Page } from '@p
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1' },
     });
@@ -348,7 +350,7 @@ test.describe('CommandPalette 3 callback (v1.0.16 fix)', () => {
         await palette.getByRole('option', { name: /palette-history-target-needle/ }).click();
         await expect(palette).toBeHidden({ timeout: 3000 });
 
-        await expect(page.getByText('palette-history-target-needle')).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('[data-search-target="true"]').filter({ hasText: 'palette-history-target-needle' }).first()).toBeVisible({ timeout: 10_000 });
         await expect(page.getByText('palette-history-current-visible-before-click')).toHaveCount(0);
     });
 });

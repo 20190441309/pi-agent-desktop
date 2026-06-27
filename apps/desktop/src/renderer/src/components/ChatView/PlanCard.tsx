@@ -124,21 +124,7 @@ function extractChoiceOptions(content: string): PlanChoiceOption[] | null {
   }
   if (options.length >= 2) return options;
 
-  // 模式2: - [ ] / * [ ] 开头的列表项（当成选项）
-  const listOptions: PlanChoiceOption[] = [];
-  for (const line of lines) {
-    const match = line.match(/^\s*(?:[-*])\s+(?:\[[ xX]\]\s*)?(.+)$/);
-    if (match) {
-      const text = match[1].trim();
-      // 排除普通计划步骤（含"修改/实现/新增/删除/运行/验证/测试/构建/修复/重构/更新/提交/检查"）
-      if (!/修改|实现|新增|删除|运行|验证|测试|构建|修复|重构|更新|提交|检查/.test(text)) {
-        listOptions.push({ label: String.fromCharCode(65 + listOptions.length) + ")", value: text });
-      }
-    }
-  }
-  if (listOptions.length >= 2) return listOptions;
-
-  // 模式3: 多个"是否"问句
+  // 模式2: 多个"是否"问句
   const questions = lines.filter((l) => /是否/.test(l) && /\?/.test(l));
   if (questions.length >= 2) {
     return questions.map((q, i) => ({

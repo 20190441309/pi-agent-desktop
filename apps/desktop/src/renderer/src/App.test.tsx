@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
 import React from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentTab, CreateAgentInput } from "@shared";
@@ -15,14 +17,12 @@ vi.mock("./components/MiniMaxCode", async () => {
             topBarSlot,
             rightCollapsed,
             rightFloatingOpen,
-            onCollapseRight,
         }: {
             leftSlot: React.ReactNode;
             centerSlot: React.ReactNode;
             topBarSlot?: React.ReactNode;
             rightCollapsed?: boolean;
             rightFloatingOpen?: boolean;
-            onCollapseRight?: () => void;
         }) => (
             <div
                 data-testid="layout-shell"
@@ -30,11 +30,6 @@ vi.mock("./components/MiniMaxCode", async () => {
                 data-right-floating-open={String(Boolean(rightFloatingOpen))}
             >
                 {topBarSlot}
-                {onCollapseRight ? (
-                    <button type="button" onClick={onCollapseRight}>
-                        {rightCollapsed ? "展开右侧栏" : "折叠右侧栏"}
-                    </button>
-                ) : null}
                 <aside>{leftSlot}</aside>
                 <main>{centerSlot}</main>
             </div>
@@ -43,11 +38,25 @@ vi.mock("./components/MiniMaxCode", async () => {
     };
 });
 
-vi.mock("./components/Settings/SettingsPanel", () => ({
-    SettingsPanel: () => null,
-}));
 vi.mock("./components/CommandPalette/CommandPalette", () => ({
-    CommandPalette: () => null,
+    CommandPalette: ({
+        isOpen,
+        onSelectHistory,
+        onRunCommand,
+    }: {
+        isOpen: boolean;
+        onSelectHistory?: (sessionId: string, messageId?: string) => void;
+        onRunCommand?: (cmdId: string) => boolean | void | Promise<boolean | void>;
+    }) => (isOpen ? (
+        <div data-testid="command-palette">
+            <button type="button" onClick={() => onSelectHistory?.("s_1", "m_palette_hit")}>
+                mock-palette-history-hit
+            </button>
+            <button type="button" onClick={() => void onRunCommand?.("open_settings")}>
+                mock-palette-open-settings
+            </button>
+        </div>
+    ) : null),
 }));
 vi.mock("./components/ShortcutsCheatsheet/ShortcutsCheatsheet", () => ({
     ShortcutsCheatsheet: () => null,
@@ -65,10 +74,58 @@ vi.mock("./components/PiStatusPanel/PiStatusPanel", () => ({
     PiStatusPanel: () => null,
 }));
 vi.mock("./components/Onboarding/Onboarding", () => ({
-    Onboarding: () => null,
+    Onboarding: ({ onComplete }: { onComplete?: () => void }) => (
+        <div data-testid="onboarding-modal">
+            <button type="button" onClick={onComplete}>
+                dismiss-onboarding
+            </button>
+        </div>
+    ),
 }));
 vi.mock("./components/ChatView/ChatView", () => ({
-    ChatView: () => <div>ChatView</div>,
+    ChatView: ({
+        focusMessageId,
+        rightRailCollapsed,
+        onToggleRightRail,
+    }: {
+        focusMessageId?: string | null;
+        rightRailCollapsed?: boolean;
+        onToggleRightRail?: () => void;
+    }) => (
+        <div data-testid="chat-view" data-focus-message-id={focusMessageId ?? ""}>
+            ChatView
+            <button type="button" onClick={onToggleRightRail}>
+                {rightRailCollapsed ? "展开右侧栏" : "收起右侧栏"}
+            </button>
+        </div>
+    ),
+}));
+vi.mock("./components/SearchHistory/SearchHistory", () => ({
+    SearchHistory: ({
+        isOpen,
+        onNavigate,
+    }: {
+        isOpen: boolean;
+        onNavigate: (sessionId: string, messageId: string) => void;
+    }) => (isOpen ? (
+        <button type="button" onClick={() => onNavigate("s_1", "m_hit")}>
+            mock-search-hit
+        </button>
+    ) : null),
+}));
+vi.mock("./components/SessionCenter/SessionCenter", () => ({
+    SessionCenter: ({
+        onOpenChat,
+    }: {
+        onOpenChat?: () => void;
+    }) => (
+        <div data-testid="session-center">
+            SessionCenter
+            <button type="button" onClick={onOpenChat}>
+                mock-session-center-open-chat
+            </button>
+        </div>
+    ),
 }));
 
 import App from "./App";
@@ -108,6 +165,7 @@ describe("App sidebar session navigation", () => {
             value: piAPI,
             configurable: true,
         });
+        window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
         window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
         window.localStorage.removeItem("pi-desktop-left-sidebar-width");
         Object.defineProperty(window, "innerWidth", {
@@ -126,6 +184,7 @@ describe("App sidebar session navigation", () => {
                 },
             ],
             currentWorkspaceId: "ws_1",
+            loaded: true,
         });
         useSessionStore.setState({
             sessions: [
@@ -139,6 +198,7 @@ describe("App sidebar session navigation", () => {
                 },
             ],
             currentSessionId: null,
+            sessionsLoading: false,
         });
         useAgentStore.setState({
             agents: [
@@ -205,6 +265,23 @@ describe("App sidebar session navigation", () => {
     });
 
     it("点击历史 session 只切换当前 session，不创建新的 Agent", async () => {
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_session",
+                    workspaceId: "ws_1",
+                    title: "Session 1 Agent",
+                    status: "idle",
+                    sessionId: "s_1",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_session",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
         render(<App />);
 
         fireEvent.click(screen.getByRole("button", { name: "Session 1" }));
@@ -213,6 +290,40 @@ describe("App sidebar session navigation", () => {
             expect(useSessionStore.getState().currentSessionId).toBe("s_1");
         });
         expect(piAPI.agentsCreate).not.toHaveBeenCalled();
+    });
+
+    it("当前 workspace 已有活动 session 且缺少绑定 agent 时，会补建 session-bound agent", async () => {
+        useSessionStore.setState({
+            sessions: [
+                {
+                    id: "s_1",
+                    title: "Session 1",
+                    workspaceId: "ws_1",
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                    messages: [],
+                },
+            ],
+            currentSessionId: "s_1",
+            sessionsLoading: false,
+        });
+        useAgentStore.setState({
+            agents: [],
+            currentAgentId: null,
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
+
+        render(<App />);
+
+        await waitFor(() => {
+            expect(piAPI.agentsCreate).toHaveBeenCalledWith({
+                workspaceId: "ws_1",
+                title: "Session 1 Agent",
+                sessionId: "s_1",
+            });
+        });
     });
 
     it("默认 Agent 创建请求未完成时不会重复创建", async () => {
@@ -233,6 +344,11 @@ describe("App sidebar session navigation", () => {
             messagesByAgent: {},
             runtimeByAgent: {},
             initialized: true,
+        });
+        useSessionStore.setState({
+            sessions: [],
+            currentSessionId: null,
+            sessionsLoading: false,
         });
 
         render(<App />);
@@ -324,6 +440,84 @@ describe("App sidebar session navigation", () => {
         dispatchSpy.mockRestore();
     });
 
+    it("history 路由进入真实 SessionCenter，而不是回退成搜索覆盖层", async () => {
+        render(<App />);
+
+        act(() => {
+            window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "history" } }));
+        });
+
+        expect(await screen.findByTestId("session-center")).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "mock-search-hit" })).toBeNull();
+    });
+
+    it("快速历史搜索仍保留消息定位信息并传给 ChatView", async () => {
+        render(<App />);
+
+        act(() => {
+            fireEvent.keyDown(window, { key: "F", ctrlKey: true, shiftKey: true });
+        });
+        fireEvent.click(await screen.findByRole("button", { name: "mock-search-hit" }));
+
+        await waitFor(() => {
+            expect(useSessionStore.getState().currentSessionId).toBe("s_1");
+        });
+        expect(screen.getByTestId("chat-view").getAttribute("data-focus-message-id")).toBe("m_hit");
+    });
+
+    it("命令面板历史结果会把 messageId 传给 ChatView 做精确定位", async () => {
+        render(<App />);
+
+        act(() => {
+            window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "search" } }));
+        });
+        fireEvent.click(await screen.findByRole("button", { name: "mock-palette-history-hit" }));
+
+        await waitFor(() => {
+            expect(useSessionStore.getState().currentSessionId).toBe("s_1");
+        });
+        expect(screen.getByTestId("chat-view").getAttribute("data-focus-message-id")).toBe("m_palette_hit");
+    });
+
+    it("工作区仍在异步恢复时不会误弹 onboarding", async () => {
+        useWorkspaceStore.setState({
+            workspaces: [],
+            currentWorkspaceId: null,
+            lastError: null,
+            loaded: false,
+        });
+        useSessionStore.setState({
+            sessions: [],
+            currentSessionId: null,
+            sessionsLoading: false,
+        });
+
+        render(<App />);
+
+        expect(screen.queryByTestId("onboarding-modal")).toBeNull();
+
+        act(() => {
+            useWorkspaceStore.setState({
+                workspaces: [
+                    {
+                        id: "ws_restored",
+                        name: "Restored Workspace",
+                        path: "C:/Ai/restored",
+                        createdAt: new Date(0),
+                        lastActiveAt: new Date(1),
+                    },
+                ],
+                currentWorkspaceId: "ws_restored",
+                lastError: null,
+                loaded: true,
+            });
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByTestId("onboarding-modal")).toBeNull();
+        });
+    });
+
     it("agent 对话收到首条消息时自动展开右栏", async () => {
         useSessionStore.setState((state) => ({
             sessions: state.sessions.map((session) => ({ ...session, messages: [] })),
@@ -387,5 +581,13 @@ describe("App sidebar session navigation", () => {
             expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("false");
             expect(screen.getByTestId("layout-shell").getAttribute("data-right-floating-open")).toBe("true");
         });
+    });
+
+    it("does not keep a forced gray chat background override in globals.css", () => {
+        const globalsCssPath = resolve(process.cwd(), "src/renderer/src/styles/globals.css");
+        const globalsCss = readFileSync(globalsCssPath, "utf8");
+
+        expect(globalsCss).not.toContain('[data-mm-window-kind="main"] [data-testid="chat-view-root"]');
+        expect(globalsCss).not.toContain('[data-theme="dark"] [data-testid="chat-view-root"]');
     });
 });

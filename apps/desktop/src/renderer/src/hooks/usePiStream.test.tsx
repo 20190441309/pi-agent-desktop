@@ -13,6 +13,7 @@ let emitPiEvent: ((event: PiEvent) => void) | null = null;
 const sendPrompt = vi.fn(async () => undefined);
 const stopPrompt = vi.fn<(_workspaceId: string) => Promise<unknown>>(async () => undefined);
 const agentsPrompt = vi.fn(async () => undefined);
+const agentsRuntimeState = vi.fn(async (agentId: string) => ({ agentId, status: "idle", isStreaming: false }));
 const planSetEnabled = vi.fn(async () => undefined);
 
 function HookHost(): null {
@@ -43,8 +44,20 @@ function AgentHookStateHost() {
             <button type="button" onClick={() => void state.startStreaming("ws1", "agent follow up")}>
                 send-agent-follow-up
             </button>
+            <button type="button" onClick={() => void state.startStreaming("ws1", "/execute_plan plan-probe.md", { visibleContent: "执行计划：plan-probe.md" })}>
+                send-agent-execute-plan
+            </button>
             <button type="button" onClick={() => void state.startStreaming("ws1", "你好?")}>
                 send-agent-plan-greeting
+            </button>
+            <button
+                type="button"
+                onClick={() => void state.startStreaming("ws1", "请直接执行下面这份计划，不要重新生成计划。", {
+                    visibleContent: "执行计划：plan-probe.md",
+                    waitForAgentIdle: true,
+                })}
+            >
+                send-agent-plan-execution-prompt
             </button>
         </div>
     );
@@ -88,6 +101,8 @@ beforeEach(() => {
     sendPrompt.mockClear();
     agentsPrompt.mockReset();
     agentsPrompt.mockResolvedValue(undefined);
+    agentsRuntimeState.mockReset();
+    agentsRuntimeState.mockResolvedValue({ agentId: "agent_1", status: "idle", isStreaming: false });
     planSetEnabled.mockClear();
     stopPrompt.mockReset();
     stopPrompt.mockResolvedValue(undefined);
@@ -121,6 +136,7 @@ beforeEach(() => {
             }),
             sendPrompt,
             agentsPrompt,
+            agentsRuntimeState,
             planSetEnabled,
             stop: stopPrompt,
             renameSession: vi.fn(async () => undefined),
@@ -549,6 +565,110 @@ describe("usePiStream", () => {
         });
     });
 
+    it("waits for the runtime to go idle before queueing execute-plan with follow-up behavior", async () => {
+        agentsRuntimeState
+            .mockResolvedValueOnce({ agentId: "agent_1", status: "running", isStreaming: true })
+            .mockResolvedValueOnce({ agentId: "agent_1", status: "idle", isStreaming: false });
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+        });
+
+        await act(async () => {
+            screen.getByText("send-agent-execute-plan").click();
+        });
+
+        for (let attempt = 0; attempt < 5 && agentsPrompt.mock.calls.length === 0; attempt += 1) {
+            await act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 20));
+            });
+        }
+
+        expect(agentsRuntimeState).toHaveBeenCalledWith("agent_1");
+        expect(agentsPrompt).toHaveBeenCalledWith({
+            agentId: "agent_1",
+            message: "/execute_plan plan-probe.md",
+            mode: "build",
+            streamingBehavior: "followUp",
+        });
+    });
+
+    it("still waits for runtime idle when plan decision UI has already paused visible streaming", async () => {
+        agentsRuntimeState
+            .mockResolvedValueOnce({ agentId: "agent_1", status: "running", isStreaming: true })
+            .mockResolvedValueOnce({ agentId: "agent_1", status: "idle", isStreaming: false });
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+        });
+
+        await act(async () => {
+            usePlanStore.setState({
+                activeCard: {
+                    id: "plan_1",
+                    title: "创建并验证 plan_probe.txt",
+                    content: "1. 创建文件\n2. 验证存在",
+                    filename: "plan-probe.md",
+                    createdAt: Date.now(),
+                },
+            });
+        });
+
+        await act(async () => {
+            screen.getByText("send-agent-execute-plan").click();
+        });
+
+        for (let attempt = 0; attempt < 5 && agentsPrompt.mock.calls.length === 0; attempt += 1) {
+            await act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 20));
+            });
+        }
+
+        expect(agentsRuntimeState).toHaveBeenCalledWith("agent_1");
+        expect(agentsPrompt).toHaveBeenCalledWith({
+            agentId: "agent_1",
+            message: "/execute_plan plan-probe.md",
+            mode: "build",
+            streamingBehavior: "followUp",
+        });
+    });
+
+    it("waits for runtime idle before queueing a plan execution prompt triggered from chat UI", async () => {
+        agentsRuntimeState
+            .mockResolvedValueOnce({ agentId: "agent_1", status: "running", isStreaming: true })
+            .mockResolvedValueOnce({ agentId: "agent_1", status: "idle", isStreaming: false });
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-agent-plan-execution-prompt").click();
+        });
+
+        for (let attempt = 0; attempt < 5 && agentsPrompt.mock.calls.length === 0; attempt += 1) {
+            await act(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 20));
+            });
+        }
+
+        expect(agentsRuntimeState).toHaveBeenCalledWith("agent_1");
+        expect(agentsPrompt).toHaveBeenCalledWith({
+            agentId: "agent_1",
+            message: "请直接执行下面这份计划，不要重新生成计划。",
+            mode: "build",
+            streamingBehavior: "followUp",
+        });
+    });
+
     it("adds an optimistic agent user message before the main-process echo arrives", async () => {
         await act(async () => {
             render(<AgentHookStateHost />);
@@ -573,7 +693,151 @@ describe("usePiStream", () => {
         });
     });
 
-    it("does not persist agent-scoped custom messages or usage into the current chat session", async () => {
+    it("mirrors session-bound agent assistant output into the linked chat session", async () => {
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Session Agent",
+                    status: "idle",
+                    sessionId: "s1",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_end",
+                message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "linked answer" }],
+                },
+            } as unknown as PiEvent);
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages).toHaveLength(1);
+        expect(session.messages[0]).toMatchObject({
+            role: "assistant",
+            content: "linked answer",
+        });
+    });
+
+    it("writes usage updates into the linked chat session for session-bound agents", async () => {
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Session Agent",
+                    status: "idle",
+                    sessionId: "s1",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "usage_update",
+                usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
+            } as PiEvent);
+        });
+
+        expect(useSessionStore.getState().sessions[0]?.usage).toMatchObject({
+            inputTokens: 10,
+            outputTokens: 2,
+            totalTokens: 12,
+        });
+    });
+
+    it("keeps writing usage updates to the active session turn even if the agent list briefly loses its session binding", async () => {
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Session Agent",
+                    status: "idle",
+                    sessionId: "s1",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "text_delta",
+                    delta: "linked answer",
+                },
+            } as PiEvent);
+        });
+
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Session Agent",
+                    status: "idle",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "usage_update",
+                usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
+            } as PiEvent);
+        });
+
+        expect(useSessionStore.getState().sessions[0]?.messages[0]).toMatchObject({
+            role: "assistant",
+            content: "linked answer",
+        });
+        expect(useSessionStore.getState().sessions[0]?.usage).toMatchObject({
+            inputTokens: 10,
+            outputTokens: 2,
+            totalTokens: 12,
+        });
+    });
+
+    it("keeps agent-scoped custom messages out of the chat session but still syncs usage", async () => {
         await act(async () => {
             render(<AgentHookStateHost />);
         });
@@ -597,7 +861,99 @@ describe("usePiStream", () => {
 
         const session = useSessionStore.getState().sessions[0];
         expect(session.messages).toEqual([]);
-        expect(session.usage).toBeUndefined();
+        expect(session.usage).toMatchObject({
+            inputTokens: 10,
+            outputTokens: 2,
+            totalTokens: 12,
+            compactionStatus: "completed",
+        });
+    });
+
+    it("syncs agent usage from assistant message payloads when providers do not emit usage_update events", async () => {
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "message_end",
+                message: {
+                    role: "assistant",
+                    provider: "longcat",
+                    model: "LongCat-2.0-Preview",
+                    usage: {
+                        input: 205,
+                        output: 18,
+                        totalTokens: 14559,
+                    },
+                },
+            } as PiEvent);
+        });
+
+        expect(useSessionStore.getState().sessions[0]?.usage).toMatchObject({
+            provider: "longcat",
+            model: "LongCat-2.0-Preview",
+            inputTokens: 205,
+            outputTokens: 18,
+            totalTokens: 14559,
+        });
+    });
+
+    it("does not let later zero-valued usage events wipe an already observed session usage snapshot", async () => {
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "message_end",
+                message: {
+                    role: "assistant",
+                    provider: "longcat",
+                    model: "LongCat-2.0-Preview",
+                    usage: {
+                        input: 205,
+                        output: 18,
+                        totalTokens: 14559,
+                    },
+                },
+            } as PiEvent);
+            emitPiEvent?.({
+                type: "usage_update",
+                usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 },
+            } as PiEvent);
+        });
+
+        expect(useSessionStore.getState().sessions[0]?.usage).toMatchObject({
+            provider: "longcat",
+            model: "LongCat-2.0-Preview",
+            inputTokens: 205,
+            outputTokens: 18,
+            totalTokens: 14559,
+        });
+    });
+
+    it("keeps the highest observed token totals when later agent events report a smaller snapshot", async () => {
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "usage_update",
+                usage: { inputTokens: 500, outputTokens: 100, totalTokens: 600 },
+            } as PiEvent);
+            emitPiEvent?.({
+                type: "context_update",
+                usage: { inputTokens: 120, outputTokens: 30, totalTokens: 150 },
+            } as PiEvent);
+        });
+
+        expect(useSessionStore.getState().sessions[0]?.usage).toMatchObject({
+            inputTokens: 500,
+            outputTokens: 100,
+            totalTokens: 600,
+        });
     });
 
     it("forwards agent plan-mode input without local clarification", async () => {
@@ -909,5 +1265,66 @@ describe("usePiStream", () => {
             input: { path: "README.md" },
             status: "completed",
         });
+    });
+
+    it("does not auto-complete a plan merely because agent_end arrived", async () => {
+        usePlanStore.setState({
+            activeExecution: {
+                activePlanId: "plan_1",
+                title: "执行计划",
+                phase: "executing",
+            },
+            steps: [
+                { id: "s1", text: "写入文件", status: "pending" },
+            ],
+            status: "executing",
+        });
+
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_end", messages: [] } as PiEvent);
+        });
+
+        expect(usePlanStore.getState().activeExecution?.phase).toBe("executing");
+    });
+
+    it("completes an executing plan only after the assistant emits the explicit completion sentinel", async () => {
+        usePlanStore.setState({
+            activeExecution: {
+                activePlanId: "plan_2",
+                title: "执行计划",
+                phase: "executing",
+            },
+            steps: [
+                { id: "s1", text: "创建文件", status: "pending" },
+                { id: "s2", text: "验证结果", status: "pending" },
+            ],
+            status: "executing",
+        });
+
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_end",
+                message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "[PLAN_DONE]\n\n全部完成。"}],
+                },
+            } as PiEvent);
+        });
+
+        expect(usePlanStore.getState().activeExecution?.phase).toBe("completed");
+        expect(usePlanStore.getState().status).toBe("completed");
+        expect(usePlanStore.getState().steps).toEqual([
+            { id: "s1", text: "创建文件", status: "completed" },
+            { id: "s2", text: "验证结果", status: "completed" },
+        ]);
     });
 });

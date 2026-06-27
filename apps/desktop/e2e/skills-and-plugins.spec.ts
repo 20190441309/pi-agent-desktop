@@ -9,11 +9,13 @@
  */
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 const TEST_TIMEOUT = 60_000;
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
@@ -108,7 +110,7 @@ test.describe('Pi Desktop — Skills & Plugins', () => {
         const userDataDir = test.info().outputPath(`skills-${Date.now()}`);
         const { app, page } = await launchApp(userDataDir);
 
-        await page.getByRole('tab', { name: '技能' }).click();
+        await page.getByRole('tab', { name: '工具' }).click();
 
         // Verify skills region is visible
         await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
@@ -149,7 +151,7 @@ test.describe('Pi Desktop — Skills & Plugins', () => {
         const { app, page } = await launchApp(userDataDir);
         await installPiPackagesIpcStubs(app);
 
-        await page.getByRole('tab', { name: '技能' }).click();
+        await page.getByRole('tab', { name: '工具' }).click();
         await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
 
         await expect(page.getByRole('button', { name: '安装 audit-pkg' })).toBeVisible({ timeout: 5000 });

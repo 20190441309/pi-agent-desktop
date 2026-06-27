@@ -1,6 +1,7 @@
 import { test, expect, _electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 async function installTestIpc(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ ipcMain }) => {
@@ -90,6 +91,7 @@ test.describe('Plan Mode Smoke Test', () => {
   test('plan mode sends project exploration directly as one /plan prompt', async () => {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}`);
     app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
       args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
       env: { ...process.env, CI: '1' },
     });

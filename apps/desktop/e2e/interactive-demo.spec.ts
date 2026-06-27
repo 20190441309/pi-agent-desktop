@@ -5,12 +5,14 @@
  */
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { join } from 'path';
 import { mkdirSync } from 'fs';
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
@@ -95,7 +97,7 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         console.log('[AUTO] Clicked "Git"');
 
         // ===== Step 6: Click "设置" (Settings) — opens window =====
-        const settingsBtn = page.getByRole('button', { name: '打开设置窗口' });
+        const settingsBtn = page.getByRole('tab', { name: '设置' });
         await expect(settingsBtn).toBeVisible({ timeout: 5000 });
         const settingsWindowPromise = app.waitForEvent('window');
         await settingsBtn.click();

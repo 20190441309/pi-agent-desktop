@@ -1,5 +1,7 @@
 import { ipcMain, dialog, type BrowserWindow } from 'electron';
 import { randomUUID } from 'crypto';
+import { existsSync, mkdirSync } from 'fs';
+import { isAbsolute, relative, resolve, join } from 'path';
 import log from 'electron-log/main';
 import { ipcError } from '@shared';
 import { workspaceCreateSchema } from './schemas';
@@ -58,9 +60,69 @@ export function setupWorkspaceIpc(opts: {
       lastActiveAt: Date.now()
     };
     const workspaces = store.get('workspaces');
-    workspaces.push(workspace);
-    store.set('workspaces', workspaces);
+    store.set('workspaces', [...workspaces, workspace]);
     return workspace;
+  });
+
+  ipcMain.handle('workspace:create-empty', async (_, name: string, parentPath: string) => {
+    try {
+      workspaceCreateSchema.parse([name, parentPath]);
+    } catch (err) {
+      log.warn("[workspace.ipc] workspace:create-empty invalid args:", err);
+      return ipcError(
+        "ipcErrors.workspace.invalidArgs",
+        `空白工作区参数无效: ${err instanceof Error ? err.message : String(err)}`,
+        { name, path: parentPath },
+      );
+    }
+
+    const trimmedName = name.trim();
+    if (!trimmedName || trimmedName === "." || trimmedName === ".." || /[\\/]/.test(trimmedName)) {
+      return ipcError(
+        "ipcErrors.workspace.invalidArgs",
+        `项目名无效: ${name}`,
+        { name, path: parentPath },
+      );
+    }
+
+    try {
+      const resolvedParent = resolve(parentPath);
+      const workspacePath = resolve(join(resolvedParent, trimmedName));
+      const relativePath = relative(resolvedParent, workspacePath);
+      if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) {
+        return ipcError(
+          "ipcErrors.workspace.invalidArgs",
+          `项目路径超出父目录: ${workspacePath}`,
+          { name: trimmedName, path: parentPath },
+        );
+      }
+      if (existsSync(workspacePath)) {
+        return ipcError(
+          "ipcErrors.workspace.createFailed",
+          `项目目录已存在: ${workspacePath}`,
+          { name: trimmedName, path: workspacePath },
+        );
+      }
+
+      mkdirSync(workspacePath, { recursive: false });
+      const workspace = {
+        id: randomUUID(),
+        name: trimmedName,
+        path: workspacePath,
+        createdAt: Date.now(),
+        lastActiveAt: Date.now(),
+      };
+      const workspaces = store.get('workspaces');
+      store.set('workspaces', [...workspaces, workspace]);
+      return workspace;
+    } catch (err) {
+      log.error("[workspace.ipc] workspace:create-empty failed:", err);
+      return ipcError(
+        "ipcErrors.workspace.createFailed",
+        `创建空白工作区失败: ${err instanceof Error ? err.message : String(err)}`,
+        { name: trimmedName, path: parentPath },
+      );
+    }
   });
 
   ipcMain.handle('workspace:delete', async (_, id: string) => {

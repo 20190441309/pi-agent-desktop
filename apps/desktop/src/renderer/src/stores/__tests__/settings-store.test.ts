@@ -1,5 +1,5 @@
 // settings-store 测试 (v1.0.9)
-// 覆盖: 初始状态 / open/close / updateSettings 走 IpcError 路径 / resetSettings / clearWriteError
+// 覆盖: 初始状态 / updateSettings 走 IpcError 路径 / resetSettings / clearWriteError
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ipcError } from "@shared";
@@ -71,36 +71,12 @@ describe("settings-store: 初始状态", () => {
                 temperature: 0.7, maxTokens: 4096, autoSave: true,
                 showLineNumbers: true, wordWrap: true,
             },
-            isOpen: false,
             piModels: null,
             lastWriteError: null,
         });
         const s = useSettingsStore.getState();
-        expect(s.isOpen).toBe(false);
         expect(s.settings.theme).toBe("light");
         expect(s.lastWriteError).toBeNull();
-    });
-});
-
-describe("settings-store: open / close / toggle", () => {
-    it("openSettings → isOpen=true", () => {
-        useSettingsStore.setState({ isOpen: false });
-        useSettingsStore.getState().openSettings();
-        expect(useSettingsStore.getState().isOpen).toBe(true);
-    });
-
-    it("closeSettings → isOpen=false", () => {
-        useSettingsStore.setState({ isOpen: true });
-        useSettingsStore.getState().closeSettings();
-        expect(useSettingsStore.getState().isOpen).toBe(false);
-    });
-
-    it("toggleSettings 翻 isOpen", () => {
-        useSettingsStore.setState({ isOpen: false });
-        useSettingsStore.getState().toggleSettings();
-        expect(useSettingsStore.getState().isOpen).toBe(true);
-        useSettingsStore.getState().toggleSettings();
-        expect(useSettingsStore.getState().isOpen).toBe(false);
     });
 });
 
@@ -199,6 +175,28 @@ describe("settings-store: updateSettings 走 IPC 错误路径", () => {
 
         expect(mockApi.setSettings).toHaveBeenCalledTimes(1);
         expect(mockApi.setSettings).toHaveBeenCalledWith({ fontSize: 16, wordWrap: false });
+    });
+
+    it("支持在窗口关闭前主动 flush 未落盘设置", async () => {
+        vi.useFakeTimers();
+        mockApi.setSettings.mockResolvedValue({});
+        useSettingsStore.setState({
+            settings: {
+                theme: "light", fontSize: 14, model: "", provider: "",
+                temperature: 0.7, maxTokens: 4096, autoSave: true,
+                showLineNumbers: true, wordWrap: true,
+            },
+            lastWriteError: null,
+        });
+
+        useSettingsStore.getState().updateSettings({ fontSize: 17 });
+        expect(mockApi.setSettings).not.toHaveBeenCalled();
+
+        await useSettingsStore.getState().flushPendingSettingsWrite();
+
+        expect(mockApi.setSettings).toHaveBeenCalledTimes(1);
+        expect(mockApi.setSettings).toHaveBeenCalledWith({ fontSize: 17 });
+        expect(useSettingsStore.getState().lastWriteError).toBeNull();
     });
 
     it("切换模型时同步写入 Pi 默认模型", async () => {

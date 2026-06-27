@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { useI18n } from "../../i18n";
 import { isIpcError } from "@shared";
@@ -50,6 +51,7 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
     const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
     const setCurrentWorkspace = useWorkspaceStore((s) => s.setCurrentWorkspace);
     const createWorkspace = useWorkspaceStore((s) => s.createWorkspace);
+    const createEmptyWorkspace = useWorkspaceStore((s) => s.createEmptyWorkspace);
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
     const [error, setError] = useState<string | null>(null);
@@ -75,8 +77,12 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
         );
     }, [query, workspaces]);
 
+    const clearCurrentSessionSelection = (): void => {
+        useSessionStore.setState({ currentSessionId: null });
+    };
+
     const triggerClass = variant === "strip"
-        ? "flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-transparent px-1.5 text-[12px] text-[var(--mm-text-secondary)] transition-colors hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+        ? "flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-transparent px-1.5 text-[12px] leading-none text-[var(--mm-text-secondary)] transition-colors hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
         : variant === "inline"
           ? "flex min-h-6 max-w-full items-center gap-1.5 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-[11px] text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           : "flex h-[24px] items-center gap-1 rounded-[4px] px-1.5 text-[11px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]";
@@ -87,6 +93,9 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
         if (!workspace) return;
         setError(null);
         setCurrentWorkspace(workspace.id);
+        if (workspace.id !== currentWorkspaceId) {
+            clearCurrentSessionSelection();
+        }
         setOpen(false);
         try {
             const result = await window.piAPI?.selectWorkspace?.(workspace.path);
@@ -107,6 +116,29 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
             }
             const workspace = await createWorkspace(basename(selected), selected);
             if (!workspace) return;
+            clearCurrentSessionSelection();
+            setOpen(false);
+            const result = await window.piAPI?.selectWorkspace?.(workspace.path);
+            if (isIpcError(result)) setError(result.fallback);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err));
+        }
+    };
+
+    const addBlankWorkspace = async (): Promise<void> => {
+        setError(null);
+        const name = window.prompt("请输入新项目名称", "NewProject")?.trim();
+        if (!name) return;
+        try {
+            const parentPath = await window.piAPI?.selectDirectory?.();
+            if (!parentPath) return;
+            if (isIpcError(parentPath)) {
+                setError(parentPath.fallback);
+                return;
+            }
+            const workspace = await createEmptyWorkspace(name, parentPath);
+            if (!workspace) return;
+            clearCurrentSessionSelection();
             setOpen(false);
             const result = await window.piAPI?.selectWorkspace?.(workspace.path);
             if (isIpcError(result)) setError(result.fallback);
@@ -180,7 +212,7 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
                         <button
                             type="button"
                             role="menuitem"
-                            onClick={() => void addExistingFolder()}
+                            onClick={() => void addBlankWorkspace()}
                             className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
                         >
                             <IconPlus />

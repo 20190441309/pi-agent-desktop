@@ -96,6 +96,7 @@ const piAPI: PiAPI = {
     // Workspace
     listWorkspaces: () => ipcRenderer.invoke("workspace:list") as Promise<Workspace[] | IpcError>,
     createWorkspace: (name, path) => ipcRenderer.invoke("workspace:create", name, path) as Promise<Workspace | IpcError>,
+    createEmptyWorkspace: (name, parentPath) => ipcRenderer.invoke("workspace:create-empty", name, parentPath) as Promise<Workspace | IpcError>,
     deleteWorkspace: (id) => ipcRenderer.invoke("workspace:delete", id),
     selectWorkspace: (path) => ipcRenderer.invoke("workspace:select", path) as Promise<void | IpcError>,
     selectDirectory: () => ipcRenderer.invoke("workspace:select-directory") as Promise<string | null | IpcError>,

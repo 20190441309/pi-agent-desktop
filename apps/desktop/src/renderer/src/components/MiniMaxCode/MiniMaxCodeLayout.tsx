@@ -45,6 +45,12 @@ export interface MiniMaxCodeLayoutProps {
     leftWidth?: number;
     /** 右栏是否以工作区浮窗形式显示 */
     rightFloatingOpen?: boolean;
+    /** 右侧浮层距顶部的安全边距 */
+    rightFloatingTopOffset?: string;
+    /** 右侧浮层距底部输入区的安全边距 */
+    rightFloatingBottomOffset?: string;
+    /** 是否渲染右侧浮层外层 chrome */
+    rightFloatingChrome?: boolean;
     /** 折叠左栏回调 */
     onCollapseLeft?: () => void;
     /** 折叠右栏回调 */
@@ -66,6 +72,8 @@ const SidebarToggleIcon: React.FC<{ side: "left" | "right"; collapsed: boolean }
     </svg>
 );
 
+const FLOATING_TOGGLE_CLASSNAME = "absolute top-[calc((42px-1.75rem)/2)] z-[80] flex h-7 w-7 items-center justify-center rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-main)] text-[var(--mm-text-tertiary)] shadow-[0_2px_8px_rgba(15,23,42,0.08)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]";
+
 const FloatingToggleButton: React.FC<{
     side: "left" | "right";
     collapsed: boolean;
@@ -82,7 +90,7 @@ const FloatingToggleButton: React.FC<{
             onClick={onClick}
             aria-label={label}
             title={label}
-            className={`absolute top-4 z-[80] flex h-8 w-8 items-center justify-center rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-main)] text-[var(--mm-text-tertiary)] shadow-[0_2px_8px_rgba(15,23,42,0.08)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${sideClass}`}
+            className={`${FLOATING_TOGGLE_CLASSNAME} ${sideClass}`}
         >
             <SidebarToggleIcon side={side} collapsed={collapsed} />
         </button>
@@ -102,6 +110,9 @@ export function MiniMaxCodeLayout({
     rightCollapsed = false,
     leftWidth = DEFAULT_LEFT_WIDTH,
     rightFloatingOpen = false,
+    rightFloatingTopOffset = "12px",
+    rightFloatingBottomOffset = "12px",
+    rightFloatingChrome = true,
     onCollapseLeft,
     onCollapseRight,
     onLeftWidthChange,
@@ -247,11 +258,16 @@ export function MiniMaxCodeLayout({
 
                     {showRightFloating ? (
                         <aside
-                            className="absolute bottom-3 right-3 top-3 z-[60] flex w-[var(--mm-width-sidebar-right)] flex-col overflow-hidden rounded-[8px] border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_18px_48px_rgba(15,23,42,0.13)]"
+                            className={`absolute right-3 z-[60] flex w-[var(--mm-width-sidebar-right)] flex-col ${
+                                rightFloatingChrome
+                                    ? "overflow-hidden rounded-[8px] border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_18px_48px_rgba(15,23,42,0.13)]"
+                                    : "pointer-events-none overflow-visible"
+                            }`}
+                            style={{ top: rightFloatingTopOffset, bottom: rightFloatingBottomOffset }}
                             data-mmcode-region="right-floating"
                             aria-label="context panel"
                         >
-                            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+                            <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto ${rightFloatingChrome ? "" : "pointer-events-auto"}`}>
                                 {rightSlot}
                             </div>
                         </aside>

@@ -1,8 +1,10 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
@@ -116,7 +118,7 @@ test.describe("Pi Desktop — session history navigation", () => {
 
         ({ app, page } = await launchApp(userDataDir));
 
-        await page.getByRole("tab", { name: "历史" }).click();
+        await page.keyboard.press("Control+Shift+F");
         const search = page.getByRole("textbox", { name: "搜索对话历史" });
         await expect(search).toBeVisible({ timeout: 5_000 });
         await search.fill("search-floating-needle");

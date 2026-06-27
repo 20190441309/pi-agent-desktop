@@ -1,11 +1,11 @@
 // E2E smoke: 全面 runtime test v1.0.16 Pi Desktop 的各个功能。
 //
 // 覆盖矩阵:
-//   - 顶部导航路由 (对话/技能/Git/历史/设置窗口)
+//   - 顶部导航路由 (对话/任务/记忆/工具/设置) + 右栏 Files/Git 可见入口
 //   - ChatView 新对话页 + ChatInput 渲染
 //   - 插件面板 3 个真接通按钮 (GitHub 导入/编写技能/搜索)
 //   - Settings 独立窗口接通 + 10 个 tabs
-//   - CommandPalette 接通 (Ctrl+K 快捷键)
+//   - CommandPalette 接通 (Ctrl+K 快捷键) + 历史 / Sessions 路由
 //   - ApprovalPanel 渲染 + 自动审批 toggle
 //   - ChatInput reference-frame 控件 (附件/Agent 模式/模型/思考强度)
 //
@@ -13,10 +13,12 @@
 
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
@@ -38,6 +40,13 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     return { app, page };
 }
 
+async function expandRightRailIfNeeded(page: Page): Promise<void> {
+    const expandRightRail = page.getByRole('button', { name: '展开右侧栏' });
+    if (await expandRightRail.isVisible().catch(() => false)) {
+        await expandRightRail.click();
+    }
+}
+
 test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
     let app: ElectronApplication;
     let page: Page;
@@ -46,35 +55,45 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         try { await app?.close(); } catch { /* ignore */ }
     });
 
-    test('1. 顶部导航主路由 (对话/技能/Git/历史/设置窗口)', async () => {
+    test('1. 顶部导航主路由 + 可见 Files/Git 入口 (对话/任务/记忆/工具/设置)', async () => {
         ({ app, page } = await launchApp());
 
         await expect(page.getByRole('tablist', { name: '顶部标签栏' })).toBeVisible();
         await expect(page.getByRole('tab', { name: '对话' })).toBeVisible();
-        await expect(page.getByRole('tab', { name: '技能' })).toBeVisible();
-        await expect(page.getByRole('tab', { name: 'Git' })).toBeVisible();
-        await expect(page.getByRole('tab', { name: '历史' })).toBeVisible();
-        await expect(page.getByRole('button', { name: '打开设置窗口' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: '任务' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: '记忆' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: '工具' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: '设置' })).toBeVisible();
         await expect(page.locator('button[data-mmcode-section="new-task"]')).toBeVisible();
 
         // 导航已移到顶部，左栏只保留会话列表。
         await expect(page.locator('nav[aria-label="会话列表"]')).toBeVisible();
 
-        await page.getByRole('tab', { name: '技能' }).click();
+        await page.getByRole('tab', { name: '任务' }).click();
+        await expect(page.getByText('任务总览')).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('tab', { name: '任务' })).toHaveAttribute('aria-selected', 'true');
+
+        await page.getByRole('tab', { name: '记忆' }).click();
+        await expect(page.getByRole('heading', { name: '记忆' })).toBeVisible({ timeout: 5000 });
+        await expect(page.getByPlaceholder('搜索记忆...')).toBeVisible();
+        await expect(page.getByRole('tab', { name: '记忆' })).toHaveAttribute('aria-selected', 'true');
+
+        await page.getByRole('tab', { name: '工具' }).click();
         await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
-        await expect(page.getByRole('tab', { name: '技能' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('tab', { name: '工具' })).toHaveAttribute('aria-selected', 'true');
 
-        await page.getByRole('tab', { name: 'Git' }).click();
+        await page.locator('button[data-mmcode-section="new-task"]').click();
+        await expandRightRailIfNeeded(page);
+        await page.getByRole('button', { name: '浏览全部文件' }).click();
+        await expect(page.getByRole('region', { name: '文件工作区' })).toBeVisible({ timeout: 5000 });
+
+        await page.getByRole('tab', { name: '对话' }).click();
+        await expandRightRailIfNeeded(page);
+        await page.getByRole('button', { name: /提交或推送/ }).click();
         await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 5000 });
-        await expect(page.getByRole('tab', { name: 'Git' })).toHaveAttribute('aria-selected', 'true');
-
-        await page.getByRole('tab', { name: '历史' }).click();
-        await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeVisible({ timeout: 5000 });
-        await page.getByRole('button', { name: '关闭搜索' }).click();
-        await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeHidden({ timeout: 3000 });
 
         const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('button', { name: '打开设置窗口' }).click();
+        await page.getByRole('tab', { name: '设置' }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState('domcontentloaded');
         await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible({ timeout: 5000 });
@@ -109,7 +128,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         ({ app, page } = await launchApp());
 
         // 切到插件面板
-        await page.getByRole('tab', { name: '技能' }).click();
+        await page.getByRole('tab', { name: '工具' }).click();
         await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
 
         // (1) "+ 创建" dropdown 按钮接通
@@ -147,7 +166,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         ({ app, page } = await launchApp());
 
         const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('button', { name: '打开设置窗口' }).click();
+        await page.getByRole('tab', { name: '设置' }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState('domcontentloaded');
 
@@ -178,7 +197,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await settingsClosed;
     });
 
-    test('5. CommandPalette 接通 — Ctrl+K 快捷键', async () => {
+    test('5. CommandPalette 接通 — Ctrl+K 快捷键 + 历史 / Sessions 路由', async () => {
         ({ app, page } = await launchApp());
 
         // 默认未开
@@ -200,7 +219,20 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         const placeholder = await search.getAttribute('placeholder');
         expect(placeholder).toBeTruthy();
 
+        await page.getByRole('tab', { name: '历史' }).click();
+        await expect(search).toHaveAttribute('placeholder', '搜索历史...');
+
+        await page.getByRole('tab', { name: '命令' }).click();
+        await expect(await palette.getByRole('button', { name: '打开文件' }).count()).toBeGreaterThan(0);
+        await expect(palette.getByRole('button', { name: '打开 Sessions' })).toBeVisible();
+        await palette.getByRole('button', { name: '打开 Sessions' }).click();
+        await expect(palette).toBeHidden({ timeout: 3000 });
+        await expect(page.getByRole('heading', { name: '会话中心' })).toBeVisible({ timeout: 5000 });
+
         // Escape 关闭 (App.tsx 调 setPaletteOpen(false))
+        await page.getByRole('tab', { name: '对话' }).click();
+        await page.keyboard.press('Control+k');
+        await expect(palette).toBeVisible({ timeout: 3000 });
         await page.keyboard.press('Escape');
         await expect(palette).toBeHidden({ timeout: 3000 });
     });

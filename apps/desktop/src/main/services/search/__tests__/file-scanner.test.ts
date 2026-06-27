@@ -27,6 +27,18 @@ describe("scanFiles (async)", () => {
         expect(files.some((f) => f.includes(".git"))).toBe(false);
     });
 
+    it("keeps dotfiles and hidden config directories that are not explicitly ignored", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "scan-"));
+        mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+        writeFileSync(join(dir, ".gitignore"), "");
+        writeFileSync(join(dir, ".github", "workflows", "ci.yml"), "");
+
+        const files = await scanFiles(dir);
+
+        expect(files).toContain(".gitignore");
+        expect(files).toContain(".github/workflows/ci.yml");
+    });
+
     it("respects maxDepth", async () => {
         const dir = mkdtempSync(join(tmpdir(), "scan-"));
         mkdirSync(join(dir, "a", "b", "c"), { recursive: true });
@@ -55,5 +67,17 @@ describe("scanFilesSync", () => {
         const files = scanFilesSync(dir, { recursive: false });
         expect(files).toContain("a.ts");
         expect(files).toContain("b.ts");
+    });
+
+    it("keeps dotfiles and hidden config directories that are not explicitly ignored", () => {
+        const dir = mkdtempSync(join(tmpdir(), "scan-sync-"));
+        mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+        writeFileSync(join(dir, ".gitignore"), "");
+        writeFileSync(join(dir, ".github", "workflows", "ci.yml"), "");
+
+        const files = scanFilesSync(dir);
+
+        expect(files).toContain(".gitignore");
+        expect(files).toContain(".github/workflows/ci.yml");
     });
 });

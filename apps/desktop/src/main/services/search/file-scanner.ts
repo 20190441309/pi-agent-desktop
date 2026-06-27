@@ -40,7 +40,6 @@ export async function scanFiles(root: string, opts: ScanOpts = {}): Promise<stri
         for (const entry of entries) {
             if (results.length >= maxResults) return;
             if (IGNORED_FILES.has(entry)) continue;
-            if (entry.startsWith(".") && entry !== ".well-known") continue;
 
             const fullPath = join(dir, entry);
             let isDir: boolean;
@@ -85,7 +84,6 @@ export function scanFilesSync(root: string, opts: ScanOpts = {}): string[] {
         for (const entry of entries) {
             if (results.length >= maxResults) return;
             if (IGNORED_FILES.has(entry)) continue;
-            if (entry.startsWith(".") && entry !== ".well-known") continue;
 
             const fullPath = join(dir, entry);
             let isDir: boolean;

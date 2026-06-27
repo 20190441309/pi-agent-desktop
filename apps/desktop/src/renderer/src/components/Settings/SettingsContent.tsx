@@ -1,4 +1,4 @@
-// 设置内容 — 提取自 SettingsPanel, 可在独立窗口和模态中共用.
+// 设置内容 — 当前由独立设置窗口复用。
 // 不含模态 chrome (backdrop / dialog / close 按钮). 仅做 tab 路由 + 外壳.
 
 import React, { useEffect, useState } from 'react';

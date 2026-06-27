@@ -17,6 +17,7 @@
  */
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 interface A11yViolation {
     rule: string;
@@ -128,6 +129,7 @@ test.describe('Pi Desktop a11y', () => {
     test('command palette page: 0 critical a11y violations', async () => {
         const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: process.env.CI ?? '1', ELECTRON_RENDERER_URL: '' },
         });
@@ -174,6 +176,7 @@ test.describe('Pi Desktop a11y', () => {
     test('main chat page: 0 critical a11y violations (without palette open)', async () => {
         const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: process.env.CI ?? '1', ELECTRON_RENDERER_URL: '' },
         });

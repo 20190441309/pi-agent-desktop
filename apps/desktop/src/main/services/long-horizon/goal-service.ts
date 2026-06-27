@@ -116,15 +116,16 @@ export class GoalService {
             goal.status === "satisfied" ? "completed"
                 : goal.status === "impossible" ? "blocked"
                     : "running";
+        const taskId = `goal:${goal.id}`;
         this.taskService?.setSourceTasks(goal.workspaceId, goal.agentId, "goal", [
-            { id: "T1", text: goal.condition, status: taskStatus },
+            { id: taskId, text: goal.condition, status: taskStatus },
         ]);
         this.send("plan:progress", goal.workspaceId, {
             workspaceId: goal.workspaceId,
             status: goal.status === "satisfied" ? "completed" : "executing",
             items: [
                 {
-                    id: "T1",
+                    id: taskId,
                     text: goal.condition,
                     status: taskStatus,
                 },

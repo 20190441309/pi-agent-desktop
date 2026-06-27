@@ -3,12 +3,15 @@
  */
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { join } from 'path';
 
 const TEST_TIMEOUT = 60_000;
+const ACCEPTANCE_DIR = join(__dirname, '..', '..', '..', 'docs', 'compose', 'acceptance');
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
@@ -140,7 +143,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         const { app, page } = await launchApp(userDataDir);
 
         const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('button', { name: '打开设置窗口' }).click();
+        await page.getByRole('tab', { name: '设置' }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState('domcontentloaded');
 
@@ -192,7 +195,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         await expect.poll(async () => (await windowState(app, 'index.html')).isMinimized).toBe(false);
 
         const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('button', { name: '打开设置窗口' }).click();
+        await page.getByRole('tab', { name: '设置' }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState('domcontentloaded');
         await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible();
@@ -246,9 +249,35 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
 
         await network.click();
         await expect(network).toBeChecked();
+        await page.screenshot({ path: join(ACCEPTANCE_DIR, '2026-06-27-right-rail-tool-permissions-restored.png'), fullPage: true });
 
         await network.click();
         await expect(network).not.toBeChecked();
+
+        await app.close();
+    });
+
+    test('visible right rail actions open Files and Git panels', async () => {
+        const userDataDir = test.info().outputPath(`rail-panels-${Date.now()}`);
+        const { app, page } = await launchApp(userDataDir);
+
+        const expandRightRail = page.getByRole('button', { name: '展开右侧栏' });
+        if (await expandRightRail.isVisible().catch(() => false)) {
+            await expandRightRail.click();
+        }
+
+        await page.getByRole('button', { name: '浏览全部文件' }).click();
+        await expect(page.getByRole('region', { name: '文件工作区' })).toBeVisible({ timeout: 10_000 });
+        await page.screenshot({ path: join(ACCEPTANCE_DIR, '2026-06-27-right-rail-visible-files-entry.png'), fullPage: true });
+
+        await page.getByRole('tab', { name: '对话' }).click();
+        if (await expandRightRail.isVisible().catch(() => false)) {
+            await expandRightRail.click();
+        }
+
+        await page.getByRole('button', { name: /提交或推送/ }).click();
+        await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 10_000 });
+        await page.screenshot({ path: join(ACCEPTANCE_DIR, '2026-06-27-right-rail-visible-git-entry.png'), fullPage: true });
 
         await app.close();
     });

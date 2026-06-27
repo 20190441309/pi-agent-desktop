@@ -1,0 +1,1 @@
+export const SEARCH_FOCUS_CLEAR_DELAY_MS = 1500;

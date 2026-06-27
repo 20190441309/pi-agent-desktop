@@ -417,6 +417,32 @@ describe("MessageBubble", () => {
     ));
   });
 
+  it("does not infer a second executable plan card from execute-plan summary text", () => {
+    const message: Message = {
+      id: "m-plan-summary",
+      role: "assistant",
+      content: [
+        "计划已定义，等待执行：",
+        "",
+        "**2026-06-26-create-plan-probe**（chore, draft）",
+        "",
+        "1. 创建 `plan_probe.txt`，内容为 `PLAN_OK`",
+        "2. 验证文件存在",
+        "",
+        "使用 `/execute_plan` 执行，或 `/plan` 退出计划模式。",
+      ].join("\n"),
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} onPlanAction={vi.fn(async () => undefined)} />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByRole("button", { name: "执行计划" })).toBeNull();
+  });
+
   it("renders pause action while a plan is executing", async () => {
     const onPlanAction = vi.fn(async () => undefined);
     const message: Message = {

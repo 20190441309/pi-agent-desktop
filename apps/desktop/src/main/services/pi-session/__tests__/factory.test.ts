@@ -13,6 +13,10 @@ const {
     authStorageGetApiKey,
     settingsManagerCreate,
     defaultResourceLoaderCreate,
+    sessionManagerOpen,
+    sessionSendUserMessage,
+    createAgentSessionMock,
+    sdkMock,
 } = vi.hoisted(() => ({
     authStorageCreate: vi.fn(() => ({ getApiKey: vi.fn() })),
     modelRegistryCreate: vi.fn(() => ({
@@ -24,9 +28,24 @@ const {
     authStorageGetApiKey: vi.fn(),
     settingsManagerCreate: vi.fn(() => ({ kind: "settings-manager" })),
     defaultResourceLoaderCreate: vi.fn(),
+    sessionManagerOpen: vi.fn((sessionPath?: string) => ({ sessionPath })),
+    sessionSendUserMessage: vi.fn(async () => undefined),
+    createAgentSessionMock: vi.fn().mockResolvedValue({
+        session: {
+            prompt: vi.fn(),
+            sendUserMessage: vi.fn(async () => undefined),
+            isStreaming: false,
+            subscribe: vi.fn(),
+            abort: vi.fn(),
+            dispose: vi.fn(),
+            bindExtensions: vi.fn().mockResolvedValue(undefined),
+        },
+        extensionsResult: { extensions: [] },
+    }),
+    sdkMock: {} as Record<string, unknown>,
 }));
 
-vi.mock("@earendil-works/pi-coding-agent", () => ({
+Object.assign(sdkMock, {
     AuthStorage: {
         create: vi.fn((path?: string) => {
             authStorageCreate(path);
@@ -47,16 +66,14 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
     SettingsManager: {
         create: settingsManagerCreate,
     },
-    createAgentSession: vi.fn().mockResolvedValue({
-        session: {
-            prompt: vi.fn(),
-            subscribe: vi.fn(),
-            abort: vi.fn(),
-            dispose: vi.fn(),
-            bindExtensions: vi.fn().mockResolvedValue(undefined),
-        },
-        extensionsResult: { extensions: [] },
-    }),
+    SessionManager: {
+        open: sessionManagerOpen,
+    },
+    createAgentSession: createAgentSessionMock,
+});
+
+vi.mock("../sdk-runtime", () => ({
+    loadPiSdk: vi.fn(async () => sdkMock),
 }));
 
 describe("createWorkspaceSession", () => {
@@ -70,6 +87,22 @@ describe("createWorkspaceSession", () => {
         authStorageCreate.mockClear();
         settingsManagerCreate.mockClear();
         defaultResourceLoaderCreate.mockReset();
+        sessionManagerOpen.mockClear();
+        sessionSendUserMessage.mockReset();
+        sessionSendUserMessage.mockResolvedValue(undefined);
+        createAgentSessionMock.mockClear();
+        createAgentSessionMock.mockResolvedValue({
+            session: {
+                prompt: vi.fn(),
+                sendUserMessage: sessionSendUserMessage,
+                isStreaming: false,
+                subscribe: vi.fn(),
+                abort: vi.fn(),
+                dispose: vi.fn(),
+                bindExtensions: vi.fn().mockResolvedValue(undefined),
+            },
+            extensionsResult: { extensions: [] },
+        });
         modelRegistryCreate.mockReset();
         modelRegistryCreate.mockReturnValue({
             registerProvider,
@@ -90,12 +123,11 @@ describe("createWorkspaceSession", () => {
     });
 
     it("calls createAgentSession with the given cwd", async () => {
-        const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
         await createWorkspaceSession({
             workspaceId: "ws_2",
             workspacePath: "C:/some/path",
         });
-        expect(createAgentSession).toHaveBeenCalledWith(
+        expect(createAgentSessionMock).toHaveBeenCalledWith(
             expect.objectContaining({
                 cwd: "C:/some/path",
                 resourceLoader: expect.anything(),
@@ -103,8 +135,41 @@ describe("createWorkspaceSession", () => {
         );
     });
 
+    it("queues extension-originated sendUserMessage calls as follow-ups when the session is already streaming", async () => {
+        const workspaceSession = await createWorkspaceSession({
+            workspaceId: "ws_follow_up",
+            workspacePath: "C:/repo",
+        });
+
+        const session = workspaceSession.session as unknown as {
+            isStreaming: boolean;
+            sendUserMessage: (content: string, options?: { deliverAs?: "steer" | "followUp" }) => Promise<unknown>;
+        };
+        session.isStreaming = true;
+
+        await session.sendUserMessage("execute plan now");
+
+        expect(sessionSendUserMessage).toHaveBeenCalledWith("execute plan now", { deliverAs: "followUp" });
+    });
+
+    it("keeps idle extension-originated sendUserMessage calls as fresh turns after a deferred tick", async () => {
+        const workspaceSession = await createWorkspaceSession({
+            workspaceId: "ws_fresh_turn",
+            workspacePath: "C:/repo",
+        });
+
+        const session = workspaceSession.session as unknown as {
+            isStreaming: boolean;
+            sendUserMessage: (content: string, options?: { deliverAs?: "steer" | "followUp" }) => Promise<unknown>;
+        };
+        session.isStreaming = false;
+
+        await session.sendUserMessage("execute after command");
+
+        expect(sessionSendUserMessage).toHaveBeenCalledWith("execute after command", undefined);
+    });
+
     it("registers configured providers and passes the selected desktop model to the SDK", async () => {
-        const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
         findModel.mockReturnValue(selectedModel);
 
         await createWorkspaceSession({
@@ -170,7 +235,7 @@ describe("createWorkspaceSession", () => {
         );
         expect(registerProvider).toHaveBeenCalledTimes(1);
         expect(findModel).toHaveBeenCalledWith("longcat", "LongCat-2.0-Preview");
-        expect(createAgentSession).toHaveBeenLastCalledWith(
+        expect(createAgentSessionMock).toHaveBeenLastCalledWith(
             expect.objectContaining({
                 agentDir: "C:/Users/test/.pi/agent",
                 model: selectedModel,
@@ -227,8 +292,6 @@ describe("createWorkspaceSession", () => {
     });
 
     it("forwards noTools/tools to the SDK and merges explicit desktop extension bundles", async () => {
-        const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
-
         await createWorkspaceSession({
             workspaceId: "ws_5",
             workspacePath: "C:/repo",
@@ -240,7 +303,7 @@ describe("createWorkspaceSession", () => {
         expect(defaultResourceLoaderCreate).toHaveBeenCalledWith(expect.objectContaining({
             additionalExtensionPaths: expect.arrayContaining(["C:/desktop/compose-extension.ts"]),
         }));
-        expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({
+        expect(createAgentSessionMock).toHaveBeenCalledWith(expect.objectContaining({
             noTools: "builtin",
             tools: ["read", "grep"],
         }));
@@ -260,17 +323,24 @@ describe("createWorkspaceSession", () => {
         );
     });
 
+    it("resolves the bundled plan-mode extension to the pi-openplan package root", () => {
+        const paths = resolveBundledDesktopExtensionPaths({ planModeEnabled: true });
+
+        expect(paths.some((path) => /pi-openplan(?:\\|\/)?$/.test(path))).toBe(true);
+        expect(paths.some((path) => /pi-openplan[\\/]extensions(?:$|[\\/])/.test(path))).toBe(false);
+    });
+
     it("resolves the bundled desktop compose extension when compose mode is enabled", () => {
         const paths = resolveBundledDesktopExtensionPaths({ composeModeEnabled: true });
 
-        expect(paths).toEqual(expect.arrayContaining([expect.stringContaining("extensions\\compose-mode")]));
+        expect(paths.some((path) => /extensions[\\/]compose-mode[\\/]index\.ts$/.test(path))).toBe(true);
     });
 
-    it("resolves the bundled compose extension from both source and built main directories", () => {
+    it("resolves the bundled compose extension entry file from both source and built main directories", () => {
         const sourcePath = resolveBundledComposeExtensionPath("C:/Ai/pi-desktop/apps/desktop/src/main/services/pi-session");
         const builtPath = resolveBundledComposeExtensionPath("C:/Ai/pi-desktop/apps/desktop/out/main");
 
-        expect(sourcePath).toContain("extensions\\compose-mode");
-        expect(builtPath).toContain("extensions\\compose-mode");
+        expect(sourcePath).toMatch(/extensions[\\/]compose-mode[\\/]index\.ts$/);
+        expect(builtPath).toMatch(/extensions[\\/]compose-mode[\\/]index\.ts$/);
     });
 });

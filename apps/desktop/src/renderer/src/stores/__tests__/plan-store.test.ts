@@ -40,6 +40,37 @@ describe("setCard", () => {
     expect(usePlanStore.getState().decisionRequest?.card?.id).toBe("plan_1");
     expect(usePlanStore.getState().activeExecution?.phase).toBe("awaiting_confirmation");
   });
+
+  it("keeps the current execution phase when the same plan card is re-emitted during execution", () => {
+    usePlanStore.setState({
+      activeExecution: {
+        activePlanId: "plan_running",
+        title: "计划",
+        filename: "create-plan-probe",
+        sourceMessageId: "pm_existing",
+        phase: "executing",
+      },
+      status: "executing",
+      decisionRequest: null,
+    });
+
+    usePlanStore.getState().setCard({
+      id: "plan_retry",
+      title: "创建并验证 plan_probe.txt",
+      filename: "create-plan-probe",
+      content: "1. 创建文件\n2. 验证文件存在",
+      createdAt: Date.now(),
+    });
+
+    expect(usePlanStore.getState().activeExecution).toMatchObject({
+      activePlanId: "plan_running",
+      sourceMessageId: "pm_existing",
+      phase: "executing",
+      filename: "create-plan-probe",
+      title: "创建并验证 plan_probe.txt",
+    });
+    expect(usePlanStore.getState().status).toBe("executing");
+  });
 });
 
 describe("setEnabled revert logic", () => {
@@ -119,5 +150,84 @@ describe("setEnabled revert logic", () => {
     });
 
     expect(usePlanStore.getState().lastError).toBe("计划模式切换失败");
+  });
+});
+
+describe("setProgress completion rules", () => {
+  it("marks execution complete only when progress returns to idle with all steps completed", () => {
+    usePlanStore.setState({
+      activeExecution: {
+        activePlanId: "plan_1",
+        title: "执行计划",
+        phase: "executing",
+      },
+      steps: [
+        { id: "s1", text: "写入文件", status: "completed" },
+        { id: "s2", text: "验证结果", status: "completed" },
+      ],
+      status: "executing",
+    });
+
+    usePlanStore.getState().setProgress({
+      status: "idle",
+      items: [],
+    });
+
+    expect(usePlanStore.getState().activeExecution?.phase).toBe("completed");
+    expect(usePlanStore.getState().status).toBe("completed");
+  });
+
+  it("does not mark execution complete when idle arrives but steps are still incomplete", () => {
+    usePlanStore.setState({
+      activeExecution: {
+        activePlanId: "plan_2",
+        title: "执行计划",
+        phase: "executing",
+      },
+      steps: [
+        { id: "s1", text: "写入文件", status: "completed" },
+        { id: "s2", text: "验证结果", status: "pending" },
+      ],
+      status: "executing",
+    });
+
+    usePlanStore.getState().setProgress({
+      status: "idle",
+      items: [],
+    });
+
+    expect(usePlanStore.getState().activeExecution?.phase).toBe("executing");
+    expect(usePlanStore.getState().status).toBe("idle");
+  });
+});
+
+describe("setAwaitingConfirmation", () => {
+  it("does not reopen waiting confirmation for the same executing plan", () => {
+    usePlanStore.setState({
+      activeExecution: {
+        activePlanId: "plan_running",
+        title: "测试计划",
+        filename: "create-plan-probe",
+        sourceMessageId: "pm_existing",
+        phase: "executing",
+      },
+      status: "executing",
+    });
+
+    usePlanStore.getState().setAwaitingConfirmation({
+      activePlanId: "plan_retry",
+      title: "创建并验证 plan_probe.txt",
+      filename: "create-plan-probe",
+      sourceMessageId: "pm_retry",
+    });
+
+    expect(usePlanStore.getState().activeExecution).toMatchObject({
+      activePlanId: "plan_running",
+      sourceMessageId: "pm_existing",
+      phase: "executing",
+      filename: "create-plan-probe",
+      title: "创建并验证 plan_probe.txt",
+    });
+    expect(usePlanStore.getState().status).toBe("executing");
   });
 });

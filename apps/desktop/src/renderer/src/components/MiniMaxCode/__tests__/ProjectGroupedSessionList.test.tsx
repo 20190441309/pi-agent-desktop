@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 
 describe("ProjectGroupedSessionList", () => {
-  it("keeps project session actions floating over the row without reserving text space", () => {
+  it("keeps hidden project actions from intercepting clicks until hover or focus", () => {
     const longTitle = "了解一下这个项目并检查所有关键入口";
     useSessionStore.setState({
       sessions: [makeSession({ id: "s_long", title: longTitle, workspaceId: "w1" })],
@@ -55,8 +55,13 @@ describe("ProjectGroupedSessionList", () => {
     expect(titleButton.className).toContain("pr-0");
     expect(actions?.className ?? "").toContain("absolute");
     expect(actions?.className ?? "").toContain("right-1");
+    expect(actions?.className ?? "").toContain("pointer-events-none");
+    expect(actions?.className ?? "").toContain("group-hover:pointer-events-auto");
+    expect(actions?.className ?? "").toContain("group-focus-within:pointer-events-auto");
     expect(actions?.querySelector("button")?.className ?? "").toContain("pointer-events-none");
     expect(actions?.querySelector("button")?.className ?? "").toContain("group-hover:pointer-events-auto");
+    expect(actions?.querySelector("button")?.className ?? "").toContain("h-[26px]");
+    expect(actions?.querySelector("button")?.className ?? "").toContain("w-[26px]");
   });
 
   it("marks the selected project session with shadow instead of reordering by lastOpenedAt", () => {

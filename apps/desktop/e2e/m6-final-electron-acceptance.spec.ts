@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from "fs";
 import { mkdir as mkdirAsync } from "fs/promises";
 import { join } from "path";
 import { electronMainEntry } from "../playwright.config";
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const HISTORY_NEEDLE = "m6-history-needle";
@@ -40,6 +41,7 @@ async function launchApp(
     configDir: string,
 ): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await _electron.launch({
+        executablePath: resolveElectronExecutablePath(),
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: {
             ...process.env,
@@ -193,7 +195,7 @@ async function emitApprovalDeferredReview(
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
     const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("button", { name: "打开设置窗口" }).click();
+    await page.getByRole("tab", { name: "设置" }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState("domcontentloaded");
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible({ timeout: 10_000 });

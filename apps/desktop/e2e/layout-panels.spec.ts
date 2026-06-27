@@ -1,9 +1,11 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
+import { resolveElectronExecutablePath } from "./support/electron-launch";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
   const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const app = await _electron.launch({
+      executablePath: resolveElectronExecutablePath(),
     args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
     env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
   });
@@ -107,14 +109,14 @@ test.describe('Pi Desktop layout panels', () => {
     await page.getByRole('button', { name: '展开左侧栏' }).click();
     await expect(page.getByRole('button', { name: '折叠左侧栏' })).toBeVisible({ timeout: 5_000 });
 
-    await page.getByRole('button', { name: '折叠右侧栏' }).click();
+    await page.getByRole('button', { name: '收起右侧栏' }).click();
     await expect(rightPanel).toBeHidden({ timeout: 5_000 });
     await page.getByRole('button', { name: '展开右侧栏' }).click();
     await expect(rightPanel).toBeVisible({ timeout: 5_000 });
 
     await setWindowSize(app, 850, 768);
     await expect(rightPanel).toBeVisible({ timeout: 5_000 });
-    await page.getByRole('button', { name: '折叠右侧栏' }).click();
+    await page.getByRole('button', { name: '收起右侧栏' }).click();
     await expect(rightPanel).toBeHidden({ timeout: 5_000 });
     await page.getByRole('button', { name: '展开右侧栏' }).click();
     await expect(rightPanel).toBeVisible({ timeout: 5_000 });

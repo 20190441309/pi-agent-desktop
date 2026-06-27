@@ -103,6 +103,19 @@ export function relativeToWorkspace(path: string, workspacePath: string): string
   return normalizedPath;
 }
 
+export function resolveWorkspacePath(path: string, workspacePath: string): string {
+  const normalizedPath = normalizePath(path);
+  const normalizedWorkspace = normalizePath(workspacePath).replace(/\/+$/, "");
+  const relativePath = normalizedPath.replace(/^\/+/, "");
+  const isAbsoluteWindowsPath = /^[A-Za-z]:\//.test(normalizedPath);
+  const isUncPath = normalizedPath.startsWith("//");
+  if (isAbsoluteWindowsPath || isUncPath) return normalizedPath;
+  if (normalizedPath === normalizedWorkspace || normalizedPath.startsWith(`${normalizedWorkspace}/`)) {
+    return normalizedPath;
+  }
+  return `${normalizedWorkspace}/${relativePath}`;
+}
+
 export function makeGitMarks(status: GitStatus | null): Map<string, GitMark> {
   const marks = new Map<string, GitMark>();
   const add = (files: string[], mark: GitMark): void => {

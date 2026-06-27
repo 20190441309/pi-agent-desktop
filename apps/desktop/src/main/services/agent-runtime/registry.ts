@@ -111,7 +111,7 @@ export class AgentRuntimeRegistry {
         if (!text) return;
         const modeOptions = this.deps.getModeOptions?.();
         const mode = normalizeAgentMode(input.mode, modeOptions);
-        await this.syncRuntimeMode(runtime, mode);
+        await this.syncRuntimeMode(runtime, mode, input.streamingBehavior);
         runtime.mode = mode;
         const visibleContent = visibleUserPromptContent(text);
         this.addMessage(runtime, "user", visibleContent, { mode });
@@ -435,23 +435,34 @@ export class AgentRuntimeRegistry {
         }
     }
 
-    private async syncRuntimeMode(runtime: AgentRuntime, targetMode: AgentMode): Promise<void> {
+    private async syncRuntimeMode(
+        runtime: AgentRuntime,
+        targetMode: AgentMode,
+        streamingBehavior?: SendAgentPromptInput["streamingBehavior"],
+    ): Promise<void> {
         const nextMode = targetMode;
         if (runtime.sessionMode === nextMode) return;
+        const sendModePrompt = async (command: string): Promise<void> => {
+            if (streamingBehavior) {
+                await runtime.session.session.prompt(command, { streamingBehavior });
+                return;
+            }
+            await runtime.session.session.prompt(command);
+        };
 
         this.suppressEventForwarding = true;
         try {
             if (runtime.sessionMode === "plan") {
-                await runtime.session.session.prompt("/plan");
+                await sendModePrompt("/plan");
             }
             if (runtime.sessionMode === "compose") {
-                await runtime.session.session.prompt("/compose off");
+                await sendModePrompt("/compose off");
             }
             if (nextMode === "plan") {
-                await runtime.session.session.prompt("/plan");
+                await sendModePrompt("/plan");
             }
             if (nextMode === "compose") {
-                await runtime.session.session.prompt("/compose on");
+                await sendModePrompt("/compose on");
             }
             runtime.sessionMode = nextMode;
         } finally {

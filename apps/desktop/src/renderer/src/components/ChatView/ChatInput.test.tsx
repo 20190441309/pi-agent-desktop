@@ -569,13 +569,16 @@ describe("ChatInput", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith([
-        "附加文件:",
-        "@C:/repo/src/app.ts",
-        "",
-        "用户消息:",
-        "检查这个文件",
-      ].join("\n"));
+      expect(onSend).toHaveBeenCalledWith(
+        [
+          "附加文件:",
+          "@C:/repo/src/app.ts",
+          "",
+          "用户消息:",
+          "检查这个文件",
+        ].join("\n"),
+        { visibleContent: "检查这个文件\n附件: app.ts" },
+      );
     });
     await waitFor(() => {
       expect(useAttachmentsStore.getState().list("ws1")).toEqual([]);
@@ -889,14 +892,17 @@ describe("ChatInput", () => {
       ]);
     });
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith([
-        "图片识别结果:",
-        "[图片 1: pasted.png]",
-        "图片里有设置面板",
-        "",
-        "用户消息:",
-        "看图",
-      ].join("\n"));
+      expect(onSend).toHaveBeenCalledWith(
+        [
+          "图片识别结果:",
+          "[图片 1: pasted.png]",
+          "图片里有设置面板",
+          "",
+          "用户消息:",
+          "看图",
+        ].join("\n"),
+        { visibleContent: "看图\n图片: pasted.png" },
+      );
     });
   });
 

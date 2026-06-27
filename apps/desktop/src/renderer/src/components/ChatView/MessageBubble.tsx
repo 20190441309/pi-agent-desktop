@@ -20,12 +20,17 @@ type ChatMessage = Message & {
 interface MessageBubbleProps {
   message: ChatMessage;
   isStreaming?: boolean;
+  isSearchTarget?: boolean;
   onPlanAction?: (message: ChatMessage, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string) => Promise<void>;
 }
 
 function inferInlinePlanAction(message: ChatMessage, visibleContent: string): Message["planAction"] | undefined {
   if (message.role !== "assistant" || message.planAction || !visibleContent.trim()) return undefined;
   const normalized = visibleContent.trim();
+  const isExecutionSummary =
+    /计划已(?:定义|生成)[\s\S]*等待执行/i.test(normalized) &&
+    /\/execute_plan|执行上述计划|退出计划模式/i.test(normalized);
+  if (isExecutionSummary) return undefined;
   const titleMatch = normalized.match(/^\s*#{1,6}\s+(.+?)\s*$/m);
   const title = titleMatch?.[1]?.trim() ?? "计划";
   const listStepCount = normalized
@@ -169,7 +174,12 @@ function ToolActivity({
   );
 }
 
-export const MessageBubble = React.memo(function MessageBubble({ message, isStreaming = false, onPlanAction }: MessageBubbleProps): React.JSX.Element {
+export const MessageBubble = React.memo(function MessageBubble({
+  message,
+  isStreaming = false,
+  isSearchTarget = false,
+  onPlanAction,
+}: MessageBubbleProps): React.JSX.Element {
   const isUser = message.role === 'user';
   const timeText = formatTime(message.timestamp);
   const timeIso = formatIso(message.timestamp);
@@ -225,6 +235,8 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
 
   return (
     <article
+      data-message-id={message.id}
+      data-search-target={isSearchTarget ? "true" : "false"}
       className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
       role="article"
       aria-label={articleLabel}
@@ -238,7 +250,7 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
             isUser
               ? 'rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-4 py-3 text-[var(--mm-text-primary)]'
               : 'rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-3 text-[var(--mm-text-primary)] shadow-[0_1px_2px_rgba(0,0,0,0.02)]'
-          }`}>
+          } ${isSearchTarget ? 'ring-2 ring-[#f59e0b] ring-offset-2 ring-offset-[var(--mm-bg-main)]' : ''}`}>
             {isUser ? (
               <div className="space-y-2">
                 {userCommand.badge && (

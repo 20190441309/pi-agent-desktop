@@ -28,7 +28,7 @@ function toProgressItem(task: LongHorizonTaskRecord): TaskProgressItem {
     };
 }
 
-export function useTaskProgress(): {
+export function useTaskProgress(agentId?: string | null): {
     tasks: TaskProgressItem[];
     clearFinished: () => void;
 } {
@@ -42,14 +42,14 @@ export function useTaskProgress(): {
             return;
         }
         const revision = ++refreshRevisionRef.current;
-        const result = await window.piAPI.taskList({ workspaceId, agentId: undefined });
+        const result = await window.piAPI.taskList({ workspaceId, agentId: agentId ?? undefined });
         if (revision !== refreshRevisionRef.current) return;
         if (isIpcError(result)) {
             setTasks([]);
             return;
         }
         setTasks(result.map(toProgressItem));
-    }, [workspaceId]);
+    }, [agentId, workspaceId]);
 
     useEffect(() => {
         void refreshTasks();
