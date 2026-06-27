@@ -1,4 +1,5 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
+import { join } from "path";
 import {
     createWorkspaceSession,
     resolveBundledComposeExtensionPath,
@@ -347,14 +348,15 @@ describe("createWorkspaceSession", () => {
     });
 
     it("resolves the bundled compose extension entry file from both source and built main directories", () => {
-        const sourcePath = resolveBundledComposeExtensionPath("C:/Ai/pi-desktop/apps/desktop/src/main/services/pi-session");
-        const builtPath = resolveBundledComposeExtensionPath("C:/Ai/pi-desktop/apps/desktop/out/main");
+        const desktopRoot = process.cwd();
+        const sourcePath = resolveBundledComposeExtensionPath(join(desktopRoot, "src/main/services/pi-session"));
+        const builtPath = resolveBundledComposeExtensionPath(join(desktopRoot, "out/main"));
         const workflowSourcePath = resolveBundledComposeExtensionPath(
-            "C:/Ai/pi-desktop/apps/desktop/src/main/services/pi-session",
+            join(desktopRoot, "src/main/services/pi-session"),
             "workflow-extension.ts",
         );
         const workflowBuiltPath = resolveBundledComposeExtensionPath(
-            "C:/Ai/pi-desktop/apps/desktop/out/main",
+            join(desktopRoot, "out/main"),
             "workflow-extension.ts",
         );
 
