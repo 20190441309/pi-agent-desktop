@@ -4,6 +4,7 @@ import { usePlanStore } from "../../stores/plan-store";
 import { useSessionStore } from "../../stores/session-store";
 import { useQueueStore, type QueueTaskStatus } from "../../stores/queue-store";
 import { ToolPermissionsPanel } from "../ToolPermissions/ToolPermissionsPanel";
+import { UsageStatsPanel } from "../UsageStats/UsageStatsPanel";
 import { classifyTerminalCommand } from "../../utils/terminal-command";
 import { projectScriptCommand } from "../../utils/project-scripts";
 import type { TaskProgressItem } from "./TaskProgressPanel";
@@ -557,6 +558,8 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
       </section>
 
       <ToolPermissionsPanel workspaceId={workspaceId} />
+
+      <UsageStatsPanel workspaceId={workspaceId} />
 
       <section className="min-h-0 rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
         <div className="mb-3 flex items-center justify-between">

@@ -1,10 +1,11 @@
 import React, { useMemo } from "react";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
-import { buildUsageOverview, formatUsageCost, formatUsageNumber } from "./usage-aggregation";
+import { buildUsageOverview, formatUsageNumber } from "./usage-aggregation";
 
 interface UsageStatsPanelProps {
   className?: string;
+  workspaceId?: string;
 }
 
 function UsageBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }): React.JSX.Element {
@@ -26,23 +27,24 @@ function UsageBar({ label, value, total, color }: { label: string; value: number
   );
 }
 
-export function UsageStatsPanel({ className }: UsageStatsPanelProps): React.JSX.Element {
+export function UsageStatsPanel({ className, workspaceId }: UsageStatsPanelProps): React.JSX.Element {
   const { sessions } = useSessionStore();
   const { getCurrentWorkspace } = useWorkspaceStore();
   const currentWorkspace = getCurrentWorkspace();
+  const effectiveWorkspaceId = workspaceId ?? currentWorkspace?.id;
 
   const usage = useMemo(
     () => buildUsageOverview(sessions, {
-      workspaceId: currentWorkspace?.id,
+      workspaceId: effectiveWorkspaceId,
       includeAllWorkspaces: false,
       includeArchived: false,
       days: "all",
     }),
-    [sessions, currentWorkspace?.id],
+    [sessions, effectiveWorkspaceId],
   );
 
   return (
-    <div className={`rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4 ${className ?? ""}`}>
+    <div data-testid="usage-stats-panel" className={`rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4 ${className ?? ""}`}>
       <h3 className="mb-4 text-sm font-semibold text-[var(--mm-text-primary)]">Token 使用统计</h3>
 
       <div className="grid grid-cols-2 gap-4">
@@ -53,9 +55,9 @@ export function UsageStatsPanel({ className }: UsageStatsPanelProps): React.JSX.
           </div>
         </div>
         <div className="rounded-lg bg-[var(--mm-bg-sidebar)] p-3">
-          <div className="text-[10px] uppercase tracking-wider text-[var(--mm-text-tertiary)]">预估费用</div>
+          <div className="text-[10px] uppercase tracking-wider text-[var(--mm-text-tertiary)]">会话数</div>
           <div className="mt-1 font-mono text-lg font-semibold text-[var(--mm-text-primary)]">
-            {formatUsageCost(usage.summary.estimatedCostUsd)}
+            {usage.summary.sessionCount}
           </div>
         </div>
       </div>
@@ -72,7 +74,7 @@ export function UsageStatsPanel({ className }: UsageStatsPanelProps): React.JSX.
             {usage.modelBreakdown.slice(0, 5).map((model) => (
               <div key={model.key} className="flex items-center justify-between text-xs">
                 <span className="truncate text-[var(--mm-text-secondary)]">{model.key}</span>
-                <span className="font-mono text-[var(--mm-text-primary)]">{formatUsageCost(model.estimatedCostUsd)}</span>
+                <span className="font-mono text-[var(--mm-text-primary)]">{formatUsageNumber(model.totalTokens, "compact")}</span>
               </div>
             ))}
           </div>

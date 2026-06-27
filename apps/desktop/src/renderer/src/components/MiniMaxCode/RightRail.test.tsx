@@ -309,6 +309,7 @@ describe("RightRail", () => {
 
     expect(await screen.findByText("环境信息")).toBeTruthy();
     expect(screen.getByText("工具权限")).toBeTruthy();
+    expect(screen.getByText("Token 使用统计")).toBeTruthy();
     expect(screen.getByText("Workspace")).toBeTruthy();
     expect(screen.getByText("进度")).toBeTruthy();
     expect(screen.getByText("文件输出")).toBeTruthy();
@@ -731,6 +732,13 @@ describe("RightRail", () => {
     expect(screen.queryByText("anthropic")).toBeNull();
     expect(screen.queryByText("输入 1.2K")).toBeNull();
     expect(await screen.findByText("工具权限")).toBeTruthy();
+    expect(screen.getByText("Token 使用统计")).toBeTruthy();
+    expect(screen.getAllByText("1.5K").length).toBeGreaterThan(0);
+    expect(screen.queryByText("预估费用")).toBeNull();
+    expect(screen.queryByText(/\$\d/)).toBeNull();
+    expect(screen.getByText("输入 Token")).toBeTruthy();
+    expect(screen.getByText("输出 Token")).toBeTruthy();
+    expect(screen.getByText("anthropic/claude-sonnet")).toBeTruthy();
     expect(screen.getByText("Session")).toBeTruthy();
     expect((screen.getByLabelText("文件写入") as HTMLInputElement).checked).toBe(false);
     expect((screen.getByLabelText("网络") as HTMLInputElement).checked).toBe(false);

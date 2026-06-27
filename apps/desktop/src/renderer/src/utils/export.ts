@@ -53,9 +53,6 @@ export function exportSessionAsMarkdown(session: Session): string {
     lines.push(`- 输入 Token: ${session.usage.inputTokens ?? 0}`);
     lines.push(`- 输出 Token: ${session.usage.outputTokens ?? 0}`);
     lines.push(`- 总 Token: ${session.usage.totalTokens ?? 0}`);
-    if (session.usage.estimatedCostUsd) {
-      lines.push(`- 预估费用: $${session.usage.estimatedCostUsd.toFixed(2)}`);
-    }
     lines.push("");
   }
 

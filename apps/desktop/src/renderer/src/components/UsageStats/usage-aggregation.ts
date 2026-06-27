@@ -105,13 +105,6 @@ export function formatUsageNumber(num: number | undefined, mode: UsageNumberMode
   return value.toLocaleString();
 }
 
-export function formatUsageCost(cost: number | undefined): string {
-  const value = cost ?? 0;
-  if (value === 0) return "$0.00";
-  if (value < 0.01) return "<$0.01";
-  return `$${value.toFixed(2)}`;
-}
-
 export function formatUsageDate(ms: number): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(new Date(ms));
 }
@@ -232,7 +225,6 @@ function finalizeModelBucket(bucket: MutableModelBucket, totalTokens: number): U
       `${formatUsageNumber(bucket.totalTokens)} tokens`,
       `占比 ${share}%`,
       `输入 ${formatUsageNumber(bucket.inputTokens, "compact")} / 输出 ${formatUsageNumber(bucket.outputTokens, "compact")}`,
-      `预估费用 ${formatUsageCost(bucket.estimatedCostUsd)}`,
       `${bucket.sessionIds.size} 个会话`,
     ].join("\n"),
   };
@@ -306,7 +298,6 @@ export function buildUsageOverview(sessions: Session[], options: UsageOverviewOp
         `${totals.provider}/${totals.model}`,
         `输入 ${formatUsageNumber(totals.inputTokens, "compact")} / 输出 ${formatUsageNumber(totals.outputTokens, "compact")}`,
         `总计 ${formatUsageNumber(totals.totalTokens)} tokens`,
-        `预估费用 ${formatUsageCost(totals.estimatedCostUsd)}`,
         `更新时间 ${formatUsageDate(totals.updatedAt)}`,
       ].join("\n"),
     });
@@ -343,7 +334,6 @@ export function buildUsageOverview(sessions: Session[], options: UsageOverviewOp
         `${formatUsageNumber(bucket.totalTokens, "compact")} tokens`,
         `${bucket.sessionIds.size} 个会话`,
         `输入 ${formatUsageNumber(bucket.inputTokens, "compact")} / 输出 ${formatUsageNumber(bucket.outputTokens, "compact")}`,
-        `预估费用 ${formatUsageCost(bucket.estimatedCostUsd)}`,
       ].join("\n"),
     };
   });

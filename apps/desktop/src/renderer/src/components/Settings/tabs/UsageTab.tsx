@@ -3,7 +3,6 @@ import { useSessionStore } from "../../../stores/session-store";
 import { useWorkspaceStore } from "../../../stores/workspace-store";
 import {
   buildUsageOverview,
-  formatUsageCost,
   formatUsageDate,
   formatUsageNumber,
   type UsageOverview,
@@ -146,7 +145,6 @@ function TrendChart({
                   model.model,
                   `${formatUsageNumber(value)} tokens`,
                   `输入 ${formatUsageNumber(day.inputTokens, "compact")} / 输出 ${formatUsageNumber(day.outputTokens, "compact")}`,
-                  `预估费用 ${formatUsageCost(day.estimatedCostUsd)}`,
                 ].join("\n");
                 return (
                   <button

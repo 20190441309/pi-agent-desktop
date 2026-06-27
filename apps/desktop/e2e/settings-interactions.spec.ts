@@ -650,8 +650,12 @@ test.describe("Pi Desktop — settings window interaction audit", () => {
         await settingsWindow.getByRole("button", { name: "Claude Sonnet 模型用量详情" }).hover();
         await expect(settingsWindow.getByRole("tooltip")).toContainText("Claude Sonnet");
         await expect(settingsWindow.getByRole("tooltip")).toContainText("1.2亿 tokens");
+        await expect(settingsWindow.getByRole("tooltip")).not.toContainText("预估费用");
+        await expect(settingsWindow.getByRole("tooltip")).not.toContainText("$");
 
         await settingsWindow.getByRole("button", { name: /用量详情$/ }).first().hover();
         await expect(settingsWindow.getByRole("tooltip")).toBeVisible();
+        await expect(settingsWindow.getByRole("tooltip")).not.toContainText("预估费用");
+        await expect(settingsWindow.getByRole("tooltip")).not.toContainText("$");
     });
 });

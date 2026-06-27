@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Session } from "../../stores/session-store";
-import { buildUsageOverview, formatUsageCost, formatUsageNumber } from "./usage-aggregation";
+import { buildUsageOverview, formatUsageNumber } from "./usage-aggregation";
 
 const baseSession = {
   workspaceId: "ws-main",
@@ -79,6 +79,9 @@ describe("usage aggregation", () => {
     expect(overview.modelBreakdown[0]?.share).toBe(100);
     expect(overview.days.find((day) => day.date === "2026-06-20")?.tooltip).toContain("1.5K tokens");
     expect(overview.sessions[0]?.tooltip).toContain("输入 1K");
+    expect(overview.modelBreakdown[0]?.tooltip).not.toContain("预估费用");
+    expect(overview.days.find((day) => day.date === "2026-06-20")?.tooltip).not.toContain("预估费用");
+    expect(overview.sessions[0]?.tooltip).not.toContain("预估费用");
   });
 
   it("can include all workspaces and archived sessions", () => {
@@ -170,12 +173,9 @@ describe("usage aggregation", () => {
     expect(overview.days.every((day) => day.totalTokens === 0)).toBe(true);
   });
 
-  it("formats usage numbers and estimated cost for dashboard labels", () => {
+  it("formats usage numbers for dashboard labels", () => {
     expect(formatUsageNumber(180000000)).toBe("1.8亿");
     expect(formatUsageNumber(12000)).toBe("1.2万");
     expect(formatUsageNumber(1500, "compact")).toBe("1.5K");
-    expect(formatUsageCost(0)).toBe("$0.00");
-    expect(formatUsageCost(0.004)).toBe("<$0.01");
-    expect(formatUsageCost(18.424)).toBe("$18.42");
   });
 });
