@@ -18,14 +18,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Mount short workspace path
+      - name: Mirror repo to short workspace path
         shell: pwsh
         run: |
-          subst P: "$env:GITHUB_WORKSPACE"
-          if (-not (Test-Path 'P:\')) {
-            throw "Failed to mount short workspace path."
+          $shortWorkspace = 'C:\p'
+          if (Test-Path $shortWorkspace) {
+            Remove-Item -LiteralPath $shortWorkspace -Recurse -Force
           }
-          Write-Host "Using short workspace path P:\ to avoid NSIS MAX_PATH failures."
+          New-Item -ItemType Directory -Path $shortWorkspace | Out-Null
+          robocopy $env:GITHUB_WORKSPACE $shortWorkspace /MIR /XD .git node_modules .electron-cache apps\desktop\dist apps\desktop\out
+          if ($LASTEXITCODE -gt 7) {
+            throw "robocopy failed with exit code $LASTEXITCODE"
+          }
+          Write-Host "Using real short workspace path C:\p to avoid NSIS MAX_PATH failures."
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -40,13 +45,13 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: |
-          Set-Location P:\
+          Set-Location C:\p
           pnpm install --frozen-lockfile
 
       - name: Test
         shell: pwsh
         run: |
-          Set-Location P:\
+          Set-Location C:\p
           pnpm -r test
 
       - name: Validate Windows signing secrets
@@ -55,7 +60,7 @@ jobs:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
-          Set-Location P:\
+          Set-Location C:\p
           if ([string]::IsNullOrWhiteSpace($env:CSC_LINK) -or [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
             throw "Missing CSC_LINK or CSC_KEY_PASSWORD. Refusing to publish an auto-update-enabled release without signing secrets."
           }
@@ -63,7 +68,7 @@ jobs:
       - name: Build (renderer + main)
         shell: pwsh
         run: |
-          Set-Location P:\
+          Set-Location C:\p
           pnpm --filter @pi-desktop/desktop build
         env:
           PI_DESKTOP_ENABLE_AUTO_UPDATE: "1"
@@ -71,7 +76,7 @@ jobs:
       - name: Restore missing NSIS helper include
         shell: pwsh
         run: |
-          Set-Location P:\
+          Set-Location C:\p
           $includeDirs = Get-ChildItem node_modules/.pnpm -Recurse -Directory |
             Where-Object { $_.FullName -like '*app-builder-lib*templates\nsis\include' } |
             Select-Object -ExpandProperty FullName -Unique
@@ -94,7 +99,7 @@ jobs:
       - name: Package (NSIS installer for Windows)
         shell: pwsh
         run: |
-          Set-Location P:\
+          Set-Location C:\p
           pnpm --filter @pi-desktop/desktop package:publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -107,13 +112,13 @@ jobs:
         with:
           name: pi-desktop-${{ github.ref_name }}-windows
           path: |
-            apps/desktop/dist/*.exe
-            apps/desktop/dist/*.exe.blockmap
-            apps/desktop/dist/latest.yml
+            C:\p\apps\desktop\dist\*.exe
+            C:\p\apps\desktop\dist\*.exe.blockmap
+            C:\p\apps\desktop\dist\latest.yml
           if-no-files-found: error
 
-      - name: Unmount short workspace path
+      - name: Remove short workspace path
         if: always()
         shell: pwsh
         run: |
-          subst P: /d
+          Remove-Item -LiteralPath C:\p -Recurse -Force -ErrorAction SilentlyContinue
