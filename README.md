@@ -19,12 +19,19 @@ Current release snapshot:
 | Source version | `1.0.12` |
 | Desktop package version | `1.0.12` |
 | Remote default branch | `master` |
-| Latest remote Git tag | `v1.0.12` after the release cut in this rollout |
-| GitHub Releases entries | none published |
+| Latest remote Git tag | `v1.0.2` |
+| Published GitHub Releases | none |
+| Current release candidate | `v1.0.12` |
 | In-app updater runtime | implemented and verified in packaged Windows builds |
-| Real updater result today | packaged build can discover release metadata once the signed release is published |
+| Real updater result today | local packaged `1.0.12` build generates correct installer metadata; live GitHub discovery still waits on a published signed release |
 
-This release line is now internally consistent: source version, packaged version, installer name, and updater metadata all use the same `1.0.12` version family.
+The important distinction is this:
+
+- `1.0.12` is the current source and packaging version in this repository
+- `v1.0.2` is still the newest tag on GitHub right now
+- there is not yet a published GitHub Release carrying the `1.0.12` installer and `latest.yml`
+
+The release line is now internally consistent on the source side: package version, installer naming, and updater metadata all use the same `1.0.12` version family. The remaining step is the actual signed GitHub release publication.
 
 ## What Pi Desktop Does
 

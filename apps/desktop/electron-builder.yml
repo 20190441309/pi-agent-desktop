@@ -49,8 +49,6 @@ electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
   cache: .electron-cache
 
-electronDist: node_modules/electron/dist
-
 # 自动更新源: GitHub Releases. electron-updater 据此拉取 latest.yml.
 # 只有在 release workflow 已验证签名 secrets 并用 PI_DESKTOP_ENABLE_AUTO_UPDATE=1
 # 重新构建 main bundle 时, 应用内更新入口才会启用.

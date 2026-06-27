@@ -2,6 +2,17 @@
 
 Pi Desktop v1.0.12 closes the GitHub updater loop for Windows releases.
 
+## Release status
+
+This file describes the intended `v1.0.12` release payload.
+
+As of 2026-06-27:
+
+- source version is already `1.0.12`
+- local installer artifacts for `1.0.12` have been generated
+- GitHub has not published a `v1.0.12` release yet
+- the current remote tag on GitHub remains `v1.0.2`
+
 ## Included in this release
 
 - GitHub Releases based updater state model shared across main, preload, and renderer

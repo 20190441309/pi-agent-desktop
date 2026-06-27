@@ -20,11 +20,12 @@ This snapshot was updated on 2026-06-27 as part of the updater release cut.
 | Workspace root version | `1.0.12` |
 | Desktop package version | `1.0.12` |
 | Remote default branch | `master` |
-| Latest remote Git tag | `v1.0.12` after release |
-| Published GitHub Releases | `v1.0.12` after release |
-| Updater result in packaged build | release metadata can be resolved once the release assets are present |
+| Latest remote Git tag | `v1.0.2` |
+| Published GitHub Releases | none |
+| Current release candidate | `v1.0.12` |
+| Updater result in packaged build | local packaging metadata is ready; remote discovery still depends on published signed release assets |
 
-The key point is that updater support depends on real signed release assets. Without them, packaged builds fall back to a visible error or manual release-page path.
+The key point is that updater support depends on real signed release assets. Without them, packaged builds fall back to a visible error or manual release-page path even if the local installer and `latest.yml` look correct.
 
 ## How Versioning Works
 
@@ -100,10 +101,11 @@ After packaging, verify these outputs exist:
 1. make sure the repository is in the desired state on `master`
 2. ensure the version numbers are correct
 3. push the commit
-4. create and push the release tag
-5. let the release workflow publish the signed installer and update metadata
-6. verify the GitHub Release page contains the installer, blockmap, and `latest.yml`
-7. install the packaged app and run a real updater check from Settings > About
+4. confirm CI is green on that commit
+5. create and push the release tag
+6. let the release workflow publish the signed installer and update metadata
+7. verify the GitHub Release page contains the installer, blockmap, and `latest.yml`
+8. install the packaged app and run a real updater check from Settings > About
 
 ## What Changed in This Updater Rollout
 
@@ -129,7 +131,23 @@ Observed behavior before the release was published:
 - the actual failure was not a renderer bug or an IPC bug
 - the actual failure was missing published GitHub Releases metadata, which returned `404`
 
-That was the correct honest result before the release cut. The release work in this rollout is what removes that repository-side blocker.
+That was the correct honest result before the release cut. As of 2026-06-27, the repo-side blocker is still that GitHub has no published `1.0.12` release yet.
+
+## Current Release Status on 2026-06-27
+
+What is already true:
+
+- the repository source version is `1.0.12`
+- local Windows packaging produces `Pi-Desktop-1.0.12-setup.exe`
+- local packaging also produces `Pi-Desktop-1.0.12-setup.exe.blockmap`
+- local packaging also produces `latest.yml` with the `1.0.12` payload path
+- CI / release workflows are aligned to `pnpm@9.0.0`
+
+What is not yet true:
+
+- there is no remote `v1.0.12` tag on GitHub
+- there is no published GitHub Release carrying the `1.0.12` assets
+- packaged apps cannot resolve live update metadata from GitHub until that signed release exists
 
 ## Common Failure Modes
 
