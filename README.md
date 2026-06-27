@@ -19,19 +19,23 @@ Current release snapshot:
 | Source version | `1.0.12` |
 | Desktop package version | `1.0.12` |
 | Remote default branch | `master` |
-| Latest remote Git tag | `v1.0.2` |
-| Published GitHub Releases | none |
-| Current release candidate | `v1.0.12` |
-| In-app updater runtime | implemented and verified in packaged Windows builds |
-| Real updater result today | local packaged `1.0.12` build generates correct installer metadata; live GitHub discovery still waits on a published signed release |
+| Repository visibility | `public` |
+| Latest remote Git tag | `v1.0.12` |
+| Published GitHub Releases | `v1.0.12` stable release |
+| Release assets | `Pi-Desktop-1.0.12-setup.exe`, `Pi-Desktop-1.0.12-setup.exe.blockmap`, `latest.yml` |
+| Release published at | `2026-06-27 15:59:59Z` |
+| GitHub release page | `https://github.com/ChisaAlter/pi-agent-desktop/releases/tag/v1.0.12` |
+| In-app updater runtime | implemented, packaged, and wired to GitHub Releases |
+| Real updater result today | a real packaged `1.0.11` build discovered, downloaded, and installed the live `v1.0.12` release from GitHub Releases |
 
 The important distinction is this:
 
 - `1.0.12` is the current source and packaging version in this repository
-- `v1.0.2` is still the newest tag on GitHub right now
-- there is not yet a published GitHub Release carrying the `1.0.12` installer and `latest.yml`
+- `v1.0.12` is also the newest GitHub tag and the current published stable release
+- the GitHub release now carries the installer, blockmap, and `latest.yml` required by `electron-updater`
+- the repository is public, so `releases.atom` and `latest.yml` are reachable without GitHub authentication
 
-The release line is now internally consistent on the source side: package version, installer naming, and updater metadata all use the same `1.0.12` version family. The remaining step is the actual signed GitHub release publication.
+The release line is now consistent end to end: package version, installer naming, updater metadata, GitHub tag, and published release assets all point at the same `1.0.12` version family.
 
 ## What Pi Desktop Does
 

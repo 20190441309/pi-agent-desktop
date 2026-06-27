@@ -20,12 +20,15 @@ This snapshot was updated on 2026-06-27 as part of the updater release cut.
 | Workspace root version | `1.0.12` |
 | Desktop package version | `1.0.12` |
 | Remote default branch | `master` |
-| Latest remote Git tag | `v1.0.2` |
-| Published GitHub Releases | none |
-| Current release candidate | `v1.0.12` |
-| Updater result in packaged build | local packaging metadata is ready; remote discovery still depends on published signed release assets |
+| Repository visibility | `public` |
+| Latest remote Git tag | `v1.0.12` |
+| Published GitHub Release | `v1.0.12` |
+| Release published at | `2026-06-27 15:59:59Z` |
+| GitHub release page | `https://github.com/ChisaAlter/pi-agent-desktop/releases/tag/v1.0.12` |
+| Published assets | installer, installer blockmap, `latest.yml` |
+| Updater result in packaged build | anonymous GitHub metadata is live; a real packaged `1.0.11` build downloaded and installed `1.0.12` successfully |
 
-The key point is that updater support depends on real signed release assets. Without them, packaged builds fall back to a visible error or manual release-page path even if the local installer and `latest.yml` look correct.
+The key point remains the same: updater support depends on real signed release assets and a public release feed. Both conditions are now satisfied for `v1.0.12`, so packaged builds can resolve GitHub metadata without maintainer credentials.
 
 ## How Versioning Works
 
@@ -105,7 +108,8 @@ After packaging, verify these outputs exist:
 5. create and push the release tag
 6. let the release workflow publish the signed installer and update metadata
 7. verify the GitHub Release page contains the installer, blockmap, and `latest.yml`
-8. install the packaged app and run a real updater check from Settings > About
+8. verify `https://github.com/<owner>/<repo>/releases.atom` and `.../releases/latest/download/latest.yml` are publicly reachable
+9. install the packaged app and run a real updater check from Settings > About
 
 ## What Changed in This Updater Rollout
 
@@ -119,35 +123,40 @@ Key behavior changes:
 - the About tab includes a direct GitHub Releases fallback action
 - noisy updater exceptions are normalized into short human-readable messages before they reach the UI
 
-## Real Acceptance Result on 2026-06-27
+## Real Acceptance Result on 2026-06-28
 
-A real packaged Windows build was launched and tested through the Settings > About screen.
+End-to-end updater acceptance is now complete:
 
-Observed behavior before the release was published:
+- the repository visibility is `public`
+- `releases.atom` returns `200`
+- `releases/latest/download/latest.yml` returns `200`
+- a real packaged build whose updater state reported `当前版本: 1.0.11` discovered `最新版本: 1.0.12`
+- that packaged build downloaded `Pi-Desktop-1.0.12-setup.exe` into `%LOCALAPPDATA%\\@pi-desktopdesktop-updater\\pending`
+- the downloaded installer ran successfully and installed `Pi Desktop.exe` under `%LOCALAPPDATA%\\Programs\\Pi Desktop`
+- the installed application reports `当前版本: 1.0.12`, `最新版本: 1.0.12`, and `已是最新`
 
-- the updater service initialized in the packaged app
-- manual update checks executed
-- the app showed a readable error state with a GitHub Releases fallback button
-- the actual failure was not a renderer bug or an IPC bug
-- the actual failure was missing published GitHub Releases metadata, which returned `404`
-
-That was the correct honest result before the release cut. As of 2026-06-27, the repo-side blocker is still that GitHub has no published `1.0.12` release yet.
+This closes the updater loop on the real packaged Windows path, not just the release-publication side.
 
 ## Current Release Status on 2026-06-27
 
 What is already true:
 
 - the repository source version is `1.0.12`
-- local Windows packaging produces `Pi-Desktop-1.0.12-setup.exe`
-- local packaging also produces `Pi-Desktop-1.0.12-setup.exe.blockmap`
-- local packaging also produces `latest.yml` with the `1.0.12` payload path
+- the remote tag `v1.0.12` is published
+- the GitHub Release `v1.0.12` is published
+- the release contains the installer, blockmap, and `latest.yml`
+- the repository is public, so end users can reach the release feed anonymously
 - CI / release workflows are aligned to `pnpm@9.0.0`
+- the Windows release workflow now mirrors the repo into a real short path before packaging, which avoids the NSIS `MAX_PATH` include failure on GitHub runners
 
-What is not yet true:
+The publication blockers from earlier in the day are closed:
 
-- there is no remote `v1.0.12` tag on GitHub
-- there is no published GitHub Release carrying the `1.0.12` assets
-- packaged apps cannot resolve live update metadata from GitHub until that signed release exists
+- invalid `electron-builder --publish` mode
+- misplaced `publisherName`
+- missing NSIS helper include on CI
+- workflow YAML parser issues around the short-path fix
+- short-path copy step exiting non-zero on successful `robocopy`
+- `lefthook install` failing in the mirrored workspace because `.git` was missing
 
 ## Common Failure Modes
 
@@ -161,11 +170,13 @@ You are testing the wrong artifact shape. The updater runtime depends on package
 
 ### The app shows a GitHub `404`
 
-There is no usable GitHub Release metadata yet. Typical causes:
+For `v1.0.12`, a `404` is no longer expected from missing release publication. If it happens now, check:
 
-- no GitHub Release exists for the tag
-- the release exists but required assets were not published
-- the release feed is inaccessible from the configured repository
+- the repository was not switched back to `private`
+- the packaged app is still pointing at `ChisaAlter/pi-agent-desktop`
+- the packaged app was built with `PI_DESKTOP_ENABLE_AUTO_UPDATE=1`
+- the network path to GitHub Releases is reachable from the test machine
+- the release asset URLs in `latest.yml` still resolve
 
 ### The UI shows a massive raw error blob
 
@@ -180,10 +191,11 @@ That was fixed in this rollout. Updater errors should now be summarized before d
 - signing secrets present in GitHub Actions
 - tag pushed
 - GitHub Release assets confirmed
+- anonymous release feed confirmed (`releases.atom`, `latest.yml`)
 - packaged app manually checked through Settings > About
 
 ## If You Need to Explain the Current State Quickly
 
 Use this sentence:
 
-Pi Desktop is now aligned on source version `1.0.12`; the updater implementation, packaged installer naming, and GitHub release metadata are designed to move together, and a real signed release is required for live update discovery.
+Pi Desktop is now aligned end to end on `1.0.12`; the repository is public, the GitHub release feed is reachable anonymously, and packaged Windows builds can discover, download, and install the published stable release.
