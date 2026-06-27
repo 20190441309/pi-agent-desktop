@@ -16,7 +16,8 @@ files:
 win:
   executableName: "Pi Desktop"
   icon: build/icon.ico
-  publisherName: "CN=Pi Desktop Contributors"
+  signtoolOptions:
+    publisherName: "CN=Pi Desktop Contributors"
   target:
     - target: nsis
       arch: x64
