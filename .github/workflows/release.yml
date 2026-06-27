@@ -26,7 +26,7 @@ jobs:
             Remove-Item -LiteralPath $shortWorkspace -Recurse -Force
           }
           New-Item -ItemType Directory -Path $shortWorkspace | Out-Null
-          robocopy $env:GITHUB_WORKSPACE $shortWorkspace /MIR /XD .git node_modules .electron-cache apps\desktop\dist apps\desktop\out
+          robocopy $env:GITHUB_WORKSPACE $shortWorkspace /MIR /XD node_modules .electron-cache apps\desktop\dist apps\desktop\out
           if ($LASTEXITCODE -gt 7) {
             throw "robocopy failed with exit code $LASTEXITCODE"
           }
