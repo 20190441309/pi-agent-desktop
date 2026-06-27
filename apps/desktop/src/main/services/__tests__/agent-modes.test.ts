@@ -46,6 +46,19 @@ describe("agent modes", () => {
         expect(buildAgentModePrompt("compose", "全面审查代码")).toBe("全面审查代码");
     });
 
+    it("injects workflow-tool instructions for compose mode when workflow runtime is enabled", () => {
+        const outbound = buildAgentModePrompt("compose", "全面审查代码", {
+            longHorizonEnabled: true,
+            composeModeEnabled: true,
+            workflowEnabled: true,
+            composeWorkflowEnabled: true,
+        });
+
+        expect(outbound).toContain("Compose workflow runtime is enabled.");
+        expect(outbound).toContain("call the `workflow` tool");
+        expect(outbound).toContain("全面审查代码");
+    });
+
     it("exposes goal slash commands only through the long-horizon command bundle", () => {
         expect(goalSlashCommands()).toEqual(expect.arrayContaining([
             expect.objectContaining({ name: "goal", source: "builtin", requiresArgument: true }),

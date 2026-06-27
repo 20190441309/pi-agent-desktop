@@ -449,12 +449,16 @@ function modeOptions(settings?: AppSettings): {
     longHorizonEnabled: boolean;
     planModeEnabled: boolean;
     composeModeEnabled: boolean;
+    workflowEnabled: boolean;
+    composeWorkflowEnabled: boolean;
 } {
     const longHorizon = longHorizonSettings(settings);
     return {
         longHorizonEnabled: longHorizon.enabled,
         planModeEnabled: longHorizon.planMode.enabled,
         composeModeEnabled: longHorizon.composeMode.enabled,
+        workflowEnabled: longHorizon.workflow.enabled,
+        composeWorkflowEnabled: longHorizon.composeWorkflow.enabled,
     };
 }
 
@@ -595,6 +599,10 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         buildMiMoCodeRuntimePort(longHorizonSettings(deps.getSettings?.()), {
             planModeSupported: resolveBundledDesktopExtensionPaths({ planModeEnabled: true }).length > 0,
             composeModeSupported: resolveBundledDesktopExtensionPaths({ composeModeEnabled: true }).length > 0,
+            workflowSupported: resolveBundledDesktopExtensionPaths({
+                workflowEnabled: true,
+                composeWorkflowEnabled: true,
+            }).length > 0,
         })
     ));
 

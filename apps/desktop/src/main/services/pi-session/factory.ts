@@ -29,6 +29,8 @@ export interface WorkspaceSession {
 export interface DesktopExtensionCapabilityOptions {
     planModeEnabled?: boolean;
     composeModeEnabled?: boolean;
+    workflowEnabled?: boolean;
+    composeWorkflowEnabled?: boolean;
 }
 
 export interface CreateSessionOpts {
@@ -142,14 +144,17 @@ export function resolveBundledDesktopExtensionPaths(
     if (options.composeModeEnabled) {
         paths.push(resolveBundledComposeExtensionPath());
     }
+    if (options.workflowEnabled || options.composeWorkflowEnabled) {
+        paths.push(resolveBundledComposeExtensionPath(__dirname, "workflow-extension.ts"));
+    }
     return [...new Set(paths.filter((path): path is string => Boolean(path)))];
 }
 
-export function resolveBundledComposeExtensionPath(baseDir = __dirname): string | undefined {
+export function resolveBundledComposeExtensionPath(baseDir = __dirname, entryFile = "index.ts"): string | undefined {
     const candidates = [
-        join(baseDir, "../../../../extensions/compose-mode/index.ts"),
-        join(baseDir, "../../../extensions/compose-mode/index.ts"),
-        join(baseDir, "../../extensions/compose-mode/index.ts"),
+        join(baseDir, "../../../../extensions/compose-mode", entryFile),
+        join(baseDir, "../../../extensions/compose-mode", entryFile),
+        join(baseDir, "../../extensions/compose-mode", entryFile),
     ];
     return candidates.find((candidate) => existsSync(candidate));
 }

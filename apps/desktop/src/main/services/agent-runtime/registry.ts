@@ -39,6 +39,8 @@ interface AgentRuntimeRegistryDeps {
         longHorizonEnabled: boolean;
         planModeEnabled?: boolean;
         composeModeEnabled?: boolean;
+        workflowEnabled?: boolean;
+        composeWorkflowEnabled?: boolean;
     };
     getTaskService?: () => Pick<TaskService, "setSourceTasks"> | null | undefined;
     getMemoryService?: () => Pick<MemoryService, "put"> | null | undefined;
@@ -393,6 +395,8 @@ export class AgentRuntimeRegistry {
         return resolveBundledDesktopExtensionPaths({
             planModeEnabled: options.planModeEnabled,
             composeModeEnabled: options.composeModeEnabled,
+            workflowEnabled: options.workflowEnabled,
+            composeWorkflowEnabled: options.composeWorkflowEnabled,
         });
     }
 

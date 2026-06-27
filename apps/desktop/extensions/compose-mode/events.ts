@@ -1,4 +1,3 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildComposePrompt } from "./prompts.ts";
 import {
@@ -19,7 +18,11 @@ type SessionEntry = {
     };
 };
 
-function isComposeContextMessage(message: AgentMessage & { customType?: string }): boolean {
+type ComposeContextMessage = {
+    customType?: string;
+};
+
+function isComposeContextMessage(message: ComposeContextMessage): boolean {
     return message.customType === "compose-mode-context";
 }
 
@@ -82,7 +85,7 @@ export function registerEvents(
     pi.on("context", async (event) => {
         if (state.enabled) return;
         return {
-            messages: event.messages.filter((message) => !isComposeContextMessage(message as AgentMessage & { customType?: string })),
+            messages: event.messages.filter((message) => !isComposeContextMessage(message as ComposeContextMessage)),
         };
     });
 }

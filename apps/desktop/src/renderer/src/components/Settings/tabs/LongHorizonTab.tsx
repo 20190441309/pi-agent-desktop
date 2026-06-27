@@ -61,7 +61,7 @@ export function LongHorizonTab(): React.JSX.Element {
 
             <SectionTitle title={t("settings.longHorizon.modes.heading")} description={t("settings.longHorizon.modes.description")} />
             <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
-                {(["planMode", "composeMode"] as const).map((key) => (
+                {(["planMode", "composeMode", "workflow", "composeWorkflow"] as const).map((key) => (
                     <FieldRow
                         key={key}
                         label={t(`settings.longHorizon.${key}.label`)}

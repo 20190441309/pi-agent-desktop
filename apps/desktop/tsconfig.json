@@ -3,8 +3,9 @@
   "compilerOptions": {
     "outDir": "./dist",
     "composite": false,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*", "../../packages/shared-types/src/**/*"],
+  "include": ["src/**/*", "extensions/**/*", "../../packages/shared-types/src/**/*"],
   "exclude": ["node_modules", "dist", "out", "**/__tests__/**"]
 }

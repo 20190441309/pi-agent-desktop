@@ -19,7 +19,7 @@ export default [
     ],
   },
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "extensions/**/*.{ts,tsx}"],
     languageOptions: {
       parser: tseslint.parser,
       ecmaVersion: "latest",
@@ -88,7 +88,7 @@ export default [
     },
   },
   {
-    files: ["src/main/**/*.ts"],
+    files: ["src/main/**/*.ts", "extensions/**/*.ts"],
     languageOptions: {
       globals: {
         // Node main process

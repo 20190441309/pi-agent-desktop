@@ -150,6 +150,8 @@ const getLongHorizonModeOptions = () => {
     longHorizonEnabled: longHorizon.enabled,
     planModeEnabled: longHorizon.planMode.enabled,
     composeModeEnabled: longHorizon.composeMode.enabled,
+    workflowEnabled: longHorizon.workflow.enabled,
+    composeWorkflowEnabled: longHorizon.composeWorkflow.enabled,
   };
 };
 

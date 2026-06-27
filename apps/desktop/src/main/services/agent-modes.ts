@@ -5,6 +5,8 @@ export interface AgentModeRuntimeOptions {
     longHorizonEnabled?: boolean;
     planModeEnabled?: boolean;
     composeModeEnabled?: boolean;
+    workflowEnabled?: boolean;
+    composeWorkflowEnabled?: boolean;
 }
 
 export interface AgentRegistryEntry {
@@ -152,6 +154,15 @@ export function buildAgentModePrompt(mode: AgentMode, text: string, options: Age
     if (options.longHorizonEnabled === false) return content;
     if (mode === "build") return content;
     if (mode === "plan") return content;
+    if (options.workflowEnabled && options.composeWorkflowEnabled) {
+        return [
+            "Compose workflow runtime is enabled.",
+            "For non-trivial compose work, call the `workflow` tool with `operation=\"run\"`, `name=\"compose\"`, and `args.task` set to the user request.",
+            "Use the workflow result instead of improvising a prompt-only compose flow.",
+            "",
+            content,
+        ].join("\n");
+    }
     return content;
 }
 

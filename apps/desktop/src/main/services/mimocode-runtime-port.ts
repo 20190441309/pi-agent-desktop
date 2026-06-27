@@ -54,6 +54,7 @@ export interface MiMoCodeRuntimePort {
 export interface MiMoCodeRuntimeSupportOptions {
     planModeSupported?: boolean;
     composeModeSupported?: boolean;
+    workflowSupported?: boolean;
 }
 
 export const MIMOCODE_PRIMARY_AGENT_IDS = ["build", "plan", "compose"] as const;
@@ -201,8 +202,14 @@ function buildFeatureState(
         actor: supportedToggle(enabled, settings.actor.enabled, "desktop"),
         subagents: supportedToggle(enabled, settings.subagents.enabled, "desktop"),
         workflow: {
-            ...unsupportedMeta(unsupportedReason),
-            enabled: false,
+            ...conditionalToggle(
+                enabled,
+                settings.workflow.enabled,
+                support.workflowSupported ?? support.composeModeSupported ?? true,
+                "desktop",
+                "Pi Desktop 未找到 workflow runtime bundle。",
+            ),
+            enabled: enabled && settings.workflow.enabled && (support.workflowSupported ?? support.composeModeSupported ?? true),
             maxConcurrentAgents: settings.workflow.maxConcurrentAgents ?? 4,
             maxLifecycleAgents: settings.workflow.maxLifecycleAgents ?? 100,
             maxDepth: settings.workflow.maxDepth ?? 4,
@@ -245,14 +252,14 @@ function conditionalToggle(
     loadedFromWhenEnabled: Extract<LongHorizonLoadedFrom, "desktop" | "pi-openplan">,
     unsupportedReason: string,
 ): LongHorizonRuntimeToggle {
+    if (!runtimeSupported) {
+        return unsupportedToggle(unsupportedReason);
+    }
     if (!longHorizonEnabled || !featureEnabled) {
         return {
             enabled: false,
             ...supportedMeta(false, loadedFromWhenEnabled),
         };
-    }
-    if (!runtimeSupported) {
-        return unsupportedToggle(unsupportedReason);
     }
     return supportedToggle(longHorizonEnabled, featureEnabled, loadedFromWhenEnabled);
 }

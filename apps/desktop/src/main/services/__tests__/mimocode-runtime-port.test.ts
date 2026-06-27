@@ -86,8 +86,8 @@ describe("MiMoCode runtime port", () => {
         });
         expect(port.features.workflow).toMatchObject({
             enabled: false,
-            supported: false,
-            loadedFrom: "unsupported",
+            supported: true,
+            loadedFrom: "disabled",
             maxConcurrentAgents: 2,
             maxLifecycleAgents: 8,
             maxDepth: 3,
@@ -110,6 +110,7 @@ describe("MiMoCode runtime port", () => {
             {
                 planModeSupported: false,
                 composeModeSupported: false,
+                workflowSupported: false,
             },
         );
 
@@ -125,6 +126,11 @@ describe("MiMoCode runtime port", () => {
             loadedFrom: "unsupported",
         });
         expect(port.features.maxMode).toMatchObject({
+            enabled: false,
+            supported: false,
+            loadedFrom: "unsupported",
+        });
+        expect(port.features.workflow).toMatchObject({
             enabled: false,
             supported: false,
             loadedFrom: "unsupported",

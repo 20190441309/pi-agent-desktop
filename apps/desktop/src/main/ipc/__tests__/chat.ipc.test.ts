@@ -512,7 +512,7 @@ describe("setupChatIpc", () => {
                 composeMode: { enabled: false, supported: true, loadedFrom: "disabled" },
                 maxMode: { enabled: false, supported: false, loadedFrom: "unsupported", candidates: 2 },
                 memory: { enabled: true, supported: true, loadedFrom: "desktop", ccIndex: true, searchScoreFloor: 0.2 },
-                workflow: { enabled: false, supported: false, loadedFrom: "unsupported" },
+                workflow: { enabled: false, supported: true, loadedFrom: "disabled" },
             },
         });
     });

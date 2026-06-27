@@ -334,13 +334,33 @@ describe("createWorkspaceSession", () => {
         const paths = resolveBundledDesktopExtensionPaths({ composeModeEnabled: true });
 
         expect(paths.some((path) => /extensions[\\/]compose-mode[\\/]index\.ts$/.test(path))).toBe(true);
+        expect(paths.some((path) => /extensions[\\/]compose-mode[\\/]workflow-extension\.ts$/.test(path))).toBe(false);
+    });
+
+    it("resolves the bundled desktop compose extension when workflow runtime is enabled without compose mode", () => {
+        const workflowPaths = resolveBundledDesktopExtensionPaths({ workflowEnabled: true });
+        const composeWorkflowPaths = resolveBundledDesktopExtensionPaths({ composeWorkflowEnabled: true });
+
+        expect(workflowPaths.some((path) => /extensions[\\/]compose-mode[\\/]workflow-extension\.ts$/.test(path))).toBe(true);
+        expect(composeWorkflowPaths.some((path) => /extensions[\\/]compose-mode[\\/]workflow-extension\.ts$/.test(path))).toBe(true);
+        expect(workflowPaths.some((path) => /extensions[\\/]compose-mode[\\/]index\.ts$/.test(path))).toBe(false);
     });
 
     it("resolves the bundled compose extension entry file from both source and built main directories", () => {
         const sourcePath = resolveBundledComposeExtensionPath("C:/Ai/pi-desktop/apps/desktop/src/main/services/pi-session");
         const builtPath = resolveBundledComposeExtensionPath("C:/Ai/pi-desktop/apps/desktop/out/main");
+        const workflowSourcePath = resolveBundledComposeExtensionPath(
+            "C:/Ai/pi-desktop/apps/desktop/src/main/services/pi-session",
+            "workflow-extension.ts",
+        );
+        const workflowBuiltPath = resolveBundledComposeExtensionPath(
+            "C:/Ai/pi-desktop/apps/desktop/out/main",
+            "workflow-extension.ts",
+        );
 
         expect(sourcePath).toMatch(/extensions[\\/]compose-mode[\\/]index\.ts$/);
         expect(builtPath).toMatch(/extensions[\\/]compose-mode[\\/]index\.ts$/);
+        expect(workflowSourcePath).toMatch(/extensions[\\/]compose-mode[\\/]workflow-extension\.ts$/);
+        expect(workflowBuiltPath).toMatch(/extensions[\\/]compose-mode[\\/]workflow-extension\.ts$/);
     });
 });
