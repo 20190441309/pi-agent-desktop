@@ -49,6 +49,7 @@ The release line is now consistent end to end: package version, installer naming
 
 - [Release and auto-update guide](docs/RELEASE-AND-AUTO-UPDATE.md): what the current version is, how releases are published, what artifacts are required, and how the updater behaves
 - [Contributing guide](CONTRIBUTING.md): local development workflow and contribution conventions
+- [Design system](DESIGN.md): chat, settings, and desktop-surface spacing, tokens, motion, and running-state rules
 - [Milestone archive](docs/RELEASE-NOTES-M1-M5.md): historical M1-M5 implementation report
 
 ## Quick Start
@@ -78,6 +79,16 @@ pnpm -r typecheck
 pnpm -r lint
 pnpm -r test
 pnpm --filter @pi-desktop/desktop build
+```
+
+For renderer, chat runtime, settings, overlay, or other desktop-surface changes, do not stop at repo gates. Run the matching real Electron Playwright acceptance and capture fresh screenshots in `docs/compose/acceptance/`.
+
+Examples:
+
+```bash
+pnpm --filter @pi-desktop/desktop exec playwright test e2e/overlay-anchors.spec.ts
+pnpm --filter @pi-desktop/desktop exec playwright test e2e/generated-ui-v1-acceptance.spec.ts
+pnpm --filter @pi-desktop/desktop exec playwright test e2e/running-control.spec.ts
 ```
 
 For updater work or release work, also build a packaged Windows artifact:

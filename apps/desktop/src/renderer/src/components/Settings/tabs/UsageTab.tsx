@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { useI18n } from "../../../i18n";
 import { useSessionStore } from "../../../stores/session-store";
 import { useWorkspaceStore } from "../../../stores/workspace-store";
 import {
@@ -7,6 +8,7 @@ import {
   formatUsageNumber,
   type UsageOverview,
 } from "../../UsageStats/usage-aggregation";
+import { SectionTitle, SettingsCard, SettingsPage } from "../_shared";
 
 type TimeRange = 7 | 30;
 
@@ -246,6 +248,7 @@ function ModelUsage({
 }
 
 export function UsageTab(): React.JSX.Element {
+  const { t } = useI18n();
   const sessions = useSessionStore((state) => state.sessions);
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
   const [timeRange, setTimeRange] = useState<TimeRange>(30);
@@ -266,34 +269,33 @@ export function UsageTab(): React.JSX.Element {
   const clearTooltip = (): void => setTooltip(null);
 
   return (
-    <div
-      className="settings-tab-panel mx-auto w-full max-w-[860px] px-2 py-8 text-[var(--settings-text-primary)]"
-      role="tabpanel"
-      id="settings-tabpanel-usage"
-      aria-labelledby="settings-tab-usage"
-    >
-      <div className="flex items-start justify-between gap-6">
-        <div className="flex items-end gap-4">
-          <h3 className="m-0 text-[28px] font-semibold tracking-normal text-[var(--settings-text-primary)]">使用统计</h3>
-          <span className="border-b-2 border-[var(--settings-text-primary)] pb-2 text-[13px] text-[var(--settings-text-primary)]">Token 用量</span>
-        </div>
-        <div className="flex shrink-0 rounded-[8px] border border-[var(--settings-border)] bg-[var(--settings-bg-control)] p-1">
+    <SettingsPage
+      tabId="usage"
+      title={t("settings.usage.heading")}
+      description={t("settings.usage.description")}
+      actions={(
+        <div className="flex shrink-0 rounded-[10px] border border-[var(--settings-border)] bg-[var(--settings-bg-control)] p-1">
           <RangeButton active={timeRange === 7} onClick={() => setTimeRange(7)}>最近 7 天</RangeButton>
           <RangeButton active={timeRange === 30} onClick={() => setTimeRange(30)}>最近 30 天</RangeButton>
         </div>
-      </div>
-
-      <div className="mt-9 flex items-center justify-between">
-        <span className="text-[13px] text-[var(--settings-text-primary)]">时间范围</span>
-        <div className="flex gap-2">
+      )}
+    >
+      <SettingsCard anchorId="usage-filters" className="px-5 py-4">
+        <SectionTitle title={t("settings.usage.filtersHeading")} description={t("settings.usage.filtersDescription")} />
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-[13px] text-[var(--settings-text-primary)]">时间范围</span>
+          <div className="flex gap-2">
           <RangeButton active={!includeAllWorkspaces} onClick={() => setIncludeAllWorkspaces(false)}>当前工作区</RangeButton>
           <RangeButton active={includeAllWorkspaces} onClick={() => setIncludeAllWorkspaces(true)}>全部工作区</RangeButton>
           <RangeButton active={!includeArchived} onClick={() => setIncludeArchived(false)}>活跃</RangeButton>
           <RangeButton active={includeArchived} onClick={() => setIncludeArchived(true)}>含归档</RangeButton>
+          </div>
         </div>
-      </div>
+      </SettingsCard>
 
-      <div className="mt-7 grid grid-cols-3 gap-3">
+      <div data-settings-anchor="usage-overview" className="space-y-4">
+        <SectionTitle title={t("settings.usage.overviewHeading")} description={t("settings.usage.overviewDescription")} />
+        <div className="grid grid-cols-3 gap-3">
         <MetricCard label="tokens 用量" value={formatUsageNumber(overview.summary.totalTokens)} />
         <MetricCard label="会话数量" value={String(overview.summary.sessionCount)} />
         <MetricCard label="消息数量" value={String(overview.summary.messageCount)} />
@@ -304,6 +306,7 @@ export function UsageTab(): React.JSX.Element {
           value={overview.summary.topModel?.model ?? "-"}
           detail={overview.summary.topModel ? `占比 ${overview.summary.topModel.share}%` : "暂无数据"}
         />
+        </div>
       </div>
 
       {overview.summary.sessionCount === 0 ? (
@@ -347,6 +350,6 @@ export function UsageTab(): React.JSX.Element {
           {tooltip.content}
         </div>
       )}
-    </div>
+    </SettingsPage>
   );
 }

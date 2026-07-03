@@ -119,7 +119,7 @@ export class AgentRuntimeRegistry {
         this.addMessage(runtime, "user", visibleContent, { mode });
         this.rememberRecentUserIntent(runtime, visibleContent, mode);
         const outbound = buildAgentModePrompt(mode, text, modeOptions);
-        await this.promptRuntime(runtime, outbound, input.streamingBehavior);
+        await this.promptRuntime(runtime, outbound, input.streamingBehavior, { returnEarly: true });
     }
 
     async promptInternal(agentId: string, message: string): Promise<void> {
@@ -138,24 +138,36 @@ export class AgentRuntimeRegistry {
         runtime: AgentRuntime,
         text: string,
         streamingBehavior?: SendAgentPromptInput["streamingBehavior"],
+        options?: { returnEarly?: boolean },
     ): Promise<void> {
         runtime.tab.status = "running";
         runtime.tab.updatedAt = Date.now();
         runtime.isStreaming = true;
         this.emitState();
         try {
-            await runtime.session.session.prompt(
+            const promptPromise = Promise.resolve(runtime.session.session.prompt(
                 text,
                 streamingBehavior ? { streamingBehavior } : undefined,
-            );
+            ));
+            if (!options?.returnEarly) {
+                await promptPromise;
+                return;
+            }
+            let returnedEarly = false;
+            void promptPromise.catch((error) => {
+                if (returnedEarly) {
+                    this.handlePromptFailure(runtime, error);
+                }
+            });
+            await Promise.race([
+                promptPromise,
+                new Promise<void>((resolve) => {
+                    queueMicrotask(resolve);
+                }),
+            ]);
+            returnedEarly = true;
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            runtime.tab.status = "error";
-            runtime.tab.updatedAt = Date.now();
-            runtime.isStreaming = false;
-            this.disarmWatchdog(runtime);
-            this.addMessage(runtime, "error", `Agent prompt failed: ${message}`);
-            this.emitState();
+            this.handlePromptFailure(runtime, error);
             throw error;
         }
     }
@@ -330,6 +342,16 @@ export class AgentRuntimeRegistry {
             clearTimeout(runtime.watchdog);
             runtime.watchdog = undefined;
         }
+    }
+
+    private handlePromptFailure(runtime: AgentRuntime, error: unknown): void {
+        const message = error instanceof Error ? error.message : String(error);
+        runtime.tab.status = "error";
+        runtime.tab.updatedAt = Date.now();
+        runtime.isStreaming = false;
+        this.disarmWatchdog(runtime);
+        this.addMessage(runtime, "error", `Agent prompt failed: ${message}`);
+        this.emitState();
     }
 
     private sendInterceptorPayload(

@@ -1,6 +1,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
   const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -9,8 +10,8 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
     env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
   });
-  const page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
+  await app.firstWindow();
+  const page = await getWindowByUrl(app, 'index.html');
   const modal = page.locator('[data-testid="onboarding-modal"]');
   if (await modal.count()) {
     await page.getByRole('button', { name: '跳过引导' }).click();
@@ -21,7 +22,13 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
 
 async function setWindowSize(app: ElectronApplication, width: number, height: number): Promise<void> {
   await app.evaluate(({ BrowserWindow }, size) => {
-    const win = BrowserWindow.getAllWindows()[0];
+    const win = BrowserWindow.getAllWindows().find((item) => {
+      try {
+        return !item.isDestroyed() && item.webContents.getURL().includes("index.html");
+      } catch {
+        return false;
+      }
+    });
     win?.setSize(size.width, size.height);
   }, { width, height });
 }

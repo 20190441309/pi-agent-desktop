@@ -1,6 +1,6 @@
 // Electron Main Process Entry Point
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
 import { homedir } from 'os';
@@ -23,6 +23,7 @@ import { setupGitIpc } from './ipc/git.ipc';
 import { setupPiDriverIpc } from './ipc/pi-driver.ipc';
 import { setupSettingsIpc } from './ipc/settings.ipc';
 import { setupSettingsWindowIpc } from './ipc/settings-window.ipc';
+import { setupDesktopOverlayIpc } from './ipc/desktop-overlay.ipc';
 import { setupUpdaterIpc } from './ipc/updater.ipc';
 import { setupWindowIpc, setupWindowEvents } from './ipc/window.ipc';
 import { setupWorkspaceIpc } from './ipc/workspace.ipc';
@@ -31,6 +32,7 @@ import { setupWorkbenchIpc } from './ipc/workbench.ipc';
 import { registerLocalFileProtocol } from './services/local-file-protocol';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 import { clearPendingExtensionUiRequests } from './services/extensions/extension-ui-bridge';
+import { setExtensionUiTargetResolver } from './services/extensions/extension-ui-bridge';
 import { setupAutoUpdater, type AppUpdaterService } from './services/updater';
 import { ptyManager } from './services/shell/pty-manager';
 import { DEFAULT_LONG_HORIZON_SETTINGS, type AppSettings, type Session } from '@shared';
@@ -43,14 +45,38 @@ import { MemoryService } from './services/long-horizon/memory-service';
 import { CheckpointService } from './services/long-horizon/checkpoint-service';
 import { TaskService } from './services/long-horizon/task-service';
 import { getMostRecentlyActiveWorkspace } from './services/workspace-selection';
+import { DesktopOverlayWindowManager } from './services/desktop-overlay-window';
+import { createMainWindowLifecycleController, type MainWindowLifecycleController } from './services/window-lifecycle';
+import { resolveTrayIconPath } from './services/tray-icon';
 import type { PiAgentConfig } from './types';
 
 let mainWindow: BrowserWindow | null = null;
+let desktopOverlayWindowManager: DesktopOverlayWindowManager | null = null;
+let mainWindowLifecycle: MainWindowLifecycleController | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
 let piDriver: PiDriver | null = null;
 
+const MAIN_WINDOW_WIDTH = 896;
+const MAIN_WINDOW_HEIGHT = 756;
+
 type PiDesktopTestGlobals = typeof globalThis & {
   __PI_DESKTOP_TEST_AGENT_REGISTRY__?: AgentRuntimeRegistry;
+  __PI_DESKTOP_TEST_OVERLAY__?: {
+    emitPermissionRequest: (payload: {
+      requestId: string;
+      title: string;
+      message?: string;
+      workspaceId?: string;
+      agentId?: string | null;
+    }) => void;
+  };
+  __PI_DESKTOP_TEST_SHELL__?: {
+    hasTray: () => boolean;
+    closeMainWindow: () => void;
+    restoreMainWindow: () => void;
+    isMainWindowVisible: () => boolean;
+    quitApp: () => void;
+  };
 };
 
 // Pi session (long-lived AgentSession per workspace)
@@ -134,8 +160,10 @@ function migrateStore(): void {
 migrateStore();
 
 const sendToRenderer = (channel: string, payload: unknown) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(channel, payload);
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, payload);
+    }
   }
 };
 
@@ -180,12 +208,17 @@ let memoryService: MemoryService | null = null;
 let checkpointService: CheckpointService | null = null;
 let taskService: TaskService | null = null;
 
+function refreshPiAgentConfig(configManager: ConfigManager): PiAgentConfig | null {
+  piAgentConfig = configManager.loadPiAgentConfig();
+  return piAgentConfig;
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 689,
-    height: 756,
-    minWidth: 689,
-    minHeight: 756,
+    width: MAIN_WINDOW_WIDTH,
+    height: MAIN_WINDOW_HEIGHT,
+    minWidth: MAIN_WINDOW_WIDTH,
+    minHeight: MAIN_WINDOW_HEIGHT,
     show: false,
     autoHideMenuBar: true,
     transparent: process.platform === "win32",
@@ -214,6 +247,10 @@ function createWindow(): void {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+  }
+
+  if (mainWindowLifecycle) {
+    mainWindowLifecycle.attachMainWindow(mainWindow);
   }
 }
 
@@ -267,7 +304,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
   setupAgentsIpc(agentRegistry);
   setupConfigIpc(configManager, {
     onManagedModelsChanged: () => {
-      piAgentConfig = configManager.loadPiAgentConfig();
+      refreshPiAgentConfig(configManager);
       if (piAgentConfig) {
         const currentSettings = store.get('settings');
         store.set('settings', {
@@ -320,6 +357,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
   setupSettingsIpc({
     store,
     getPiAgentConfig: () => piAgentConfig,
+    reloadPiAgentConfig: () => refreshPiAgentConfig(configManager),
     piAgentDir: PI_AGENT_DIR,
     onSettingsChanged: (next, previous) => {
       if (!shouldRefreshSessionsForSettingsChange(previous, next)) return;
@@ -336,6 +374,9 @@ function setupIPC(updaterService: AppUpdaterService): void {
   });
 
   setupSettingsWindowIpc(() => mainWindow);
+  if (desktopOverlayWindowManager) {
+    setupDesktopOverlayIpc(desktopOverlayWindowManager);
+  }
   setupUpdaterIpc(updaterService);
 
   // Terminal (node-pty)
@@ -355,7 +396,7 @@ app.whenReady().then(() => {
   registerLocalFileProtocol();
 
   // 先加载 Pi 配置，再初始化
-  piAgentConfig = configManager.loadPiAgentConfig();
+  refreshPiAgentConfig(configManager);
   if (piAgentConfig) {
     log.info(`Pi config loaded: provider=${piAgentConfig.defaultProvider}, model=${piAgentConfig.defaultModel}, ${piAgentConfig.providers.length} providers`);
     // 更新 electron-store 默认设置与 Pi 配置同步
@@ -373,14 +414,88 @@ app.whenReady().then(() => {
   }
 
   createWindow();
+  desktopOverlayWindowManager = new DesktopOverlayWindowManager(() => mainWindow);
+  desktopOverlayWindowManager.ensureWindow();
+  mainWindowLifecycle = createMainWindowLifecycleController({
+    getMainWindow: () => mainWindow,
+    overlay: desktopOverlayWindowManager,
+    createTray: (iconPath) => new Tray(iconPath),
+    buildTrayMenu: ({ show, quit }) => Menu.buildFromTemplate([
+      { label: "显示主窗口", click: show },
+      { type: "separator" },
+      { label: "退出", click: quit },
+    ]),
+    onQuitRequested: () => app.quit(),
+  });
+  if (mainWindow) {
+    mainWindowLifecycle.attachMainWindow(mainWindow);
+  }
+  try {
+    const trayIconResolution = resolveTrayIconPath({
+      appPath: app.getAppPath(),
+      cwd: process.cwd(),
+      resourcesPath: process.resourcesPath,
+    });
+    if (!trayIconResolution.path) {
+      throw new Error(`tray icon not found; checked=${trayIconResolution.checkedPaths.join(", ")}`);
+    }
+    const trayIcon = nativeImage.createFromPath(trayIconResolution.path);
+    if (trayIcon.isEmpty()) {
+      throw new Error(`tray icon could not be loaded from ${trayIconResolution.path}`);
+    }
+    log.info(`[Main] initializing tray icon from ${trayIconResolution.path}`);
+    mainWindowLifecycle.ensureTray(trayIcon);
+  } catch (error) {
+    log.error("[Main] failed to initialize tray:", error);
+  }
+  setExtensionUiTargetResolver((payload) => desktopOverlayWindowManager?.getPermissionTarget(payload) ?? mainWindow);
+  if (process.env.CI === "1" || process.env.NODE_ENV === "test") {
+    (globalThis as PiDesktopTestGlobals).__PI_DESKTOP_TEST_OVERLAY__ = {
+      emitPermissionRequest: (payload) => {
+        const targetWindow = desktopOverlayWindowManager?.getPermissionTarget({
+          workspaceId: payload.workspaceId,
+          agentId: payload.agentId ?? undefined,
+          source: "permission",
+        }) ?? mainWindow;
+        targetWindow?.webContents.send("permission:request", {
+          requestId: payload.requestId,
+          workspaceId: payload.workspaceId,
+          agentId: payload.agentId ?? undefined,
+          kind: "select",
+          source: "permission",
+          title: payload.title,
+          message: payload.message,
+          createdAt: Date.now(),
+        });
+      },
+    };
+    (globalThis as PiDesktopTestGlobals).__PI_DESKTOP_TEST_SHELL__ = {
+      hasTray: () => mainWindowLifecycle?.hasTray() ?? false,
+      closeMainWindow: () => {
+        mainWindow?.close();
+      },
+      restoreMainWindow: () => {
+        mainWindowLifecycle?.restoreMainWindow();
+      },
+      isMainWindowVisible: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
+      quitApp: () => {
+        mainWindowLifecycle?.requestQuit();
+      },
+    };
+  }
   const updaterService = setupAutoUpdater();
   setupIPC(updaterService);
   initializePiDriver();
+
+  app.on('before-quit', () => {
+    mainWindowLifecycle?.beginQuit();
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
+    mainWindowLifecycle?.restoreMainWindow();
   });
 });
 
@@ -400,6 +515,8 @@ app.on('window-all-closed', () => {
   piRegistry.disposeAll();
   agentRegistry.disposeAll();
   delete (globalThis as PiDesktopTestGlobals).__PI_DESKTOP_TEST_AGENT_REGISTRY__;
+  delete (globalThis as PiDesktopTestGlobals).__PI_DESKTOP_TEST_OVERLAY__;
+  delete (globalThis as PiDesktopTestGlobals).__PI_DESKTOP_TEST_SHELL__;
 
   // 清理所有终端进程 (M4: 走 ptyManager)
   ptyManager.closeAll();

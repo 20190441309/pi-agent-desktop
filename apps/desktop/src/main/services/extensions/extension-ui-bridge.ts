@@ -43,6 +43,8 @@ interface ExtensionUiBridgeOpts {
     getTargetWindow?: () => BrowserWindow | null;
 }
 
+type ExtensionUiTargetResolver = (payload: ExtensionUiRequest) => BrowserWindow | null;
+
 // Per-workspaceId state (Phase 2 Task 17.1):
 // Replaces the previous module-level singletons that were shared across all
 // windows/workspaces, causing cross-workspace state corruption.
@@ -53,6 +55,7 @@ const permissionModeByWorkspace = new Map<string, PermissionMode | null>();
 // parameter) by acting as the implicit default for new workspaces.
 let defaultPermissionMode: PermissionMode | null = "smart";
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+let targetResolver: ExtensionUiTargetResolver | null = null;
 
 function getWorkspaceRequests(workspaceId: string): Map<string, PendingRequest> {
     let m = pendingRequestsByWorkspace.get(workspaceId);
@@ -85,6 +88,10 @@ function getDefaultWindow(): BrowserWindow | null {
 function sendToWindow(win: BrowserWindow | null, channel: string, payload: unknown): void {
     if (!win) return;
     win.webContents.send(channel, payload);
+}
+
+export function setExtensionUiTargetResolver(resolver: ExtensionUiTargetResolver | null): void {
+    targetResolver = resolver;
 }
 
 function newRequestId(prefix: string): string {
@@ -259,7 +266,11 @@ export function createExtensionUiBridge(
                 pending.resolve(timeoutValue(pending.kind));
             }, DEFAULT_REQUEST_TIMEOUT_MS);
             requests.set(requestId, { kind, source, options: opts?.options, resolve, timer });
-            sendToWindow(getTargetWindow(), source === "plan" ? "plan:decision-request" : "permission:request", payload);
+            sendToWindow(
+                targetResolver?.(payload) ?? getTargetWindow(),
+                source === "plan" ? "plan:decision-request" : "permission:request",
+                payload,
+            );
         });
     };
 

@@ -175,7 +175,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         const tabs = tablist.getByRole('tab');
         const tabCount = await tabs.count();
         expect(tabCount).toBe(10);
-        for (const name of ['模型', 'Agent', '权限', '用量', '长程能力', '界面', '通用', '快捷键', '配置文件', '关于']) {
+        for (const name of ['通用', '模型', 'Pi Code Agent', '界面', '权限', '用量', '长程能力', '快捷键', '配置文件', '关于']) {
             await expect(tablist.getByRole('tab', { name })).toBeVisible();
         }
 

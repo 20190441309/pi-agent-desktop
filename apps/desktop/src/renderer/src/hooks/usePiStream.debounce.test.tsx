@@ -218,6 +218,65 @@ describe("usePiStream (T6) — debounce + flush", () => {
         expect(arg.toolCalls?.[0]).toMatchObject({ id: "tc_agent_end", status: "completed" });
     });
 
+    it("flush 前会净化 store 中的 legacy toolCalls，并丢弃不完整项", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.(fakeEvent({ type: "agent_start" }));
+            emitPiEvent?.(fakeEvent({
+                type: "message_update",
+                assistantMessageEvent: { type: "text_delta", delta: "sanitize" },
+            }));
+        });
+
+        useSessionStore.setState((state) => ({
+            sessions: state.sessions.map((session) => (
+                session.id === "s1"
+                    ? {
+                        ...session,
+                        messages: session.messages.map((message) => (
+                            message.role === "assistant"
+                                ? {
+                                    ...message,
+                                    toolCalls: [
+                                        {
+                                            toolCallId: "tc_legacy",
+                                            toolName: "bash",
+                                            args: { command: "pwd" },
+                                            status: "completed",
+                                        },
+                                        {
+                                            toolName: "missing-id",
+                                            status: "running",
+                                        },
+                                    ] as unknown as typeof message.toolCalls,
+                                }
+                                : message
+                        )),
+                    }
+                    : session
+            )),
+        }));
+
+        await act(async () => {
+            emitPiEvent?.(fakeEvent({ type: "turn_end" }));
+        });
+
+        const payload = updateMessageMock.mock.calls[0]?.[2] as {
+            toolCalls?: Array<{ id: string; name: string; input?: unknown; status: string }>;
+        };
+        expect(payload.toolCalls).toEqual([
+            {
+                id: "tc_legacy",
+                name: "bash",
+                input: { command: "pwd" },
+                status: "completed",
+            },
+        ]);
+    });
+
     it("flush 失败 → 累加 persistErrorCount(不抛)", async () => {
         updateMessageMock.mockRejectedValueOnce(new Error("disk full"));
 

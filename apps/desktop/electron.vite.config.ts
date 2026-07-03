@@ -59,11 +59,12 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
-    build: {
+        build: {
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
           settings: resolve(__dirname, 'src/renderer/settings.html'),
+          overlay: resolve(__dirname, 'src/renderer/overlay.html'),
         }
       }
     },

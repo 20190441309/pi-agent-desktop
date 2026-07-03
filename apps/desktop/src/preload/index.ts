@@ -279,7 +279,7 @@ const piAPI: PiAPI = {
         ipcRenderer.invoke("claude-sessions:import", workspacePath, sourcePaths) as Promise<ClaudeImportReport>,
 
     // Skills
-    listSkills: () => ipcRenderer.invoke("pi:list-skills") as Promise<InstalledSkillInfo[]>,
+    listSkills: (input) => ipcRenderer.invoke("pi:list-skills", input) as Promise<InstalledSkillInfo[] | IpcError>,
 
     // M2: 文件搜索
     filesList: (workspacePath, query) => ipcRenderer.invoke("files:list", workspacePath, query) as Promise<FileEntry[] | IpcError>,
@@ -383,6 +383,8 @@ const piAPI: PiAPI = {
             "approval:set-auto-approve",
             "plan:respond",
             "permission:respond",
+            "desktop-overlay:set-main-context",
+            "desktop-overlay:set-window-state",
         ];
         if (!ALLOWED_SEND.includes(channel)) {
             console.error(`[preload] send blocked: ${channel}`);

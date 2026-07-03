@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
+import { contentWithGeneratedUiText } from "../../utils/generated-ui";
 
 interface SearchResult {
   sessionId: string;
@@ -51,7 +52,8 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
 
     for (const session of sessions) {
       for (const message of session.messages) {
-        const content = message.content.toLowerCase();
+        const messageContent = contentWithGeneratedUiText(message.content, message.generatedUi);
+        const content = messageContent.toLowerCase();
         let matchIndex = content.indexOf(lowerQuery);
 
         while (matchIndex !== -1 && results.length < 50) {
@@ -61,7 +63,7 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
             workspaceId: session.workspaceId,
             workspaceName: workspaceNameById.get(session.workspaceId) ?? "未知工作区",
             messageId: message.id,
-            messageContent: message.content,
+            messageContent,
             messageRole: message.role,
             timestamp: message.timestamp instanceof Date ? message.timestamp : new Date(message.timestamp),
             matchIndex,
@@ -128,7 +130,7 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
           ) : (
             <ul className="py-1">
               {searchResults.map((result) => (
-                <li key={`${result.sessionId}-${result.messageId}`}>
+                <li key={`${result.sessionId}-${result.messageId}-${result.matchIndex}`}>
                   <button
                     type="button"
                     onClick={() => handleSelect(result)}

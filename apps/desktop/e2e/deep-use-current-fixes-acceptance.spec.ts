@@ -3,6 +3,7 @@ import { electronMainEntry } from "../playwright.config";
 import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const SESSION_ID = "deep-use-session";
@@ -18,8 +19,8 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
+    await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
 
@@ -176,7 +177,7 @@ test.describe("Pi Desktop deep-use current fixes acceptance", () => {
         const settingsWindow = await openSettingsWindow(app, page);
         await settingsWindow.getByRole("tab", { name: "用量" }).click();
         await expect(settingsWindow.getByRole("tabpanel", { name: "用量" })).toBeVisible({ timeout: 10_000 });
-        await expect(settingsWindow.getByText("Token 用量")).toBeVisible({ timeout: 10_000 });
+        await expect(settingsWindow.getByRole("heading", { name: "Token 用量概览" })).toBeVisible({ timeout: 10_000 });
         await expect(settingsWindow.getByText(SESSION_TITLE, { exact: true })).toBeVisible({ timeout: 10_000 });
         await expect(settingsWindow.getByText("12", { exact: true }).first()).toBeVisible({ timeout: 10_000 });
         await settingsWindow.screenshot({ path: join(ACCEPTANCE_DIR, "2026-06-26-deep-use-01b-settings-usage-sync.png"), fullPage: true });

@@ -78,8 +78,11 @@
     "newConversation": "New conversation",
     "quickNewConversation": "Quick new conversation",
     "groupModeAria": "Session grouping",
+    "groupModeLabel": "Group by",
     "groupByDate": "Group by date",
+    "groupByDateShort": "Date",
     "groupByWorkspace": "Group by workspace",
+    "groupByWorkspaceShort": "Workspace",
     "status": {
       "checking": "pi-agent checking",
       "online": "pi-agent online",
@@ -737,9 +740,17 @@
   "settings": {
     "title": "Settings",
     "tabsAria": "Settings categories",
+    "nav": {
+      "common": "Common",
+      "advanced": "Advanced",
+      "maintenance": "Maintenance",
+      "searchPlaceholder": "Search settings...",
+      "searchResults": "Matches",
+      "noResults": "No matching settings"
+    },
     "tab": {
       "model": "Model",
-      "piagent": "Agent",
+      "piagent": "Pi Code Agent",
       "permissions": "Permissions",
       "usage": "Usage",
       "longHorizon": "Long horizon",
@@ -751,7 +762,7 @@
     },
     "tabCaption": {
       "model": "Providers and models",
-      "piagent": "CLI and status",
+      "piagent": "CLI and defaults",
       "permissions": "Tool defaults",
       "usage": "Token statistics",
       "longHorizon": "Modes, Goal, and memory",
@@ -764,6 +775,38 @@
     "appearance": {
       "heading": "Appearance",
       "description": "Tune the Pi Agent desktop theme and text density."
+    },
+    "permissions": {
+      "heading": "Permissions",
+      "description": "Manage the current workspace's default tool permissions. Per-session overrides still live in the right-side context panel.",
+      "workspaceHeading": "Current workspace",
+      "workspaceDescription": "This shows which workspace the settings below will affect.",
+      "workspaceLabel": "Workspace",
+      "workspaceEmpty": "No workspace selected",
+      "toolsHeading": "Tool permissions",
+      "toolsDescription": "All permission changes still flow through the host-side approval and error surfaces."
+    },
+    "usage": {
+      "heading": "Usage",
+      "description": "Inspect local token usage, activity trends, and model distribution.",
+      "overviewHeading": "Token usage overview",
+      "overviewDescription": "See totals, session density, and the primary model for the current scope.",
+      "filtersHeading": "Range and filters",
+      "filtersDescription": "Switch time range, workspace scope, and archived-session visibility."
+    },
+    "shortcuts": {
+      "heading": "Shortcuts",
+      "description": "Manage desktop shortcut bindings and overrides in one place.",
+      "listHeading": "Shortcut list",
+      "listDescription": "Browse effective bindings by category, then edit or reset them here."
+    },
+    "config": {
+      "heading": "Config files",
+      "description": "Edit local config files and import/export bundles directly.",
+      "filesHeading": "Config file editor",
+      "filesDescription": "Switch between `models.json`, `auth.json`, and `settings.json` and edit the raw content.",
+      "actionsHeading": "Maintenance actions",
+      "actionsDescription": "Save, import, export, fetch models, or test the current provider."
     },
     "general": {
       "heading": "General settings",
@@ -788,6 +831,8 @@
     "longHorizon": {
       "heading": "Long-horizon capabilities",
       "description": "Control the MiMoCode-style modes, Goal, plan linkage, memory, and checkpoint adaptation.",
+      "overviewHeading": "Master switch and default mode",
+      "overviewDescription": "Define the overall enablement state first, then choose the default Build, Plan, or Compose mode.",
       "enabled": {
         "label": "Enable enhancements",
         "description": "When disabled, Pi Desktop sends raw prompts, skips Goal judge, avoids memory/checkpoint writes, and hides enhanced commands."
@@ -882,7 +927,8 @@
     },
     "fontSize": {
       "label": "Font size: {{value}}px",
-      "aria": "Font size"
+      "aria": "Font size",
+      "searchLabel": "Font size"
     },
     "autoSave": {
       "label": "Auto-save"
@@ -903,10 +949,23 @@
       "temperatureAria": "Temperature",
       "maxTokens": "Max tokens"
     },
+    "model": {
+      "defaultsHeading": "Default model context",
+      "defaultsDescription": "Show the current default provider/model and the config directory being read.",
+      "providersHeading": "Provider and model management",
+      "providersDescription": "Add, test, edit, and delete model entries under each provider here."
+    },
     "piagent": {
-      "heading": "Pi Agent configuration",
-      "description": "Review the local Pi CLI, default model, and provider configuration.",
+      "heading": "Pi Code Agent",
+      "description": "Review local Pi CLI status, default provider/model, configured provider summaries, and the config directory.",
+      "statusHeading": "Pi CLI status",
+      "statusDescription": "Reuse the existing host status panel to show the local Pi CLI runtime and config state.",
+      "defaultsHeading": "Default provider / model",
+      "defaultsDescription": "This shows the default provider and model Pi Code Agent will currently use.",
+      "providersHeading": "Configured provider summary",
+      "providersDescription": "Quickly inspect configured provider names, model counts, and base URLs.",
       "configPath": "Config directory",
+      "configPathDescription": "The local directory Pi Code Agent reads for configuration files.",
       "defaultProvider": "Default provider",
       "defaultModel": "Default model",
       "notSet": "Not set",
@@ -916,6 +975,7 @@
     },
     "about": {
       "heading": "About Pi Desktop",
+      "summaryHeading": "App info",
       "version": "Version: {{version}}",
       "description": "Pi Desktop is a Windows desktop application that provides a graphical interface for the Pi Agent, making it easy to interact with the Pi CLI.",
       "stack": "Built on Electron + React + TypeScript.",
@@ -927,6 +987,7 @@
         "lastChecked": "Last checked: {{timestamp}}",
         "progress": "Download progress",
         "releaseNotes": "Release notes",
+        "searchDescription": "Check the current version, download status, and the GitHub Releases entry point.",
         "phase": {
           "disabled": "Unavailable",
           "idle": "Idle",

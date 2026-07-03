@@ -36,6 +36,7 @@ type ConfigManagerStub = Pick<
     | "importConfig"
     | "fetchModels"
     | "testProviderConnection"
+    | "describeImages"
     | "listManagedModels"
     | "saveManagedModel"
     | "deleteManagedModel"
@@ -55,6 +56,7 @@ function createManagerStub(): ConfigManagerStub {
         importConfig: vi.fn(async () => ({ valid: true })),
         fetchModels: vi.fn(async () => []),
         testProviderConnection: vi.fn(async () => ({ ok: true, message: "连接成功" })),
+        describeImages: vi.fn(async () => ({ text: "图里有设置面板" })),
         listManagedModels: vi.fn(async () => ({
             configDir: "C:/Users/demo/.pi/agent",
             defaultProvider: "openai",
@@ -147,5 +149,19 @@ describe("setupConfigIpc", () => {
             code: "ipcErrors.config.unsafeUrl",
         });
         expect(manager.testProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("parses and delegates pi:describe-images payloads", async () => {
+        const manager = createManagerStub();
+
+        setupConfigIpc(manager as ConfigManager);
+        const result = await handlers.get("pi:describe-images")!({}, [
+            { name: "settings.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" },
+        ]);
+
+        expect(result).toEqual({ text: "图里有设置面板" });
+        expect(manager.describeImages).toHaveBeenCalledWith([
+            { name: "settings.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" },
+        ]);
     });
 });

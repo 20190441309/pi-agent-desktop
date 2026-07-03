@@ -13,6 +13,7 @@ let emitPiEvent: ((event: PiEvent) => void) | null = null;
 const sendPrompt = vi.fn(async () => undefined);
 const stopPrompt = vi.fn<(_workspaceId: string) => Promise<unknown>>(async () => undefined);
 const agentsPrompt = vi.fn(async () => undefined);
+const agentsAbort = vi.fn(async () => undefined);
 const agentsRuntimeState = vi.fn(async (agentId: string) => ({ agentId, status: "idle", isStreaming: false }));
 const planSetEnabled = vi.fn(async () => undefined);
 
@@ -59,6 +60,9 @@ function AgentHookStateHost() {
             >
                 send-agent-plan-execution-prompt
             </button>
+            <button type="button" onClick={() => state.stopStreaming("ws1")}>
+                stop-agent
+            </button>
         </div>
     );
 }
@@ -101,6 +105,8 @@ beforeEach(() => {
     sendPrompt.mockClear();
     agentsPrompt.mockReset();
     agentsPrompt.mockResolvedValue(undefined);
+    agentsAbort.mockReset();
+    agentsAbort.mockResolvedValue(undefined);
     agentsRuntimeState.mockReset();
     agentsRuntimeState.mockResolvedValue({ agentId: "agent_1", status: "idle", isStreaming: false });
     planSetEnabled.mockClear();
@@ -136,6 +142,7 @@ beforeEach(() => {
             }),
             sendPrompt,
             agentsPrompt,
+            agentsAbort,
             agentsRuntimeState,
             planSetEnabled,
             stop: stopPrompt,
@@ -370,6 +377,43 @@ describe("usePiStream", () => {
         });
     });
 
+    it("normalizes legacy id/name assistant toolcall payloads into canonical session tool calls", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "toolcall_start",
+                    id: "tc_legacy",
+                    name: "read",
+                    input: { path: "README.md" },
+                },
+            } as unknown as PiEvent);
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "toolcall_end",
+                    id: "tc_legacy",
+                    output: "ok",
+                },
+            } as unknown as PiEvent);
+        });
+
+        const toolCalls = useSessionStore.getState().sessions[0].messages[0].toolCalls ?? [];
+        expect(toolCalls).toHaveLength(1);
+        expect(toolCalls[0]).toMatchObject({
+            id: "tc_legacy",
+            name: "read",
+            input: { path: "README.md" },
+            output: "ok",
+            status: "completed",
+        });
+    });
+
     it("syncs execution-only tool events into the assistant message", async () => {
         await act(async () => {
             render(<HookHost />);
@@ -501,6 +545,21 @@ describe("usePiStream", () => {
         });
 
         expect(screen.getByTestId("stream-error").textContent).toContain("停止失败: transport closed");
+    });
+
+    it("falls back to workspace stop when agentsAbort rejects", async () => {
+        agentsAbort.mockRejectedValueOnce(new Error("agent missing"));
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("stop-agent").click();
+        });
+
+        expect(agentsAbort).toHaveBeenCalledWith("agent_1");
+        expect(stopPrompt).toHaveBeenCalledWith("ws1");
+        expect(screen.getByTestId("agent-stream-error").textContent).toBe("");
     });
 
     it("sends follow-up while streaming without resetting the active assistant message", async () => {
@@ -897,6 +956,92 @@ describe("usePiStream", () => {
             outputTokens: 18,
             totalTokens: 14559,
         });
+    });
+
+    it("normalizes legacy custom_message cards into generated ui payloads", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "custom_message",
+                card: {
+                    id: "legacy-card",
+                    kind: "file-actions",
+                    title: "交付结果",
+                    content: "已生成以下文件",
+                    items: [{ id: "file-1", label: "report.md", path: "docs/report.md", status: "completed" }],
+                    actions: [{ id: "copy", label: "复制", kind: "copy-text", value: "done" }],
+                },
+            } as PiEvent);
+        });
+
+        expect(useSessionStore.getState().sessions[0]?.messages[0]).toMatchObject({
+            role: "assistant",
+            generatedUi: expect.objectContaining({
+                version: "v1",
+                id: "legacy-card",
+                title: "交付结果",
+            }),
+        });
+        expect(useSessionStore.getState().sessions[0]?.messages[0]?.generatedUi?.sections).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ kind: "markdown" }),
+                expect.objectContaining({ kind: "file_list" }),
+                expect.objectContaining({ kind: "action_bar" }),
+            ]),
+        );
+    });
+
+    it("sanitizes explicit generated ui payloads from custom_message events", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "custom_message",
+                ui: {
+                    version: "v1",
+                    id: "ui-explicit",
+                    title: "运行状态",
+                    sections: [
+                        { id: "summary", kind: "summary", content: "已完成" },
+                        { id: "ignored", kind: "panel", content: "should be dropped" },
+                        {
+                            id: "actions",
+                            kind: "action_bar",
+                            actions: [
+                                { id: "copy", label: "复制", kind: "copy-text", value: "done" },
+                                { id: "unsafe", label: "执行脚本", kind: "eval", value: "alert(1)" },
+                            ],
+                        },
+                    ],
+                },
+            } as PiEvent);
+        });
+
+        const generatedUi = useSessionStore.getState().sessions[0]?.messages[0]?.generatedUi;
+        expect(generatedUi).toMatchObject({
+            version: "v1",
+            id: "ui-explicit",
+            title: "运行状态",
+        });
+        expect(generatedUi?.sections).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ kind: "summary" }),
+                expect.objectContaining({
+                    kind: "action_bar",
+                    actions: [expect.objectContaining({ id: "copy", kind: "copy-text" })],
+                }),
+            ]),
+        );
+        expect(generatedUi?.sections).not.toEqual(
+            expect.arrayContaining([expect.objectContaining({ kind: "panel" })]),
+        );
+        const actionSection = generatedUi?.sections.find((section) => section.kind === "action_bar");
+        expect(actionSection && "actions" in actionSection ? actionSection.actions : []).toHaveLength(1);
     });
 
     it("does not let later zero-valued usage events wipe an already observed session usage snapshot", async () => {

@@ -78,6 +78,99 @@ describe("MessageBubble", () => {
     expect(screen.getByRole("button", { name: "复制" })).toBeTruthy();
   });
 
+  it("renders generated ui cards with structured sections and whitelist actions", () => {
+    const message: Message = {
+      id: "m-generated",
+      role: "assistant",
+      content: "",
+      timestamp: new Date(0),
+      generatedUi: {
+        version: "v1",
+        id: "ui-1",
+        title: "运行摘要",
+        sections: [
+          { id: "summary", kind: "summary", content: "任务已完成" },
+          {
+            id: "status",
+            kind: "status_list",
+            items: [{ id: "item-1", label: "生成报告", status: "completed", description: "写入 docs/report.md" }],
+          },
+          {
+            id: "facts",
+            kind: "key_value",
+            items: [{ id: "kv-1", key: "耗时", value: "12s" }],
+          },
+          {
+            id: "files",
+            kind: "file_list",
+            items: [{ id: "file-1", label: "report.md", path: "docs/report.md" }],
+          },
+          {
+            id: "actions",
+            kind: "action_bar",
+            actions: [{ id: "copy", label: "复制摘要", kind: "copy-text", value: "任务已完成" }],
+          },
+        ],
+      },
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("运行摘要")).toBeTruthy();
+    expect(screen.getByText("任务已完成")).toBeTruthy();
+    expect(screen.getByText("生成报告")).toBeTruthy();
+    expect(screen.getByText("写入 docs/report.md")).toBeTruthy();
+    expect(screen.getByText("耗时")).toBeTruthy();
+    expect(screen.getByText("12s")).toBeTruthy();
+    expect(screen.getByText("report.md")).toBeTruthy();
+    expect(screen.getByText("docs/report.md")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "复制摘要" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "复制内容" })).toBeTruthy();
+  });
+
+  it("copies generated ui text even when assistant message content is empty", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    const message: Message = {
+      id: "m-generated-copy",
+      role: "assistant",
+      content: "",
+      timestamp: new Date(0),
+      generatedUi: {
+        version: "v1",
+        id: "ui-copy",
+        title: "运行摘要",
+        sections: [
+          { id: "summary", kind: "summary", content: "任务已完成" },
+          {
+            id: "files",
+            kind: "file_list",
+            items: [{ id: "file-1", label: "report.md", path: "docs/report.md" }],
+          },
+        ],
+      },
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "复制内容" }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("运行摘要\n任务已完成\nreport.md - docs/report.md");
+    });
+  });
+
   it("shows custom card open-file action errors", async () => {
     const openPath = vi.fn().mockResolvedValue({
       code: "ipcErrors.protectedPath.blocked",
@@ -231,6 +324,25 @@ describe("MessageBubble", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "复制内容" }));
     expect(writeText).toHaveBeenCalledWith("可复制正文");
+  });
+
+  it("centers assistant messages inside a narrower reading column", () => {
+    const message: Message = {
+      id: "m-centered",
+      role: "assistant",
+      content: "更适合阅读的窄气泡",
+      timestamp: new Date(0),
+    };
+
+    const { container } = render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    const article = container.querySelector("article");
+    expect(article?.className).toContain("justify-center");
+    expect(article?.firstElementChild?.className).toContain("max-w-[42rem]");
   });
 
   it("hides the internal /plan command from user messages and shows a plan badge", () => {
@@ -410,6 +522,51 @@ describe("MessageBubble", () => {
         planAction: expect.objectContaining({
           id: "inline_plan_m-inline-table-plan",
           title: "执行计划",
+          status: "pending",
+        }),
+      }),
+      "execute",
+    ));
+  });
+
+  it("infers an executable inline plan action from generated-ui-only plan cards", async () => {
+    const onPlanAction = vi.fn(async () => undefined);
+    const message: Message = {
+      id: "m-inline-generated-plan",
+      role: "assistant",
+      content: "",
+      timestamp: new Date(0),
+      generatedUi: {
+        version: "v1",
+        id: "generated-plan",
+        title: "内联计划",
+        sections: [
+          { id: "summary", kind: "summary", content: "等待您的指令后开始执行。" },
+          {
+            id: "steps",
+            kind: "steps",
+            items: [
+              { id: "step-1", label: "创建 plan_probe.txt" },
+              { id: "step-2", label: "验证文件存在" },
+            ],
+          },
+        ],
+      },
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} onPlanAction={onPlanAction} />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "执行计划" }));
+    await waitFor(() => expect(onPlanAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "m-inline-generated-plan",
+        planAction: expect.objectContaining({
+          id: "inline_plan_m-inline-generated-plan",
+          title: "内联计划",
           status: "pending",
         }),
       }),

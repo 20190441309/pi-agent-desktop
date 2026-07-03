@@ -8,6 +8,7 @@ import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { join } from 'path';
 import { mkdirSync } from 'fs';
+import { getWindowByUrl } from "./support/electron-windows";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -16,8 +17,8 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
+    await app.firstWindow();
+    const page = await getWindowByUrl(app, 'index.html');
 
     // Skip onboarding if present
     const modalCount = await page.locator('[data-testid="onboarding-modal"]').count();
@@ -46,6 +47,14 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
 
     test('auto-navigates through all major UI sections with screenshots', async () => {
         ({ app, page } = await launchApp());
+        const workspacePath = test.info().outputPath('interactive-demo-workspace');
+        await page.evaluate(async (path) => {
+            window.localStorage.setItem('pi-desktop:firstLaunchDone', 'true');
+            window.localStorage.setItem('pi-desktop.onboarding.completed', 'true');
+            const ws = await window.piAPI.createWorkspace('interactive-demo', path);
+            await window.piAPI.selectWorkspace(ws.path);
+        }, workspacePath);
+        await page.reload({ waitUntil: 'domcontentloaded' });
 
         // ===== Step 1: Initial launch screenshot =====
         await page.screenshot({ path: join(screenshotDir, '01-initial-launch.png') });
@@ -59,18 +68,17 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         await page.screenshot({ path: join(screenshotDir, '02-after-click-new-task.png') });
         console.log('[AUTO] Clicked "新建任务" (New Task)');
 
-        // ===== Step 3: Click "历史" (History) =====
-        const historyTab = page.getByRole('tab', { name: '历史' });
-        await expect(historyTab).toBeVisible({ timeout: 5000 });
-        await historyTab.click();
-        await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeVisible({ timeout: 5000 });
+        // ===== Step 3: Click "任务" =====
+        const tasksTab = page.getByRole('tab', { name: '任务' });
+        await expect(tasksTab).toBeVisible({ timeout: 5000 });
+        await tasksTab.click();
+        await expect(page.getByText('任务总览')).toBeVisible({ timeout: 5000 });
         await page.waitForTimeout(500);
-        await page.screenshot({ path: join(screenshotDir, '03-after-click-history.png') });
-        await page.getByRole('button', { name: '关闭搜索' }).click();
-        console.log('[AUTO] Clicked "历史" (History)');
+        await page.screenshot({ path: join(screenshotDir, '03-after-click-tasks.png') });
+        console.log('[AUTO] Clicked "任务"');
 
-        // ===== Step 4: Click "插件" (Skills/Plugins) =====
-        const skillsBtn = page.getByRole('tab', { name: '技能' });
+        // ===== Step 4: Click "工具" =====
+        const skillsBtn = page.getByRole('tab', { name: '工具' });
         await expect(skillsBtn).toBeVisible({ timeout: 5000 });
         await skillsBtn.click();
         await page.waitForTimeout(500);
@@ -88,13 +96,13 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
             await page.waitForTimeout(200);
         }
 
-        // ===== Step 5: Click "Git" =====
-        const gitBtn = page.getByRole('tab', { name: 'Git' });
-        await expect(gitBtn).toBeVisible({ timeout: 5000 });
-        await gitBtn.click();
+        // ===== Step 5: Click "记忆" =====
+        const memoryBtn = page.getByRole('tab', { name: '记忆' });
+        await expect(memoryBtn).toBeVisible({ timeout: 5000 });
+        await memoryBtn.click();
         await page.waitForTimeout(500);
-        await page.screenshot({ path: join(screenshotDir, '05-after-click-git.png') });
-        console.log('[AUTO] Clicked "Git"');
+        await page.screenshot({ path: join(screenshotDir, '05-after-click-memory.png') });
+        console.log('[AUTO] Clicked "记忆"');
 
         // ===== Step 6: Click "设置" (Settings) — opens window =====
         const settingsBtn = page.getByRole('tab', { name: '设置' });

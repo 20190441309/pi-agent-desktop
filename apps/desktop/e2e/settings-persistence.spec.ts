@@ -3,6 +3,7 @@ import { join } from "path";
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 
@@ -19,8 +20,8 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
             PI_DESKTOP_CONFIG_DIR: configDir,
         },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
+    await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
 

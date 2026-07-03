@@ -14,7 +14,6 @@ import { usePermissionStore } from "../../stores/permission-store";
 import { useRuntimeFeatureStore, clampAgentModeByRuntime, supportedAgentModes } from "../../stores/runtime-feature-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { logger } from "../../utils/logger";
-import { PermissionRequestStack } from "./PermissionRequestStack";
 import { isIpcError, type AgentMode, type PermissionMode } from "@shared";
 import { useInputText } from "./hooks/useInputText";
 import { usePrefillConsumer } from "./hooks/usePrefillConsumer";
@@ -175,6 +174,7 @@ export function ChatInput({
   referenceFrame = false,
 }: ChatInputProps): React.JSX.Element {
   const { textareaRef, inputValue, setInputValue } = useInputText();
+  const shellRef = useRef<HTMLDivElement>(null);
   const [cursorPos, setCursorPos] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -301,7 +301,7 @@ export function ChatInput({
   useEffect(() => {
     if (focusKey === undefined) return;
     requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [focusKey]);
+  }, [focusKey, textareaRef]);
 
   useEffect(() => {
     const focusComposer = (): void => {
@@ -309,7 +309,7 @@ export function ChatInput({
     };
     window.addEventListener("chat-input:focus", focusComposer);
     return () => window.removeEventListener("chat-input:focus", focusComposer);
-  }, []);
+  }, [textareaRef]);
 
   const handleSend = async (): Promise<void> => {
     if (sendingRef.current || !inputValue.trim() || !isConnected) return;
@@ -406,6 +406,14 @@ export function ChatInput({
     const visibleContent = prefixes.length > 0
       ? buildVisibleAttachmentSummary(inputValue, attachments)
       : undefined;
+    const draftSnapshot = inputValue;
+    const attachmentSnapshot = attachments.map((attachment) => ({ ...attachment }));
+    setInputValue("");
+    setAttachmentError(null);
+    if (workspaceId) clearAttachments(workspaceId);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
     try {
       if (visibleContent) {
         await onSend(outbound, { visibleContent });
@@ -414,15 +422,24 @@ export function ChatInput({
       }
     } catch (err) {
       setSendError(t("chatInput.errors.sendFailed", { message: errorMessage(err, t("chatInput.errors.unknown")) }));
+      setInputValue(draftSnapshot);
+      if (workspaceId) {
+        clearAttachments(workspaceId);
+        for (const attachment of attachmentSnapshot) {
+          addAttachment(workspaceId, attachment);
+        }
+      }
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+        textarea.focus();
+        const nextPos = draftSnapshot.length;
+        textarea.setSelectionRange(nextPos, nextPos);
+        syncCursorPosition(textarea);
+      });
       sendingRef.current = false;
       setIsSending(false);
       return;
-    }
-    setInputValue("");
-    setAttachmentError(null);
-    if (workspaceId) clearAttachments(workspaceId);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
     }
     sendingRef.current = false;
     setIsSending(false);
@@ -442,7 +459,7 @@ export function ChatInput({
     if (ta) {
       syncCursorPosition(ta);
     }
-  }, [syncCursorPosition]);
+  }, [syncCursorPosition, textareaRef]);
 
   const handlePickFiles = useCallback(async (): Promise<void> => {
     if (!window.piAPI?.selectFiles) {
@@ -565,7 +582,7 @@ export function ChatInput({
       });
       return next;
     });
-  }, []);
+  }, [setInputValue, textareaRef]);
   const handleSwitchWorkspace = useCallback(
     async (id: string): Promise<void> => {
       const ws = workspaces.find((w) => w.id === id);
@@ -664,12 +681,116 @@ export function ChatInput({
     : t("chatInput.running.task");
   const stopLabel = runContext === "plan_execution" ? t("chatInput.pauseExecution") : t("chatInput.stop");
   const stopAriaLabel = runContext === "plan_execution" ? t("chatInput.pauseExecution") : t("chatView.stopGeneration");
+  const showStopAction = isProcessing;
+  const primaryActionDisabled = showStopAction ? false : !canSend;
+  const primaryActionLabel = showStopAction ? stopLabel : t("chatInput.send");
+  const primaryActionAriaLabel = showStopAction ? stopAriaLabel : t("chatInput.send");
+  const handlePrimaryAction = (): void => {
+    if (showStopAction) {
+      onStop();
+      return;
+    }
+    void handleSend();
+  };
+  const permissionPopover = (
+    <Popover
+      align="start"
+      contentClassName="min-w-[158px]"
+      trigger={
+        <button
+          type="button"
+          className={referenceFrame
+            ? "flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
+            : "flex h-[22px] items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"}
+          aria-label={t("chatInput.permissionAria", { label: currentPermissionLabel })}
+          data-testid="chat-input-permission-trigger"
+        >
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--mm-text-tertiary)]" aria-hidden>
+            <PermissionModeIcon mode={currentPermission} />
+          </span>
+          <span>{currentPermissionLabel}</span>
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      }
+    >
+      {(close) => (
+        <div className="py-1">
+          {permissionOptions.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              role="menuitemradio"
+              aria-checked={currentPermission === opt.value}
+              onClick={() => {
+                handlePermissionSelect(opt.value);
+                close();
+              }}
+              className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
+            >
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--mm-text-tertiary)]" aria-hidden>
+                <PermissionModeIcon mode={opt.value} />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{opt.label}</span>
+              {currentPermission === opt.value && (
+                <svg className="h-3.5 w-3.5 text-[var(--mm-text-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </Popover>
+  );
+  const syncGlobalComposerBounds = useCallback(() => {
+    if (typeof document === "undefined") return;
+    if (!referenceFrame || !shellRef.current) {
+      document.documentElement.style.removeProperty("--pi-global-composer-left");
+      document.documentElement.style.removeProperty("--pi-global-composer-right");
+      return;
+    }
+    const rect = shellRef.current.getBoundingClientRect();
+    document.documentElement.style.setProperty("--pi-global-composer-left", `${Math.round(rect.left)}px`);
+    document.documentElement.style.setProperty(
+      "--pi-global-composer-right",
+      `${Math.max(0, Math.round(window.innerWidth - rect.right))}px`,
+    );
+  }, [referenceFrame]);
+
+  useEffect(() => {
+    syncGlobalComposerBounds();
+    if (!referenceFrame || !shellRef.current) {
+      return () => {
+        document.documentElement.style.removeProperty("--pi-global-composer-left");
+        document.documentElement.style.removeProperty("--pi-global-composer-right");
+      };
+    }
+    const shell = shellRef.current;
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(() => {
+        syncGlobalComposerBounds();
+      });
+    const handleWindowResize = (): void => {
+      syncGlobalComposerBounds();
+    };
+    resizeObserver?.observe(shell);
+    window.addEventListener("resize", handleWindowResize);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", handleWindowResize);
+      document.documentElement.style.removeProperty("--pi-global-composer-left");
+      document.documentElement.style.removeProperty("--pi-global-composer-right");
+    };
+  }, [referenceFrame, syncGlobalComposerBounds]);
 
   // TODO: extract sub-components (InputAttachments, InputMentionPopover, InputCommandPopover, InputToolbar)
   return (
     <div className={`${referenceFrame ? "pointer-events-auto w-full px-2 pb-2" : "w-full px-3 pb-6"} bg-transparent pt-1`}>
-      <PermissionRequestStack workspaceId={workspaceId} agentId={agentId} />
       <div
+        ref={shellRef}
         data-testid="chat-input-shell"
         className={`${referenceFrame ? "mx-0 flex w-full max-w-none flex-col" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-composer)] shadow-none transition-all focus-within:border-[var(--mm-border-strong)]`}
         style={referenceFrame ? { height: `${composerHeight}px` } : undefined}
@@ -687,19 +808,19 @@ export function ChatInput({
           </div>
         ) : null}
         {isProcessing && (
-          <div className="absolute bottom-full left-0 right-0 z-20 mb-1 flex items-center justify-between gap-2 rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-3 py-1.5 text-[11px] shadow-[0_8px_24px_rgba(15,23,42,0.12)]">
+          <div
+            role="status"
+            aria-label="任务运行中提醒"
+            aria-live="polite"
+            className="absolute bottom-full left-0 right-0 z-20 mb-1 flex items-center gap-2 rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-3 py-1.5 text-[11px] shadow-[0_8px_24px_rgba(15,23,42,0.12)]"
+          >
             <div className="flex min-w-0 items-center gap-2 text-[var(--mm-text-secondary)]">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--mm-bg-active)]" aria-hidden />
+              <span className="relative inline-flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
+                <span className="absolute inset-0 rounded-full bg-[var(--mm-bg-active)] opacity-25 animate-ping" />
+                <span className="relative h-2.5 w-2.5 rounded-full bg-[var(--mm-bg-active)]" />
+              </span>
               <span className="truncate">{runningLabel}</span>
             </div>
-            <button
-              type="button"
-              onClick={onStop}
-              className="shrink-0 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
-              aria-label={stopAriaLabel}
-            >
-              {stopLabel}
-            </button>
           </div>
         )}
         {/* 附件 chips */}
@@ -863,19 +984,19 @@ export function ChatInput({
           </div>
           <button
             type="button"
-            onClick={() => void handleSend()}
-            disabled={!canSend}
+            onClick={handlePrimaryAction}
+            disabled={primaryActionDisabled}
             className={`${referenceFrame ? "hidden" : "flex"} h-7 w-8 flex-shrink-0 items-center justify-center self-end rounded-[5px] transition-all ${
-              isProcessing
-                ? "border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:border-[var(--mm-border-subtle)] disabled:text-[var(--mm-text-tertiary)]"
+              showStopAction
+                ? "border border-[var(--mm-bg-active)] bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] hover:opacity-90"
                 : "bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] hover:opacity-90 disabled:cursor-not-allowed disabled:bg-[var(--mm-bg-selected)] disabled:text-[var(--mm-text-tertiary)]"
             }`}
-            aria-label={isProcessing ? t("chatInput.sendFollowUp") : t("chatInput.send")}
-            title={isProcessing ? t("chatInput.sendFollowUp") : t("chatInput.send")}
+            aria-label={primaryActionAriaLabel}
+            title={primaryActionLabel}
           >
-            {isProcessing ? (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12h14m0 0-5-5m5 5-5 5" />
+            {showStopAction ? (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="6.5" y="6.5" width="11" height="11" rx="1.5" />
               </svg>
             ) : (
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -954,6 +1075,7 @@ export function ChatInput({
                   </div>
                 )}
               </Popover>
+              {permissionPopover}
             </div>
             <div className="flex items-center gap-2">
               <div className="flex h-7 overflow-hidden rounded-[5px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)]">
@@ -1058,14 +1180,25 @@ export function ChatInput({
               </div>
               <button
                 type="button"
-                onClick={() => void handleSend()}
-                disabled={!canSend}
-                className="flex h-[32px] w-[51px] items-center justify-center rounded-[5px] bg-[var(--mm-accent-blue)] text-white shadow-[0_1px_2px_rgba(10,35,80,0.14)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
-                aria-label={t("chatInput.send")}
+                onClick={handlePrimaryAction}
+                disabled={primaryActionDisabled}
+                className={`flex h-[32px] items-center justify-center rounded-[5px] shadow-[0_1px_2px_rgba(10,35,80,0.14)] transition-opacity ${
+                  showStopAction
+                    ? "w-[32px] bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] hover:opacity-90"
+                    : "w-[51px] bg-[var(--mm-accent-blue)] text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
+                }`}
+                aria-label={primaryActionAriaLabel}
+                title={primaryActionLabel}
               >
-                <svg className="h-5 w-5 -rotate-12" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M3 11.7 21 3.8 13.1 21l-2.3-7.1L3 11.7Zm8.7 1.1 1.2 3.7 4-8.7-8.6 3.8 3.4 1.2Z" />
-                </svg>
+                {showStopAction ? (
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <rect x="6.5" y="6.5" width="11" height="11" rx="1.5" />
+                  </svg>
+                ) : (
+                  <svg className="h-5 w-5 -rotate-12" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 11.7 21 3.8 13.1 21l-2.3-7.1L3 11.7Zm8.7 1.1 1.2 3.7 4-8.7-8.6 3.8 3.4 1.2Z" />
+                  </svg>
+                )}
               </button>
             </div>
           </div>
@@ -1198,57 +1331,7 @@ export function ChatInput({
                 </div>
               )}
             </Popover>
-
-            {/* 权限下拉 */}
-            <Popover
-              align="start"
-              contentClassName="min-w-[158px]"
-              trigger={
-                <div
-                  className="flex h-[22px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={t("chatInput.permissionAria", { label: currentPermissionLabel })}
-                  data-testid="chat-input-permission-trigger"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                  <span>{currentPermissionLabel}</span>
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-              }
-            >
-              {(close) => (
-                <div className="py-1">
-                  {permissionOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={currentPermission === opt.value}
-                      onClick={() => {
-                        handlePermissionSelect(opt.value);
-                        close();
-                      }}
-                      className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
-                    >
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--mm-text-tertiary)]" aria-hidden>
-                        <PermissionModeIcon mode={opt.value} />
-                      </span>
-                      <span className="min-w-0 flex-1 truncate">{opt.label}</span>
-                      {currentPermission === opt.value && (
-                        <svg className="h-3.5 w-3.5 text-[var(--mm-text-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </Popover>
+            {permissionPopover}
 
           </div>
 

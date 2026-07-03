@@ -377,12 +377,14 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         await expect(page.getByRole('article', { name: /Pi ·/ })).toContainText('第 80 行长回复内容');
 
         await app.evaluate(({ BrowserWindow }) => {
-            BrowserWindow.getAllWindows()[0]?.webContents.send('plan:card', {
-                id: 'layout-plan-card',
-                title: '计划模式布局回归计划',
-                filename: 'layout-plan.md',
-                content: Array.from({ length: 40 }, (_, index) => `- 步骤 ${index + 1}: 验证计划卡不会把输入框顶上去`).join('\n'),
-            });
+            for (const win of BrowserWindow.getAllWindows()) {
+                win.webContents.send('plan:card', {
+                    id: 'layout-plan-card',
+                    title: '计划模式布局回归计划',
+                    filename: 'layout-plan.md',
+                    content: Array.from({ length: 40 }, (_, index) => `- 步骤 ${index + 1}: 验证计划卡不会把输入框顶上去`).join('\n'),
+                });
+            }
         });
 
         const planCard = page.locator('article').filter({ hasText: '计划模式布局回归计划' });

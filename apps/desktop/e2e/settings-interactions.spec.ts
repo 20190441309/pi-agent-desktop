@@ -349,7 +349,7 @@ test.describe("Pi Desktop — settings window interaction audit", () => {
         await prepareWorkspace(page, workspacePath);
 
         const settingsWindow = await openSettingsWindow(app, page);
-        const tabs = ["模型", "Agent", "权限", "用量", "长程能力", "界面", "通用", "快捷键", "配置文件", "关于"];
+        const tabs = ["通用", "模型", "Pi Code Agent", "界面", "权限", "用量", "长程能力", "快捷键", "配置文件", "关于"];
 
         for (const tabName of tabs) {
             const tab = settingsWindow.getByRole("tab", { name: tabName });
@@ -664,7 +664,7 @@ test.describe("Pi Desktop — settings window interaction audit", () => {
 
         const settingsWindow = await openSettingsWindow(app, page);
         await settingsWindow.getByRole("tab", { name: "快捷键" }).click();
-        await expect(settingsWindow.getByText("快捷键设置")).toBeVisible();
+        await expect(settingsWindow.getByRole("heading", { name: "快捷键列表" })).toBeVisible();
 
         await settingsWindow.getByRole("button", { name: "修改" }).first().click();
         await expect(settingsWindow.getByText("按下新的快捷键...")).toBeVisible();
@@ -755,7 +755,7 @@ test.describe("Pi Desktop — settings window interaction audit", () => {
         const settingsWindow = await openSettingsWindow(app, page);
         await settingsWindow.getByRole("tab", { name: "用量" }).click();
         await expect(settingsWindow.getByRole("tabpanel", { name: "用量" })).toBeVisible();
-        await expect(settingsWindow.getByText("使用统计")).toBeVisible();
+        await expect(settingsWindow.getByRole("heading", { name: "Token 用量概览" })).toBeVisible();
         await expect(settingsWindow.getByText("6000万", { exact: true }).first()).toBeVisible();
 
         await settingsWindow.getByRole("button", { name: "全部工作区" }).click();

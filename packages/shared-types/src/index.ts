@@ -48,6 +48,7 @@ export interface Message {
     timestamp: string | Date;
     thinking?: string;
     toolCalls?: ToolCall[];
+    generatedUi?: GeneratedUiCardV1;
     customCard?: CustomMessageCard;
     planAction?: PlanMessageAction;
     /** v1.2: Parent message ID for tree-structured conversations (Pi JSONL v3 branching). undefined = root message. */
@@ -110,6 +111,7 @@ export interface AgentMessage {
     content: string;
     createdAt: number;
     thinking?: string;
+    generatedUi?: GeneratedUiCardV1;
     planAction?: PlanMessageAction;
     meta?: Record<string, unknown>;
 }
@@ -625,6 +627,43 @@ export interface CustomMessageCard {
     actions?: CustomMessageCardAction[];
 }
 
+export interface GeneratedUiAction {
+    id: string;
+    label: string;
+    kind: "slash-command" | "open-file" | "copy-text" | "switch-view" | "refresh";
+    value: string;
+}
+
+export interface GeneratedUiListItem {
+    id: string;
+    label: string;
+    status?: string;
+    description?: string;
+    path?: string;
+}
+
+export interface GeneratedUiKeyValueItem {
+    id: string;
+    key: string;
+    value: string;
+}
+
+export type GeneratedUiSection =
+    | { id: string; kind: "summary"; content: string }
+    | { id: string; kind: "status_list"; items: GeneratedUiListItem[] }
+    | { id: string; kind: "steps"; items: GeneratedUiListItem[] }
+    | { id: string; kind: "key_value"; items: GeneratedUiKeyValueItem[] }
+    | { id: string; kind: "file_list"; items: GeneratedUiListItem[] }
+    | { id: string; kind: "action_bar"; actions: GeneratedUiAction[] }
+    | { id: string; kind: "markdown"; content: string };
+
+export interface GeneratedUiCardV1 {
+    version: "v1";
+    id: string;
+    title?: string;
+    sections: GeneratedUiSection[];
+}
+
 // ── Extension UI: permissions + plan mode ─────────────────────────
 
 export type PermissionMode = "ask" | "smart" | "always";
@@ -691,6 +730,7 @@ export interface PlanProgressItem {
 
 export interface PlanProgressUpdate {
     workspaceId?: string;
+    agentId?: string;
     items: PlanProgressItem[];
     status?: "planning" | "waiting_decision" | "executing" | "completed" | "idle";
 }
@@ -1146,7 +1186,7 @@ export interface PiAPI {
     claudeSessionsImport(workspacePath: string, sourcePaths: string[]): Promise<ClaudeImportReport>;
 
     // Skills
-    listSkills(): Promise<InstalledSkillInfo[]>;
+    listSkills(input?: { workspaceId?: string }): Promise<InstalledSkillInfo[] | IpcError>;
 
     // File search (M2)
     filesList(workspacePath: string, query?: string): Promise<FileEntry[] | IpcError>;

@@ -51,6 +51,24 @@ describe("SearchHistory", () => {
                             content: "alpha visible result",
                             timestamp: new Date(0),
                         },
+                        {
+                            id: "msg-generated-ui",
+                            role: "assistant",
+                            content: "",
+                            timestamp: new Date(1),
+                            generatedUi: {
+                                version: "v1",
+                                id: "ui-search",
+                                title: "交付结果",
+                                sections: [
+                                    {
+                                        id: "files",
+                                        kind: "file_list",
+                                        items: [{ id: "file-1", label: "report.md", path: "docs/report.md" }],
+                                    },
+                                ],
+                            },
+                        },
                     ],
                 },
                 {
@@ -87,5 +105,16 @@ describe("SearchHistory", () => {
 
         expect(screen.getByRole("button", { name: /Archived Session/ })).toBeTruthy();
         expect(screen.getByText("other-repo")).toBeTruthy();
+    });
+
+    it("searches generated ui text when the persisted message content is empty", () => {
+        render(<SearchHistory isOpen onClose={vi.fn()} onNavigate={vi.fn()} />);
+
+        fireEvent.change(screen.getByRole("textbox", { name: "搜索对话历史" }), {
+            target: { value: "report.md" },
+        });
+
+        expect(screen.getAllByRole("button", { name: /Active Session/ }).length).toBeGreaterThan(0);
+        expect(screen.getByText(/docs\/report\.md/)).toBeTruthy();
     });
 });

@@ -5,7 +5,7 @@ import { useSettingsStore } from '../../../stores/settings-store';
 import { useI18n, SUPPORTED_LOCALES, type Locale } from '../../../i18n';
 import { isSoundEnabled, setSoundEnabled, getSoundVolume, setSoundVolume } from '../../../utils/sounds';
 import { requestNotificationPermission, canNotify, isNotificationEnabled, setNotificationEnabled } from '../../../utils/notifications';
-import { SectionTitle, FieldRow, SwitchControl } from '../_shared';
+import { SettingsCard, SettingsPage, FieldRow, SwitchControl } from '../_shared';
 
 export function GeneralTab(): React.JSX.Element {
     const { settings, updateSettings } = useSettingsStore();
@@ -15,10 +15,9 @@ export function GeneralTab(): React.JSX.Element {
     const [notificationsEnabled, setNotificationsEnabled] = useState(isNotificationEnabled() && canNotify());
 
     return (
-        <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-general" aria-labelledby="settings-tab-general">
-            <SectionTitle title={t('settings.general.heading')} description={t('settings.general.description')} />
-            <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
-                <FieldRow label={t('settings.language.label')} description={t('settings.language.description')}>
+        <SettingsPage tabId="general" title={t('settings.tab.general')} description={t('settings.general.description')}>
+            <SettingsCard>
+                <FieldRow anchorId="general-language" label={t('settings.language.label')} description={t('settings.language.description')}>
                     <select
                         id="settings-language"
                         value={locale}
@@ -32,65 +31,78 @@ export function GeneralTab(): React.JSX.Element {
                         ))}
                     </select>
                 </FieldRow>
-                <FieldRow label={t('settings.autoSave.label')}>
+                <FieldRow anchorId="general-notifications" label={t('settings.general.notifications.heading')} description={t('settings.general.notifications.description')}>
+                    <div className="space-y-3">
+                        <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-3">
+                            <div>
+                                <div className="text-sm font-medium text-[var(--mm-text-primary)]">{t('settings.general.notifications.system.label')}</div>
+                                <div className="mt-1 text-xs leading-5 text-[var(--mm-text-tertiary)]">{t('settings.general.notifications.system.description')}</div>
+                            </div>
+                            <SwitchControl
+                                checked={notificationsEnabled}
+                                label={t('settings.general.notifications.system.label')}
+                                onChange={async () => {
+                                    if (!notificationsEnabled) {
+                                        const result = await requestNotificationPermission();
+                                        const next = result === "granted";
+                                        setNotificationEnabled(next);
+                                        setNotificationsEnabled(next);
+                                    } else {
+                                        setNotificationEnabled(false);
+                                        setNotificationsEnabled(false);
+                                    }
+                                }}
+                            />
+                        </div>
+                        <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-3">
+                            <div className="grid grid-cols-[1fr_auto] items-center gap-3">
+                                <div>
+                                    <div className="text-sm font-medium text-[var(--mm-text-primary)]">{t('settings.general.notifications.sound.label')}</div>
+                                    <div className="mt-1 text-xs leading-5 text-[var(--mm-text-tertiary)]">{t('settings.general.notifications.sound.description')}</div>
+                                </div>
+                                <SwitchControl
+                                    checked={soundEnabled}
+                                    label={t('settings.general.notifications.sound.label')}
+                                    onChange={() => {
+                                        const next = !soundEnabled;
+                                        setSoundEnabledState(next);
+                                        setSoundEnabled(next);
+                                    }}
+                                />
+                            </div>
+                            {soundEnabled && (
+                                <div className="mt-4 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-3">
+                                    <div className="mb-2 text-xs font-medium text-[var(--mm-text-secondary)]">
+                                        {t('settings.general.notifications.volume.label', { value: Math.round(soundVolume * 100) })}
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        value={Math.round(soundVolume * 100)}
+                                        onChange={(e) => {
+                                            const vol = Number(e.target.value) / 100;
+                                            setSoundVolumeState(vol);
+                                            setSoundVolume(vol);
+                                        }}
+                                        className="w-full"
+                                        aria-label={t('settings.general.notifications.volume.aria')}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </FieldRow>
+                <FieldRow anchorId="general-autosave" label={t('settings.autoSave.label')}>
                     <SwitchControl checked={settings.autoSave} label={t('settings.autoSave.label')} onChange={() => updateSettings({ autoSave: !settings.autoSave })} />
                 </FieldRow>
-                <FieldRow label={t('settings.showLineNumbers.label')}>
+                <FieldRow anchorId="general-line-numbers" label={t('settings.showLineNumbers.label')}>
                     <SwitchControl checked={settings.showLineNumbers} label={t('settings.showLineNumbers.label')} onChange={() => updateSettings({ showLineNumbers: !settings.showLineNumbers })} />
                 </FieldRow>
-                <FieldRow label={t('settings.wordWrap.label')}>
+                <FieldRow anchorId="general-word-wrap" label={t('settings.wordWrap.label')}>
                     <SwitchControl checked={settings.wordWrap} label={t('settings.wordWrap.label')} onChange={() => updateSettings({ wordWrap: !settings.wordWrap })} />
                 </FieldRow>
-            </div>
-
-            <SectionTitle title={t('settings.general.notifications.heading')} description={t('settings.general.notifications.description')} />
-            <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
-                <FieldRow label={t('settings.general.notifications.system.label')} description={t('settings.general.notifications.system.description')}>
-                    <SwitchControl
-                        checked={notificationsEnabled}
-                        label={t('settings.general.notifications.system.label')}
-                        onChange={async () => {
-                            if (!notificationsEnabled) {
-                                const result = await requestNotificationPermission();
-                                const next = result === "granted";
-                                setNotificationEnabled(next);
-                                setNotificationsEnabled(next);
-                            } else {
-                                setNotificationEnabled(false);
-                                setNotificationsEnabled(false);
-                            }
-                        }}
-                    />
-                </FieldRow>
-                <FieldRow label={t('settings.general.notifications.sound.label')} description={t('settings.general.notifications.sound.description')}>
-                    <SwitchControl
-                        checked={soundEnabled}
-                        label={t('settings.general.notifications.sound.label')}
-                        onChange={() => {
-                            const next = !soundEnabled;
-                            setSoundEnabledState(next);
-                            setSoundEnabled(next);
-                        }}
-                    />
-                </FieldRow>
-                {soundEnabled && (
-                    <FieldRow label={t('settings.general.notifications.volume.label', { value: Math.round(soundVolume * 100) })}>
-                        <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={Math.round(soundVolume * 100)}
-                            onChange={(e) => {
-                                const vol = Number(e.target.value) / 100;
-                                setSoundVolumeState(vol);
-                                setSoundVolume(vol);
-                            }}
-                            className="w-full"
-                            aria-label={t('settings.general.notifications.volume.aria')}
-                        />
-                    </FieldRow>
-                )}
-            </div>
-        </div>
+            </SettingsCard>
+        </SettingsPage>
     );
 }

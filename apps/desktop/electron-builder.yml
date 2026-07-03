@@ -16,6 +16,9 @@ files:
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!build_output.txt'
+extraResources:
+  - from: build/icon.ico
+    to: build/icon.ico
 
 win:
   executableName: "Pi Desktop"
@@ -50,6 +53,7 @@ linux:
   category: Utility
 
 npmRebuild: false
+electronDist: node_modules/electron/dist
 
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/

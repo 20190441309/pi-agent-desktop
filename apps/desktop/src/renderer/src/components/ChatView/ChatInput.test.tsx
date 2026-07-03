@@ -42,6 +42,7 @@ describe("ChatInput", () => {
         setSettings: vi.fn(async () => undefined),
         configSetDefaultModel: vi.fn(async () => ({ ok: true })),
         agentsSetThinking: vi.fn(async () => undefined),
+        permissionSetMode: vi.fn(async () => undefined),
       },
       configurable: true,
     });
@@ -138,6 +139,7 @@ describe("ChatInput", () => {
       "添加文件或图片",
       "打开 Slash 命令",
       "选择 Agent 模式",
+      "权限: 智能授权",
       "当前模型: 未配置模型",
       "思考强度: 中",
       "发送",
@@ -239,6 +241,27 @@ describe("ChatInput", () => {
 
     expect(screen.getByRole("button", { name: "选择 Agent 模式" }).textContent).toContain("Compose");
     expect(screen.queryByLabelText("compose 模式已启用")).toBeNull();
+  });
+
+  it("allows changing permission mode from the reference composer", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "权限: 智能授权" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "始终授权" }));
+
+    expect(useSettingsStore.getState().settings.permissionLevel).toBe("always");
   });
 
   it("clamps persisted unsupported modes back to build and hides unavailable runtime modes", () => {
@@ -474,7 +497,7 @@ describe("ChatInput", () => {
     expect(screen.getByTestId("chat-input-reference-controls").className).toContain("shrink-0");
   });
 
-  it("floats the running status above the reference composer without taking input layout space", () => {
+  it("renders the inline running status strip above the reference composer", () => {
     render(
       <I18nProvider>
         <ChatInput
@@ -489,12 +512,41 @@ describe("ChatInput", () => {
       </I18nProvider>,
     );
 
-    const runningStatus = screen.getByText(/任务运行中/).parentElement?.parentElement;
-
+    const runningStatus = screen.getByText(/任务运行中 ·/).parentElement?.parentElement;
     expect(runningStatus?.className).toContain("absolute");
     expect(runningStatus?.className).toContain("bottom-full");
     expect(screen.getByTestId("chat-input-reference-body").className).toContain("flex-1");
     expect(screen.getByTestId("chat-input-reference-controls").className).toContain("shrink-0");
+  });
+
+  it("turns the reference composer send button into an active stop button while processing", () => {
+    const onStop = vi.fn();
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={onStop}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const stopButton = screen
+      .getAllByRole("button", { name: "停止生成" })
+      .find((button) => !button.className.includes("hidden"));
+    if (!stopButton) {
+      throw new Error("Expected a visible stop button in the reference composer");
+    }
+    expect(stopButton.getAttribute("disabled")).toBeNull();
+    expect(stopButton.className).toContain("w-[32px]");
+
+    fireEvent.click(stopButton);
+    expect(onStop).toHaveBeenCalledTimes(1);
   });
 
   it("focuses the composer when the app requests a new chat focus", async () => {
@@ -617,6 +669,82 @@ describe("ChatInput", () => {
 
     expect((await screen.findByRole("alert")).textContent).toContain("发送失败: network down");
     expect(textbox.value).toBe("检查这个文件");
+    expect(useAttachmentsStore.getState().list("ws1")).toHaveLength(1);
+  });
+
+  it("clears the draft immediately after submit is accepted, even while the send promise is still pending", async () => {
+    let resolveSend: (() => void) | undefined;
+    const onSend = vi.fn(
+      () => new Promise<void>((resolve) => {
+        resolveSend = resolve;
+      }),
+    );
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textbox, { target: { value: "发送后立刻清空" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(onSend).toHaveBeenCalledWith("发送后立刻清空");
+    expect(textbox.value).toBe("");
+
+    resolveSend?.();
+  });
+
+  it("restores the cleared draft and attachments when the pending submit later rejects", async () => {
+    let rejectSend: ((error: Error) => void) | undefined;
+    const onSend = vi.fn(
+      () => new Promise<void>((_resolve, reject) => {
+        rejectSend = reject;
+      }),
+    );
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        selectFiles: vi.fn(async () => ["C:/repo/src/app.ts"]),
+      },
+      configurable: true,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    clickAddAttachment();
+    await screen.findByText("app.ts");
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textbox, { target: { value: "失败后恢复草稿" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(textbox.value).toBe("");
+    expect(useAttachmentsStore.getState().list("ws1")).toEqual([]);
+
+    rejectSend?.(new Error("late submit failure"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("发送失败: late submit failure");
+    });
+    expect(textbox.value).toBe("失败后恢复草稿");
     expect(useAttachmentsStore.getState().list("ws1")).toHaveLength(1);
   });
 
@@ -906,7 +1034,7 @@ describe("ChatInput", () => {
     });
   });
 
-  it("allows sending a follow-up instruction while a task is running", async () => {
+  it("turns the primary action into stop instead of sending a follow-up instruction while a task is running", () => {
     const onSend = vi.fn(async () => undefined);
     const onStop = vi.fn();
 
@@ -923,15 +1051,15 @@ describe("ChatInput", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByText(/任务运行中/).textContent).toContain("追加指令");
     const textbox = screen.getByRole("textbox");
     expect((textbox as HTMLTextAreaElement).disabled).toBe(false);
+    expect((textbox as HTMLTextAreaElement).placeholder).toContain("任务运行中");
 
     fireEvent.change(textbox, { target: { value: "继续只提交 staged 文件" } });
-    fireEvent.click(screen.getByRole("button", { name: "发送追加指令" }));
+    fireEvent.click(screen.getByRole("button", { name: "停止生成" }));
 
-    await waitFor(() => expect(onSend).toHaveBeenCalledWith("继续只提交 staged 文件"));
-    expect(onStop).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onStop).toHaveBeenCalledTimes(1);
   });
 
   it("appends external prefill text without replacing the current draft", async () => {
@@ -1040,8 +1168,8 @@ describe("ChatInput", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByText(/正在执行计划/)).toBeTruthy();
     expect(screen.getByPlaceholderText(/正在执行计划/)).toBeTruthy();
+    expect(screen.getByText(/正在执行计划 ·/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "暂停执行" }));
     expect(onStop).toHaveBeenCalledTimes(1);
   });

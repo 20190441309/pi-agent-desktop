@@ -56,11 +56,17 @@ test.describe('Pi Desktop launch', () => {
         // (2) Cross-check via the main process: query the BrowserWindow
         // instance directly to assert it is visible and not destroyed.
         const windowState = await app.evaluate(({ BrowserWindow }) => {
-            const wins = BrowserWindow.getAllWindows();
-            if (wins.length === 0) {
-                return { count: 0, visible: false, title: null as string | null };
+            const wins = BrowserWindow.getAllWindows().filter((item) => !item.isDestroyed());
+            const main = wins.find((item) => {
+                try {
+                    return item.webContents.getURL().includes('index.html');
+                } catch {
+                    return false;
+                }
+            });
+            if (!main) {
+                return { count: wins.length, visible: false, title: null as string | null };
             }
-            const main = wins[0];
             return {
                 count: wins.length,
                 visible: main.isVisible() && !main.isDestroyed(),
@@ -68,7 +74,7 @@ test.describe('Pi Desktop launch', () => {
             };
         });
 
-        expect(windowState.count).toBe(1);
+        expect(windowState.count).toBeGreaterThanOrEqual(1);
         expect(windowState.visible).toBe(true);
         expect(windowState.title).toBe('Pi Desktop');
 

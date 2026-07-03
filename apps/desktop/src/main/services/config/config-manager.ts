@@ -19,8 +19,23 @@ import type {
     ProviderTestResult,
 } from "@shared";
 import type { PiAgentConfig, PiAgentModel } from "../../types";
+import { isSafeUrl } from "../ssrf-guard";
 
 const DEFAULT_PROVIDER_API = "openai-completions";
+
+interface VisionImageInput {
+    readonly name: string;
+    readonly dataUrl: string;
+    readonly mimeType?: string;
+}
+
+interface ResolvedVisionConfig {
+    readonly providerId: string;
+    readonly provider: PiProviderConfig;
+    readonly model: PiModelItem;
+    readonly api: string;
+    readonly apiKey?: string;
+}
 
 export class ConfigManager {
     constructor(private readonly configDir = join(homedir(), ".pi", "agent")) {}
@@ -457,6 +472,122 @@ export class ConfigManager {
             .filter((model) => model.id.length > 0);
     }
 
+    async describeImages(images: readonly VisionImageInput[]): Promise<{ text: string }> {
+        if (images.length === 0) throw new Error("至少需要一张图片");
+        const vision = await this.resolveVisionConfig();
+        const baseUrl = vision.provider.baseUrl;
+        if (!baseUrl) {
+            throw new Error(`识图 provider ${vision.providerId} 缺少 baseUrl`);
+        }
+        if (!isSafeUrl(baseUrl)) {
+            throw new Error("不安全的 URL: 禁止访问云元数据地址或非 HTTP(S) 协议");
+        }
+
+        const prompt = images.length === 1
+            ? "请用简洁中文描述这张图片里的关键信息。"
+            : "请按顺序用简洁中文描述这些图片里的关键信息。";
+        const headers = vision.model.headers ?? vision.provider.headers ?? {};
+        const base = this.trimBaseUrl(baseUrl);
+
+        if (vision.api === "anthropic-messages") {
+            const response = await fetch(`${base}/messages`, {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(vision.apiKey ? { "x-api-key": vision.apiKey, "anthropic-version": "2023-06-01" } : {}),
+                    ...headers,
+                },
+                body: JSON.stringify({
+                    model: vision.model.id,
+                    max_tokens: 500,
+                    messages: [{
+                        role: "user",
+                        content: [
+                            { type: "text", text: prompt },
+                            ...images.map((image) => ({
+                                type: "image",
+                                source: this.anthropicImageSource(image),
+                            })),
+                        ],
+                    }],
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(await this.describeResponseFailure(response.status, data));
+            }
+            const text = this.readAnthropicVisionText(data);
+            if (!text) throw new Error("识图响应缺少可读文本");
+            return { text };
+        }
+
+        if (vision.api === "openai-responses" || vision.api === "openai-codex-responses") {
+            const response = await fetch(`${base}/responses`, {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(vision.apiKey ? { Authorization: `Bearer ${vision.apiKey}` } : {}),
+                    ...headers,
+                },
+                body: JSON.stringify({
+                    model: vision.model.id,
+                    input: [{
+                        role: "user",
+                        content: [
+                            { type: "input_text", text: prompt },
+                            ...images.map((image) => ({
+                                type: "input_image",
+                                image_url: image.dataUrl,
+                            })),
+                        ],
+                    }],
+                    max_output_tokens: 500,
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(await this.describeResponseFailure(response.status, data));
+            }
+            const text = this.readOpenAiVisionText(data);
+            if (!text) throw new Error("识图响应缺少可读文本");
+            return { text };
+        }
+
+        if (vision.api === "openai-completions") {
+            const response = await fetch(`${base}/chat/completions`, {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(vision.apiKey ? { Authorization: `Bearer ${vision.apiKey}` } : {}),
+                    ...headers,
+                },
+                body: JSON.stringify({
+                    model: vision.model.id,
+                    messages: [{
+                        role: "user",
+                        content: [
+                            { type: "text", text: prompt },
+                            ...images.map((image) => ({
+                                type: "image_url",
+                                image_url: { url: image.dataUrl },
+                            })),
+                        ],
+                    }],
+                    max_tokens: 500,
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(await this.describeResponseFailure(response.status, data));
+            }
+            const text = this.readOpenAiVisionText(data);
+            if (!text) throw new Error("识图响应缺少可读文本");
+            return { text };
+        }
+
+        throw new Error(`识图暂不支持当前 provider api: ${vision.api}`);
+    }
+
     async testProviderConnection(
         baseUrl?: string,
         apiKey?: string,
@@ -514,6 +645,37 @@ export class ConfigManager {
         );
     }
 
+    private async resolveVisionConfig(): Promise<ResolvedVisionConfig> {
+        const [settings, models, yamlModels] = await Promise.all([
+            this.getSettingsConfig(),
+            this.getModelsConfig(),
+            this.getYamlModelsConfig(),
+        ]);
+        const providerId = this.getStringSetting(settings.parsed, "visionProvider");
+        const modelId = this.getStringSetting(settings.parsed, "visionModel");
+        if (!providerId || !modelId) {
+            throw new Error("请先在设置中选择识图模型");
+        }
+        const provider = this.mergeProviderConfigs(
+            models.parsed.providers?.[providerId],
+            yamlModels.providers?.[providerId],
+        );
+        if (!provider) {
+            throw new Error(`未找到识图 provider: ${providerId}`);
+        }
+        const model = (provider.models ?? []).find((item) => item.id === modelId);
+        if (!model) {
+            throw new Error(`未找到识图模型: ${modelId}`);
+        }
+        return {
+            providerId,
+            provider,
+            model,
+            api: this.apiFromApiType(model.api ?? provider.api ?? provider.apiType) ?? DEFAULT_PROVIDER_API,
+            apiKey: await this.resolveProviderApiKey(providerId),
+        };
+    }
+
     private async readJsonFile<T>(fileName: string, fallback: T): Promise<{ raw: string; parsed: T }> {
         const filePath = join(this.configDir, fileName);
         try {
@@ -545,6 +707,33 @@ export class ConfigManager {
         } catch {
             return { providers: {} };
         }
+    }
+
+    private mergeProviderConfigs(
+        jsonProvider?: PiProviderConfig,
+        yamlProvider?: PiProviderConfig,
+    ): PiProviderConfig | undefined {
+        if (!jsonProvider && !yamlProvider) return undefined;
+        if (!jsonProvider) {
+            return yamlProvider ? { ...yamlProvider, models: [...(yamlProvider.models ?? [])] } : undefined;
+        }
+        if (!yamlProvider) {
+            return { ...jsonProvider, models: [...(jsonProvider.models ?? [])] };
+        }
+        const deletedModels = new Set(jsonProvider._piDesktopDeletedModels ?? []);
+        const mergedModels = [...(jsonProvider.models ?? [])];
+        for (const model of yamlProvider.models ?? []) {
+            if (deletedModels.has(model.id)) continue;
+            if (!mergedModels.some((existing) => existing.id === model.id)) {
+                mergedModels.push(model);
+            }
+        }
+        return {
+            ...yamlProvider,
+            ...jsonProvider,
+            headers: jsonProvider.headers ?? yamlProvider.headers,
+            models: mergedModels,
+        };
     }
 
     private normalizeProvider(rawProvider: Record<string, unknown>, providerId: string): PiProviderConfig {
@@ -622,6 +811,83 @@ export class ConfigManager {
 
     private apiTypeFromApi(api?: string): string | undefined {
         return this.apiFromApiType(api);
+    }
+
+    private anthropicImageSource(image: VisionImageInput): { type: "base64"; media_type: string; data: string } {
+        const parsed = image.dataUrl.match(/^data:(?<mime>[^;]+);base64,(?<data>.+)$/);
+        if (!parsed?.groups?.mime || !parsed.groups.data) {
+            throw new Error(`图片 ${image.name} 不是有效的 base64 data URL`);
+        }
+        return {
+            type: "base64",
+            media_type: image.mimeType ?? parsed.groups.mime,
+            data: parsed.groups.data,
+        };
+    }
+
+    private readOpenAiVisionText(payload: unknown): string {
+        const data = this.isPlainObject(payload) ? payload : {};
+        if (typeof data.output_text === "string" && data.output_text.trim()) {
+            return data.output_text.trim();
+        }
+        const choices = Array.isArray(data.choices) ? data.choices : [];
+        const choiceMessage = choices[0];
+        if (this.isPlainObject(choiceMessage) && this.isPlainObject(choiceMessage.message)) {
+            const content = choiceMessage.message.content;
+            if (typeof content === "string" && content.trim()) {
+                return content.trim();
+            }
+            if (Array.isArray(content)) {
+                const text = content
+                    .map((item) => {
+                        if (!this.isPlainObject(item)) return "";
+                        if (typeof item.text === "string") return item.text;
+                        if (this.isPlainObject(item.text) && typeof item.text.value === "string") return item.text.value;
+                        return "";
+                    })
+                    .filter(Boolean)
+                    .join("\n")
+                    .trim();
+                if (text) return text;
+            }
+        }
+        const output = Array.isArray(data.output) ? data.output : [];
+        const text = output
+            .flatMap((item) => {
+                if (!this.isPlainObject(item) || !Array.isArray(item.content)) return [];
+                return item.content.flatMap((part) => {
+                    if (!this.isPlainObject(part)) return [];
+                    if (typeof part.text === "string") return [part.text];
+                    if (this.isPlainObject(part.text) && typeof part.text.value === "string") return [part.text.value];
+                    return [];
+                });
+            })
+            .join("\n")
+            .trim();
+        return text;
+    }
+
+    private readAnthropicVisionText(payload: unknown): string {
+        const data = this.isPlainObject(payload) ? payload : {};
+        const content = Array.isArray(data.content) ? data.content : [];
+        return content
+            .flatMap((item) => {
+                if (!this.isPlainObject(item) || typeof item.text !== "string") return [];
+                return [item.text];
+            })
+            .join("\n")
+            .trim();
+    }
+
+    private async describeResponseFailure(status: number, payload: unknown): Promise<string> {
+        const data = this.isPlainObject(payload) ? payload : {};
+        const error = this.isPlainObject(data.error) ? data.error : undefined;
+        const detail = typeof error?.message === "string"
+            ? error.message
+            : typeof data.message === "string"
+                ? data.message
+                : "";
+        return detail ? `识图请求失败: HTTP ${status} - ${detail}` : `识图请求失败: HTTP ${status}`;
     }
 
     private apiFromApiType(apiType?: string): string | undefined {

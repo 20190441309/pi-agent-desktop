@@ -246,6 +246,40 @@ describe("session:append-message", () => {
         const result = (await handler({}, "ghost", userMsg)) as { code: string };
         expect(result.code).toBe("ipcErrors.session.appendMessageFailed");
     });
+
+    it("会先把 legacy toolCallId/toolName 规范化为 canonical tool call 再追加", async () => {
+        const seed: Session[] = [
+            {
+                id: "s1",
+                workspaceId: "ws1",
+                title: "t",
+                messages: [],
+                createdAt: 1,
+                updatedAt: 1,
+            },
+        ];
+        setupWithStore(seed);
+        const handler = handlers.get("session:append-message")!;
+        const result = await handler({}, "s1", {
+            ...asstMsg,
+            toolCalls: [
+                {
+                    toolCallId: "tc_legacy",
+                    toolName: "read",
+                    args: { path: "README.md" },
+                    status: "running",
+                },
+            ],
+        });
+        expect(result).toBeUndefined();
+        const sessions = (await (handlers.get("session:list") as (...a: unknown[]) => unknown)()) as Session[];
+        expect(sessions[0].messages[0].toolCalls?.[0]).toMatchObject({
+            id: "tc_legacy",
+            name: "read",
+            input: { path: "README.md" },
+            status: "running",
+        });
+    });
 });
 
 describe("session:update-message", () => {
@@ -296,6 +330,64 @@ describe("session:update-message", () => {
         const handler = handlers.get("session:update-message")!;
         const result = (await handler({}, "s1", "m2", { role: 123 })) as { code: string };
         expect(result.code).toBe("ipcErrors.session.updateMessageInvalid");
+    });
+
+    it("会先把 legacy toolCallId/toolName 规范化为 canonical tool call 再更新消息", async () => {
+        const seed: Session[] = [
+            {
+                id: "s1",
+                workspaceId: "ws1",
+                title: "t",
+                messages: [asstMsg],
+                createdAt: 1,
+                updatedAt: 1,
+            },
+        ];
+        setupWithStore(seed);
+        const handler = handlers.get("session:update-message")!;
+        const result = await handler({}, "s1", "m2", {
+            toolCalls: [
+                {
+                    toolCallId: "tc_legacy",
+                    toolName: "bash",
+                    args: { command: "pwd" },
+                    status: "completed",
+                },
+            ],
+        });
+        expect(result).toBeUndefined();
+        const sessions = (await (handlers.get("session:list") as (...a: unknown[]) => unknown)()) as Session[];
+        expect(sessions[0].messages[0].toolCalls?.[0]).toMatchObject({
+            id: "tc_legacy",
+            name: "bash",
+            input: { command: "pwd" },
+            status: "completed",
+        });
+    });
+
+    it("legacy tool call 规范化后仍缺少标识时会指向具体缺失字段", async () => {
+        const seed: Session[] = [
+            {
+                id: "s1",
+                workspaceId: "ws1",
+                title: "t",
+                messages: [asstMsg],
+                createdAt: 1,
+                updatedAt: 1,
+            },
+        ];
+        setupWithStore(seed);
+        const handler = handlers.get("session:update-message")!;
+        const result = (await handler({}, "s1", "m2", {
+            toolCalls: [
+                {
+                    toolCallId: "tc_missing_name",
+                    status: "running",
+                },
+            ],
+        })) as { code: string; params?: { reason?: string } };
+        expect(result.code).toBe("ipcErrors.session.updateMessageInvalid");
+        expect(result.params?.reason).toContain("Required");
     });
 });
 

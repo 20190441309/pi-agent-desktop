@@ -1,5 +1,6 @@
 import type { Session } from "../stores/session-store";
 import type { Message } from "@shared";
+import { contentWithGeneratedUiText } from "./generated-ui";
 
 function escapeHtml(text: string): string {
   return text
@@ -25,7 +26,7 @@ function messageToMarkdown(message: Message): string {
     ? formatDate(message.timestamp)
     : formatDate(new Date(message.timestamp));
 
-  let content = message.content;
+  let content = contentWithGeneratedUiText(message.content, message.generatedUi);
 
   if (message.toolCalls && message.toolCalls.length > 0) {
     const toolSummary = message.toolCalls
@@ -95,7 +96,7 @@ export function exportSessionAsHTML(session: Session): string {
       const time = m.timestamp instanceof Date
         ? formatDate(m.timestamp)
         : formatDate(new Date(m.timestamp));
-      const content = m.content
+      const content = contentWithGeneratedUiText(m.content, m.generatedUi)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")

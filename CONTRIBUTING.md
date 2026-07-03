@@ -37,9 +37,11 @@ docs/                # Specs, plans, spike notes
 1. Pick an issue or open one describing what you want to change
 2. Create a branch: `git checkout -b feature/m6-xxx`
 3. Implement + write tests (TDD preferred)
-4. Verify: `pnpm -r typecheck && pnpm -r lint && pnpm -r test`
-5. Commit with clear messages: `feat(approval): add X` / `fix(terminal): Y`
-6. Open a PR against `master`
+4. Verify the repo gate: `pnpm -r typecheck && pnpm -r lint && pnpm -r test`
+5. For desktop runtime or renderer UI work, also run a real Electron acceptance on the surface you changed
+6. Save fresh acceptance screenshots under `docs/compose/acceptance/`
+7. Commit with clear messages: `feat(approval): add X` / `fix(terminal): Y`
+8. Open a PR against `master`
 
 ## Commit Convention
 
@@ -71,6 +73,15 @@ Run:
 pnpm -r typecheck
 pnpm -r lint
 pnpm -r test
+pnpm --filter @pi-desktop/desktop build
+```
+
+If you changed desktop UI, chat runtime behavior, overlays, settings flows, or other Electron-visible surfaces, follow the build with the matching Playwright Electron acceptance and keep the new screenshots in `docs/compose/acceptance/`. Examples:
+
+```bash
+pnpm --filter @pi-desktop/desktop exec playwright test e2e/overlay-anchors.spec.ts
+pnpm --filter @pi-desktop/desktop exec playwright test e2e/generated-ui-v1-acceptance.spec.ts
+pnpm --filter @pi-desktop/desktop exec playwright test e2e/running-control.spec.ts
 ```
 
 For release or updater work, also read the release guide in `docs/RELEASE-AND-AUTO-UPDATE.md`.
@@ -82,6 +93,7 @@ For release or updater work, also read the release guide in `docs/RELEASE-AND-AU
 - Tailwind for styling (utility-first, no CSS modules)
 - Zustand for state
 - Follow the existing patterns in `src/main/services/` for new services
+- UI and interaction changes should stay aligned with `DESIGN.md`, especially chat width, running indicators, stop controls, and surface spacing
 
 ## Areas Needing Help
 

@@ -2,6 +2,7 @@ import { test, expect, _electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 async function installTestIpc(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ ipcMain }) => {
@@ -95,8 +96,8 @@ test.describe('Plan Mode Smoke Test', () => {
       args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
       env: { ...process.env, CI: '1' },
     });
-    page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
+    await app.firstWindow();
+    page = await getWindowByUrl(app, 'index.html');
 
     page.on('console', (msg) => {
       console.log(`[RENDERER ${msg.type()}]`, msg.text());
@@ -139,7 +140,7 @@ test.describe('Plan Mode Smoke Test', () => {
 
     await expect(page.getByText('计划模式需要目标')).toHaveCount(0);
 
-    // Verify prompt was sent with /plan prefix and read-only exploration instructions.
+    // Verify the renderer sends the plain user request; plan mode session switching is covered elsewhere.
     await expect.poll(async () => {
       const calls = await app.evaluate(() => {
         const target = globalThis as typeof globalThis & { __promptCalls?: Array<{ message: string }> };
@@ -153,9 +154,6 @@ test.describe('Plan Mode Smoke Test', () => {
       return target.__promptCalls?.[0]?.message ?? '';
     });
 
-    expect(sentMessage).toContain('/plan');
-    expect(sentMessage).toContain('用户请求:');
-    expect(sentMessage).toContain('了解一下这个项目');
-    expect(sentMessage).toContain('先只读探索');
+    expect(sentMessage).toBe('了解一下这个项目');
   });
 });

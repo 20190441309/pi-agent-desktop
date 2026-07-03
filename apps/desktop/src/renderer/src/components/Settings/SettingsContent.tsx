@@ -1,7 +1,6 @@
-// 设置内容 — 当前由独立设置窗口复用。
-// 不含模态 chrome (backdrop / dialog / close 按钮). 仅做 tab 路由 + 外壳.
+// 设置内容 — 独立设置窗口复用的左栏单导航壳.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSettingsStore } from '../../stores/settings-store';
 import { ShortcutsSettings } from './ShortcutsSettings/ShortcutsSettings';
 import { useI18n, useTranslateIpcError } from '../../i18n';
@@ -17,7 +16,8 @@ import { PiConfigEditor } from './tabs/PiConfigEditor';
 import { PermissionsTab } from './tabs/PermissionsTab';
 import { UsageTab } from './tabs/UsageTab';
 import { LongHorizonTab } from './tabs/LongHorizonTab';
-import { isSettingsTab, type SettingsTab } from './tab-defs';
+import { isSettingsTab, type SettingsSearchResult, type SettingsTab } from './tab-defs';
+import { buildSettingsNavigation, getDefaultSettingsAnchor, searchSettings } from './settings-nav-metadata';
 
 interface SettingsContentProps {
     onClose?: () => void;
@@ -25,14 +25,28 @@ interface SettingsContentProps {
 
 export function SettingsContent({ onClose }: SettingsContentProps = {}): React.JSX.Element {
     const { loadPiConfig, lastWriteError, clearWriteError } = useSettingsStore();
-    const [activeTab, setActiveTab] = useState<SettingsTab>('model');
+    const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+    const [activeAnchor, setActiveAnchor] = useState<string>(getDefaultSettingsAnchor('general'));
+    const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const scrollRegionRef = useRef<HTMLDivElement>(null);
     const { t } = useI18n();
     const translateIpcError = useTranslateIpcError();
+
     const writeErrorMessage: string | null = lastWriteError == null
         ? null
         : typeof lastWriteError === "string"
             ? lastWriteError
             : translateIpcError(lastWriteError as IpcError);
+
+    const sections = useMemo(() => buildSettingsNavigation(t), [t]);
+    const searchResults = useMemo(() => searchSettings(sections, searchQuery), [searchQuery, sections]);
+
+    const selectLocation = (tab: SettingsTab, anchor = getDefaultSettingsAnchor(tab)): void => {
+        setActiveTab(tab);
+        setActiveAnchor(anchor);
+        setPendingAnchor(anchor);
+    };
 
     useEffect(() => {
         clearWriteError();
@@ -41,90 +55,79 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
     useEffect(() => {
         const onSelectTab = (event: Event): void => {
             const tab = (event as CustomEvent<{ tab?: unknown }>).detail?.tab;
-            if (isSettingsTab(tab)) setActiveTab(tab);
+            if (isSettingsTab(tab)) {
+                selectLocation(tab);
+            }
         };
         window.addEventListener("settings:select-tab", onSelectTab);
         return () => window.removeEventListener("settings:select-tab", onSelectTab);
     }, []);
 
-    const tabs: Array<{ id: SettingsTab; label: string; caption: string }> = [
-        { id: 'model', label: t('settings.tab.model'), caption: t('settings.tabCaption.model') },
-        { id: 'piagent', label: t('settings.tab.piagent'), caption: t('settings.tabCaption.piagent') },
-        { id: 'permissions', label: t('settings.tab.permissions'), caption: t('settings.tabCaption.permissions') },
-        { id: 'usage', label: t('settings.tab.usage'), caption: t('settings.tabCaption.usage') },
-        { id: 'longHorizon', label: t('settings.tab.longHorizon'), caption: t('settings.tabCaption.longHorizon') },
-        { id: 'appearance', label: t('settings.tab.appearance'), caption: t('settings.tabCaption.appearance') },
-        { id: 'general', label: t('settings.tab.general'), caption: t('settings.tabCaption.general') },
-        { id: 'shortcuts', label: t('settings.tab.shortcuts'), caption: t('settings.tabCaption.shortcuts') },
-        { id: 'config', label: t('settings.tab.config'), caption: t('settings.tabCaption.config') },
-        { id: 'about', label: t('settings.tab.about'), caption: t('settings.tabCaption.about') },
-    ];
-    const primaryTabs = tabs.filter((tab) => tab.id === 'model' || tab.id === 'piagent' || tab.id === 'permissions' || tab.id === 'usage' || tab.id === 'longHorizon');
+    useEffect(() => {
+        if (!pendingAnchor) return;
+
+        const root = scrollRegionRef.current;
+        const frame = window.requestAnimationFrame(() => {
+            const target = root?.querySelector<HTMLElement>(`[data-settings-anchor="${pendingAnchor}"]`);
+            if (target) {
+                target.scrollIntoView({ block: "start" });
+            } else {
+                root?.scrollTo({ top: 0 });
+            }
+            setPendingAnchor(null);
+        });
+
+        return () => window.cancelAnimationFrame(frame);
+    }, [activeTab, pendingAnchor]);
 
     return (
         <>
-            <SettingsNav tabs={tabs} activeTab={activeTab} onSelectTab={setActiveTab} />
+            <SettingsNav
+                sections={sections}
+                searchQuery={searchQuery}
+                searchResults={searchResults}
+                activeTab={activeTab}
+                activeAnchor={activeAnchor}
+                onSearchQueryChange={setSearchQuery}
+                onSelectTab={(tab) => selectLocation(tab)}
+                onSelectSearchResult={(result: SettingsSearchResult) => selectLocation(result.tabId, result.anchor)}
+            />
 
             <main className="flex min-w-0 flex-1 flex-col bg-[var(--mm-bg-main)]">
-                <div className="flex min-h-[38px] items-center justify-between border-b border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-[26px] py-1.5">
-                    <div className="flex h-full min-w-0 items-end gap-7">
-                        {primaryTabs.map((tab) => {
-                            const selected = activeTab === tab.id;
-                            return (
-                                <button
-                                    key={tab.id}
-                                    type="button"
-                                    aria-label={tab.label}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`relative flex h-[28px] min-w-[44px] items-center justify-center px-1.5 text-[12px] transition-colors ${
-                                        selected ? "font-medium text-[var(--mm-accent-blue)]" : "text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)]"
-                                    }`}
-                                >
-                                    {tab.label}
-                                    {selected && <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-[var(--mm-accent-blue)]" aria-hidden="true" />}
+                {(writeErrorMessage || onClose) && (
+                    <div className="flex min-h-[54px] items-center justify-between border-b border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-6 py-3">
+                        {writeErrorMessage ? (
+                            <div className="mx-0 flex min-w-0 flex-1 items-center justify-between rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+                                <span className="truncate">{writeErrorMessage}</span>
+                                <button type="button" onClick={clearWriteError} className="settings-pressable ml-3 flex h-5 w-5 shrink-0 items-center justify-center rounded text-red-500 transition-[transform,background-color,color] duration-150 ease-out hover:bg-red-100 hover:text-red-700" aria-label="Dismiss">
+                                    <CloseIcon />
                                 </button>
-                            );
-                        })}
-                    </div>
-                    {writeErrorMessage && (
-                        <div className="mx-2 flex min-w-0 flex-1 items-center justify-between rounded border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700" role="alert">
-                            <span className="truncate">{writeErrorMessage}</span>
-                            <button type="button" onClick={clearWriteError} className="settings-pressable ml-3 flex h-5 w-5 shrink-0 items-center justify-center rounded text-red-500 transition-[transform,background-color,color] duration-150 ease-out hover:bg-red-100 hover:text-red-700" aria-label="Dismiss">
+                            </div>
+                        ) : <div />}
+                        {onClose && (
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="settings-pressable ml-4 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--mm-text-tertiary)] transition-[transform,background-color,color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
+                                aria-label={t('common.close')}
+                                title={t('common.close')}
+                            >
                                 <CloseIcon />
                             </button>
-                        </div>
-                    )}
-                    {onClose && (
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="settings-pressable flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--mm-text-tertiary)] transition-[transform,background-color,color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
-                            aria-label={t('common.close')}
-                            title={t('common.close')}
-                        >
-                            <CloseIcon />
-                        </button>
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
 
-                <div className="min-h-0 flex-1 overflow-y-auto py-0 pl-[6px] pr-[20px]" data-testid="settings-scroll-region">
+                <div ref={scrollRegionRef} className="min-h-0 flex-1 overflow-y-auto" data-testid="settings-scroll-region">
                     {activeTab === 'appearance' && <AppearanceTab />}
-                    {activeTab === 'model' && (
-                        <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-model" aria-labelledby="settings-tab-model">
-                            <ManagedModelsPanel onPiConfigChanged={loadPiConfig} />
-                        </div>
-                    )}
+                    {activeTab === 'model' && <ManagedModelsPanel onPiConfigChanged={loadPiConfig} />}
                     {activeTab === 'piagent' && <PiAgentTab />}
                     {activeTab === 'permissions' && <PermissionsTab />}
                     {activeTab === 'usage' && <UsageTab />}
                     {activeTab === 'longHorizon' && <LongHorizonTab />}
                     {activeTab === 'general' && <GeneralTab />}
                     {activeTab === 'config' && <PiConfigEditor />}
-                    {activeTab === 'shortcuts' && (
-                        <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-shortcuts" aria-labelledby="settings-tab-shortcuts">
-                            <ShortcutsSettings />
-                        </div>
-                    )}
+                    {activeTab === 'shortcuts' && <ShortcutsSettings />}
                     {activeTab === 'about' && <AboutTab />}
                 </div>
 

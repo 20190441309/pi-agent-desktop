@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslateIpcError } from '../../../i18n';
 import { isIpcError, type PiAuthFile, type PiModelsFile, type PiSettingsFile } from '@shared';
-import { SectionTitle } from '../_shared';
+import { SectionTitle, SettingsCard, SettingsPage } from '../_shared';
 
 export function PiConfigEditor(): React.JSX.Element {
     const translateIpcError = useTranslateIpcError();
@@ -98,69 +98,74 @@ export function PiConfigEditor(): React.JSX.Element {
     };
 
     return (
-        <div className="settings-tab-panel space-y-4" role="tabpanel" id="settings-tabpanel-config" aria-labelledby="settings-tab-config">
-            <SectionTitle title="Pi 配置中心" description="编辑 models.json、auth.json 和 settings.json。" />
-            <div className="flex flex-wrap items-center gap-2">
-                {(['models.json', 'auth.json', 'settings.json'] as const).map((name) => (
-                    <button
-                        key={name}
-                        type="button"
-                        onClick={() => setFileName(name)}
-                        className={`settings-pressable rounded-md px-3 py-1.5 text-sm transition-[transform,background-color,color] duration-150 ease-out ${
-                            fileName === name ? 'bg-[var(--mm-accent-blue)] text-white' : 'bg-[var(--settings-bg-control)] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]'
-                        }`}
-                    >
-                        {name}
-                    </button>
-                ))}
-            </div>
-            <textarea
-                value={raw}
-                onChange={(event) => setRaw(event.target.value)}
-                spellCheck={false}
-                className="min-h-[300px] w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 font-mono text-xs text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-accent-blue)]"
-                aria-label="Pi 配置 JSON"
-            />
-            {[message, fetchStatus, testStatus].filter(Boolean).map((status) => (
-                <div key={status} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs text-[var(--mm-text-secondary)]">
-                    {status}
+        <SettingsPage tabId="config" title="配置文件" description="直接编辑 Pi Code Agent 的本地配置文件和导入导出内容。">
+            <SettingsCard anchorId="config-files" className="px-5 py-4">
+                <SectionTitle title="配置文件编辑" description="切换 `models.json`、`auth.json` 和 `settings.json` 并直接修改原始内容。" />
+                <div className="flex flex-wrap items-center gap-2">
+                    {(['models.json', 'auth.json', 'settings.json'] as const).map((name) => (
+                        <button
+                            key={name}
+                            type="button"
+                            onClick={() => setFileName(name)}
+                            className={`settings-pressable rounded-md px-3 py-1.5 text-sm transition-[transform,background-color,color] duration-150 ease-out ${
+                                fileName === name ? 'bg-[var(--mm-accent-blue)] text-white' : 'bg-[var(--settings-bg-control)] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]'
+                            }`}
+                        >
+                            {name}
+                        </button>
+                    ))}
                 </div>
-            ))}
-            <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={save} className="settings-pressable rounded-md bg-[var(--mm-accent-blue)] px-3 py-2 text-sm text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90">保存当前文件</button>
-                <button type="button" onClick={exportConfig} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">导出配置包</button>
-                <button type="button" onClick={importConfig} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">从编辑区导入配置包</button>
-                <button type="button" onClick={async () => {
-                    setFetchStatus("拉取中...");
-                    try {
-                        const provider = await loadProviderSelection(setFetchStatus);
-                        if (!provider) return;
-                        const models = await window.piAPI.configFetchModels(provider.baseUrl, provider.apiKey, provider.apiType);
-                        if (isIpcError(models)) {
-                            setFetchStatus(`拉取失败: ${translateIpcError(models)}`);
-                            return;
+                <textarea
+                    value={raw}
+                    onChange={(event) => setRaw(event.target.value)}
+                    spellCheck={false}
+                    className="mt-4 min-h-[300px] w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 font-mono text-xs text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-accent-blue)]"
+                    aria-label="Pi 配置 JSON"
+                />
+                {[message, fetchStatus, testStatus].filter(Boolean).map((status) => (
+                    <div key={status} className="mt-3 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs text-[var(--mm-text-secondary)]">
+                        {status}
+                    </div>
+                ))}
+            </SettingsCard>
+            <SettingsCard anchorId="config-actions" className="px-5 py-4">
+                <SectionTitle title="维护动作" description="保存、导入导出配置，并直接从当前默认 Provider 拉取模型或测试连接。" />
+                <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={save} className="settings-pressable rounded-md bg-[var(--mm-accent-blue)] px-3 py-2 text-sm text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90">保存当前文件</button>
+                    <button type="button" onClick={exportConfig} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">导出配置包</button>
+                    <button type="button" onClick={importConfig} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">从编辑区导入配置包</button>
+                    <button type="button" onClick={async () => {
+                        setFetchStatus("拉取中...");
+                        try {
+                            const provider = await loadProviderSelection(setFetchStatus);
+                            if (!provider) return;
+                            const models = await window.piAPI.configFetchModels(provider.baseUrl, provider.apiKey, provider.apiType);
+                            if (isIpcError(models)) {
+                                setFetchStatus(`拉取失败: ${translateIpcError(models)}`);
+                                return;
+                            }
+                            setFetchStatus(`拉取到 ${models.length} 个模型`);
+                        } catch (e) {
+                            setFetchStatus(`拉取失败: ${e instanceof Error ? e.message : String(e)}`);
                         }
-                        setFetchStatus(`拉取到 ${models.length} 个模型`);
-                    } catch (e) {
-                        setFetchStatus(`拉取失败: ${e instanceof Error ? e.message : String(e)}`);
-                    }
-                }} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">拉取模型列表</button>
-                <button type="button" onClick={async () => {
-                    setTestStatus("测试中...");
-                    try {
-                        const provider = await loadProviderSelection(setTestStatus);
-                        if (!provider) return;
-                        const result = await window.piAPI.configTestProvider(provider);
-                        if (isIpcError(result)) {
-                            setTestStatus(`测试失败: ${translateIpcError(result)}`);
-                            return;
+                    }} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">拉取模型列表</button>
+                    <button type="button" onClick={async () => {
+                        setTestStatus("测试中...");
+                        try {
+                            const provider = await loadProviderSelection(setTestStatus);
+                            if (!provider) return;
+                            const result = await window.piAPI.configTestProvider(provider);
+                            if (isIpcError(result)) {
+                                setTestStatus(`测试失败: ${translateIpcError(result)}`);
+                                return;
+                            }
+                            setTestStatus(result.ok ? "连接成功" : `连接失败: ${result.message}`);
+                        } catch (e) {
+                            setTestStatus(`测试失败: ${e instanceof Error ? e.message : String(e)}`);
                         }
-                        setTestStatus(result.ok ? "连接成功" : `连接失败: ${result.message}`);
-                    } catch (e) {
-                        setTestStatus(`测试失败: ${e instanceof Error ? e.message : String(e)}`);
-                    }
-                }} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">测试 Provider</button>
-            </div>
-        </div>
+                    }} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">测试 Provider</button>
+                </div>
+            </SettingsCard>
+        </SettingsPage>
     );
 }

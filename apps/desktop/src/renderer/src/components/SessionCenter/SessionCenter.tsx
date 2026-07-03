@@ -6,17 +6,25 @@ import { useI18n } from "../../i18n";
 import { emitWorkspaceNotice } from "../WorkspaceNoticeBanner/WorkspaceNoticeBanner";
 import { isIpcError } from "@shared";
 import { SessionExportDialog } from "../SessionExport/SessionExportDialog";
+import { contentWithGeneratedUiText } from "../../utils/generated-ui";
 import { sessionMatches, sessionDepth, sessionActivityTime } from "../../utils/session-grouping";
 
 interface SessionCenterProps {
   onOpenChat?: () => void;
 }
 
+function matchingMessageText(message: Session["messages"][number]): string {
+  return [contentWithGeneratedUiText(message.content, message.generatedUi), message.thinking ?? ""]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
 function findMatchingMessage(session: Session, query: string): Session["messages"][number] | null {
   const q = query.trim().toLowerCase();
   if (!q) return null;
   return session.messages.find((message) => {
-    const text = `${message.content} ${message.thinking ?? ""}`.toLowerCase();
+    const text = matchingMessageText(message).toLowerCase();
     return text.includes(q);
   }) ?? null;
 }
@@ -343,7 +351,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                                   </button>
                                 </div>
                                 <p className="m-0 line-clamp-2 text-xs leading-5 text-[var(--mm-text-secondary)]">
-                                  {compactSnippet(matchingMessage.content || matchingMessage.thinking || "", query)}
+                                  {compactSnippet(matchingMessageText(matchingMessage), query)}
                                 </p>
                               </div>
                             )}

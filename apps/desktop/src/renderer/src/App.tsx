@@ -24,6 +24,7 @@ import { TerminalPanel } from "./components/Terminal/TerminalPanel";
 import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
+import { PermissionRequestStack } from "./components/ChatView/PermissionRequestStack";
 import { MemoryPanel } from "./components/LongHorizon/MemoryPanel";
 import { TaskOverviewPanel } from "./components/LongHorizon/TaskOverviewPanel";
 import { SearchHistory } from "./components/SearchHistory/SearchHistory";
@@ -46,12 +47,12 @@ import { useShortcuts } from "./shortcuts";
 import { I18nProvider } from "./i18n";
 import { logger } from "./utils/logger";
 import { useTaskProgress } from "./hooks/useTaskProgress";
-import { ensurePermissionSubscriptions } from "./stores/permission-store";
+import { ensurePermissionSubscriptions, usePermissionStore } from "./stores/permission-store";
 import { ensurePlanSubscriptions } from "./stores/plan-store";
 import { ensureQueueSubscription } from "./stores/queue-store";
 import { useRuntimeFeatureStore } from "./stores/runtime-feature-store";
 import type { TerminalCommandMode } from "./utils/terminal-command";
-import { isIpcError } from "@shared";
+import { isIpcError, type DeferredEdit } from "@shared";
 import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 import { addToast } from "./stores/toast-store";
 
@@ -203,9 +204,11 @@ function AppShell(): React.ReactElement {
         (s) => s.changes.filter((c) => c.status === "pending").length,
     );
     const agents = useAgentStore((s) => s.agents);
+    const currentAgentId = useAgentStore((s) => s.currentAgentId);
     const messagesByAgent = useAgentStore((s) => s.messagesByAgent);
     const agentsInitialized = useAgentStore((s) => s.initialized);
     const createAgent = useAgentStore((s) => s.createAgent);
+    const pendingPermissions = usePermissionStore((s) => s.pending);
     const currentWorkspace = getCurrentWorkspace();
     const pendingDefaultAgentWorkspaces = useRef<Set<string>>(new Set());
     const pendingSessionAgentSessions = useRef<Set<string>>(new Set());
@@ -213,6 +216,7 @@ function AppShell(): React.ReactElement {
     const updaterSetupRef = useRef(setupUpdaterListeners);
     const updaterCleanupRef = useRef(cleanupUpdaterListeners);
     const updaterHydrateRef = useRef(hydrateUpdaterState);
+    const routeSectionRef = useRef<(section: string) => void>(() => undefined);
     const lastUpdaterToastRef = useRef<string | null>(null);
     const activePanel = panelForSection(activeSection);
     updaterSetupRef.current = setupUpdaterListeners;
@@ -367,6 +371,28 @@ function AppShell(): React.ReactElement {
             : undefined,
         [agents, currentWorkspace],
     );
+    const activeChatAgent = useMemo(() => {
+        if (!currentWorkspace) return null;
+        if (currentSessionId) {
+            const sessionAgent = agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === currentSessionId);
+            if (sessionAgent) return sessionAgent;
+        }
+        const selectedAgent = currentAgentId
+            ? agents.find((agent) => agent.id === currentAgentId && agent.workspaceId === currentWorkspace.id && !agent.sessionId)
+            : undefined;
+        return selectedAgent ?? agents.find((agent) => agent.workspaceId === currentWorkspace.id && !agent.sessionId) ?? null;
+    }, [agents, currentAgentId, currentSessionId, currentWorkspace]);
+    useEffect(() => {
+        window.piAPI?.send?.("desktop-overlay:set-main-context", {
+            chatSurfaceActive: activePanel === "chat",
+            workspaceId: currentWorkspace?.id,
+            agentId: activeChatAgent?.id ?? null,
+        });
+    }, [activeChatAgent?.id, activePanel, currentWorkspace?.id]);
+    const hasPendingPermission = useMemo(
+        () => pendingPermissions.some((request) => !currentWorkspace?.id || !request.workspaceId || request.workspaceId === currentWorkspace.id),
+        [currentWorkspace?.id, pendingPermissions],
+    );
     const currentAgentMessageCount = currentWorkspaceAgent
         ? messagesByAgent[currentWorkspaceAgent.id]?.length ?? 0
         : 0;
@@ -442,6 +468,7 @@ function AppShell(): React.ReactElement {
     //   pendingApprovalCount > 0 时挂载, 用户点 X 调 onToggle 调 approvalStore 的 clearChanges
     //   让 store 变空 → pendingCount = 0 → portal 不再挂载
     const [approvalVisible, setApprovalVisible] = useState(false);
+    const deferredApprovalRef = useRef<Map<string, DeferredEdit>>(new Map());
     useEffect(() => {
         // 当 pendingApprovalCount > 0 时自动显示
         if (pendingApprovalCount > 0) setApprovalVisible(true);
@@ -449,6 +476,32 @@ function AppShell(): React.ReactElement {
     const closeApproval = useCallback(() => {
         setApprovalVisible(false);
         useApprovalStore.getState().clearChanges();
+    }, []);
+    useEffect(() => {
+        const onDeferred = window.piAPI?.onApprovalDeferred;
+        const onReview = window.piAPI?.onApprovalReview;
+        if (!onDeferred || !onReview) return;
+
+        const unsubDeferred = onDeferred((payload) => {
+            deferredApprovalRef.current.set(payload.changeId, payload);
+        });
+        const unsubReview = onReview((payload) => {
+            const deferred = deferredApprovalRef.current.get(payload.changeId);
+            useApprovalStore.getState().addChange({
+                toolCallId: payload.toolCallId,
+                toolName: deferred?.op === "edit" ? "edit" : "write",
+                filePath: payload.filePath,
+                diff: payload.diff,
+                newContent: payload.newContent,
+            });
+            deferredApprovalRef.current.delete(payload.changeId);
+        });
+
+        return () => {
+            deferredApprovalRef.current.clear();
+            if (typeof unsubDeferred === "function") unsubDeferred();
+            if (typeof unsubReview === "function") unsubReview();
+        };
     }, []);
     useEffect(() => {
         const onPrefill = (e: Event): void => {
@@ -459,7 +512,7 @@ function AppShell(): React.ReactElement {
         const onSwitchSection = (e: Event): void => {
             const detail = (e as CustomEvent<{ section: string }>).detail;
             if (detail?.section) {
-                routeSection(detail.section);
+                routeSectionRef.current(detail.section);
             }
         };
         const onRunTerminalCommand = (e: Event): void => {
@@ -569,6 +622,30 @@ function AppShell(): React.ReactElement {
             setActiveSection("chat");
         }
     }, [currentWorkspace]);
+    routeSectionRef.current = routeSection;
+
+    useEffect(() => {
+        if (hasPendingPermission && activePanel !== "chat") {
+            routeSectionRef.current("chat");
+        }
+    }, [activePanel, hasPendingPermission]);
+
+    useEffect(() => {
+        if (hasPendingPermission && activePanel === "chat") {
+            requestChatInputFocus();
+        }
+    }, [activePanel, hasPendingPermission]);
+
+    useEffect(() => {
+        const onStreamStart = (): void => {
+            if (activePanel !== "chat") {
+                routeSectionRef.current("chat");
+            }
+        };
+        window.addEventListener("pi:stream-start", onStreamStart);
+        return () => window.removeEventListener("pi:stream-start", onStreamStart);
+    }, [activePanel]);
+
     const handleRunCommand = useCallback((cmdId: string): boolean | void => {
         switch (cmdId) {
             case "new_chat":
@@ -726,6 +803,12 @@ function AppShell(): React.ReactElement {
             {/* 2026-06-06 hotfix: 持久化失败时, 顶部 banner 提示 */}
             <PersistenceBanner />
             <ToastContainer />
+            {activePanel === "chat" ? (
+                <PermissionRequestStack
+                    workspaceId={currentWorkspace?.id}
+                    agentId={activeChatAgent?.id ?? null}
+                />
+            ) : null}
             <WorkspaceNoticeBanner />
             <MiniMaxCodeLayout
                 title="Pi Agent"

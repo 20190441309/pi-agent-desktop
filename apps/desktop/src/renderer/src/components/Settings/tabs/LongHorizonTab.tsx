@@ -3,7 +3,7 @@ import { normalizeLongHorizonSettings, type AgentMode, type LongHorizonSettings,
 import { useI18n } from "../../../i18n";
 import { useRuntimeFeatureStore, clampAgentModeByRuntime, supportedAgentModes } from "../../../stores/runtime-feature-store";
 import { useSettingsStore } from "../../../stores/settings-store";
-import { FieldRow, SectionTitle, SwitchControl } from "../_shared";
+import { FieldRow, SectionTitle, SettingsCard, SettingsPage, SwitchControl } from "../_shared";
 
 type ToggleKey = {
     [K in keyof LongHorizonSettings]: LongHorizonSettings[K] extends LongHorizonToggle ? K : never;
@@ -32,9 +32,8 @@ export function LongHorizonTab(): React.JSX.Element {
     };
 
     return (
-        <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-longHorizon" aria-labelledby="settings-tab-longHorizon">
-            <SectionTitle title={t("settings.longHorizon.heading")} description={t("settings.longHorizon.description")} />
-            <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
+        <SettingsPage tabId="longHorizon" title={t("settings.longHorizon.heading")} description={t("settings.longHorizon.description")}>
+            <SettingsCard anchorId="long-horizon-overview">
                 <FieldRow label={t("settings.longHorizon.enabled.label")} description={t("settings.longHorizon.enabled.description")}>
                     <SwitchControl
                         checked={longHorizon.enabled}
@@ -57,10 +56,10 @@ export function LongHorizonTab(): React.JSX.Element {
                         {availableModes.includes("compose") && <option value="compose">Compose</option>}
                     </select>
                 </FieldRow>
-            </div>
+            </SettingsCard>
 
-            <SectionTitle title={t("settings.longHorizon.modes.heading")} description={t("settings.longHorizon.modes.description")} />
-            <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
+            <SettingsCard className="px-5 py-4">
+                <SectionTitle anchorId="long-horizon-modes" title={t("settings.longHorizon.modes.heading")} description={t("settings.longHorizon.modes.description")} />
                 {(["planMode", "composeMode", "workflow", "composeWorkflow"] as const).map((key) => (
                     <FieldRow
                         key={key}
@@ -74,10 +73,10 @@ export function LongHorizonTab(): React.JSX.Element {
                         />
                     </FieldRow>
                 ))}
-            </div>
+            </SettingsCard>
 
-            <SectionTitle title={t("settings.longHorizon.systems.heading")} description={t("settings.longHorizon.systems.description")} />
-            <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
+            <SettingsCard className="px-5 py-4">
+                <SectionTitle anchorId="long-horizon-systems" title={t("settings.longHorizon.systems.heading")} description={t("settings.longHorizon.systems.description")} />
                 {(["goal", "memory", "history", "checkpoint", "task", "actor", "subagents"] as const).map((key) => (
                     <FieldRow
                         key={key}
@@ -103,7 +102,7 @@ export function LongHorizonTab(): React.JSX.Element {
                         })}
                     />
                 </FieldRow>
-            </div>
-        </div>
+            </SettingsCard>
+        </SettingsPage>
     );
 }

@@ -4,10 +4,19 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { join } from 'path';
 
 const TEST_TIMEOUT = 60_000;
-const ACCEPTANCE_DIR = join(__dirname, '..', '..', '..', 'docs', 'compose', 'acceptance');
+
+async function getWindowByUrl(app: ElectronApplication, urlPart: string): Promise<Page> {
+    await expect.poll(async () => {
+        return app.windows().some((candidate) => candidate.url().includes(urlPart));
+    }, { timeout: 10_000 }).toBe(true);
+
+    const page = app.windows().find((candidate) => candidate.url().includes(urlPart));
+    if (!page) throw new Error(`Window page not found for ${urlPart}`);
+    await page.waitForLoadState('domcontentloaded');
+    return page;
+}
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await _electron.launch({
@@ -15,8 +24,8 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
+    await app.firstWindow();
+    const page = await getWindowByUrl(app, 'index.html');
 
     // Skip onboarding
     const modalCount = await page.locator('[data-testid="onboarding-modal"]').count();
@@ -249,7 +258,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
 
         await network.click();
         await expect(network).toBeChecked();
-        await page.screenshot({ path: join(ACCEPTANCE_DIR, '2026-06-27-right-rail-tool-permissions-restored.png'), fullPage: true });
+        await page.screenshot({ path: test.info().outputPath('right-rail-tool-permissions-restored.png'), fullPage: true });
 
         await network.click();
         await expect(network).not.toBeChecked();
@@ -268,7 +277,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
 
         await page.getByRole('button', { name: '浏览全部文件' }).click();
         await expect(page.getByRole('region', { name: '文件工作区' })).toBeVisible({ timeout: 10_000 });
-        await page.screenshot({ path: join(ACCEPTANCE_DIR, '2026-06-27-right-rail-visible-files-entry.png'), fullPage: true });
+        await page.screenshot({ path: test.info().outputPath('right-rail-visible-files-entry.png'), fullPage: true });
 
         await page.getByRole('tab', { name: '对话' }).click();
         if (await expandRightRail.isVisible().catch(() => false)) {
@@ -277,7 +286,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
 
         await page.getByRole('button', { name: /提交或推送/ }).click();
         await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 10_000 });
-        await page.screenshot({ path: join(ACCEPTANCE_DIR, '2026-06-27-right-rail-visible-git-entry.png'), fullPage: true });
+        await page.screenshot({ path: test.info().outputPath('right-rail-visible-git-entry.png'), fullPage: true });
 
         await app.close();
     });

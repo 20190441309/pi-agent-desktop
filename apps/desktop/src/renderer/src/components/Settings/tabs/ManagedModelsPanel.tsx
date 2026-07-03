@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslateIpcError } from '../../../i18n';
 import { isIpcError, type ManagedModelEntry, type ManagedModelsResult, type ManagedModelSaveInput } from '@shared';
-import { SectionTitle } from '../_shared';
+import { SectionTitle, SettingsCard, SettingsPage } from '../_shared';
 
 type ModelFormState = {
     originalProviderId?: string;
@@ -298,83 +298,112 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
 
     return (
         <>
-        <div className="space-y-0 pt-[5px]">
-            <div className="flex items-center justify-between gap-2">
-                <SectionTitle title="Provider 管理" />
+        <SettingsPage
+            tabId="model"
+            title="模型"
+            description="查看当前默认模型认知，并集中管理 Pi Code Agent 的 Provider 与模型列表。"
+            actions={(
                 <button
                     type="button"
                     aria-label="新增模型"
                     onClick={() => setForm(emptyModelForm)}
-                    className="settings-pressable shrink-0 rounded-[3px] border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-2 py-1 text-[10px] font-medium text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)]"
+                    className="settings-pressable shrink-0 rounded-[10px] border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-3 py-2 text-xs font-medium text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)]"
                 >
                     + 添加 Provider
                 </button>
-            </div>
-
-            {message && (
-                <div className="rounded border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-[10px] text-[var(--mm-text-secondary)]">
-                    {message}
-                </div>
             )}
-
-            <div className="overflow-hidden rounded-[6px] border border-[var(--settings-border-soft)] bg-[var(--settings-bg-card)]">
+        >
+            <SettingsCard anchorId="model-defaults" className="px-5 py-4">
+                <SectionTitle title="默认模型认知" description="这里显示当前配置文件中的默认 Provider / 模型，以及正在读取的配置目录。" />
                 {!result ? (
-                    <div className="p-3 text-[10px] text-[var(--mm-text-tertiary)]">加载模型配置中...</div>
-                ) : modelRows.length === 0 ? (
-                    <div className="p-3 text-[10px] text-[var(--mm-text-tertiary)]">暂未检测到模型配置。点击"新增模型"开始配置。</div>
+                    <div className="rounded-xl border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-main)] p-4 text-sm text-[var(--mm-text-tertiary)]">加载模型配置中...</div>
                 ) : (
-                    <div className="divide-y divide-[var(--settings-border-soft)]">
-                        {modelRows.map((model) => {
-                            const key = `${model.providerId}:${model.modelId}`;
-                            const apiLabel = labelForApi(model.api ?? model.apiType);
-                            const contextLabel = model.contextWindow ? `${model.contextWindow.toLocaleString()} tokens` : '未设置';
-                            const keyLabel = model.hasApiKey ? (model.apiKeyPreview ? `Key ${model.apiKeyPreview}` : 'Key 已配置') : '缺少 Key';
-                            const stateLabel = model.isDefault ? '默认' : model.hasApiKey ? '已配置' : '需配置';
-                            return (
-                                <div key={key} className="grid min-h-[82px] grid-cols-[minmax(0,1fr)_auto] gap-2 bg-[var(--settings-bg-row)] px-3 py-[11px] transition-colors duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)]">
-                                    <div className="min-w-0 text-[10px] leading-[15px]">
-                                        <div className="flex items-center gap-1.5">
-                                            <div className="truncate text-[11px] font-normal text-[var(--mm-text-primary)]">{model.modelName}</div>
-                                            <span className="truncate text-[9px] text-[var(--mm-text-tertiary)]">
-                                                {model.providerName}
-                                            </span>
-                                            {model.isDefault && <span className="rounded-[3px] bg-[var(--settings-bg-active)] px-1 text-[9px] text-[var(--mm-accent-blue)]">默认</span>}
-                                        </div>
-                                        <div className="mt-[4px] grid grid-cols-[48px_minmax(0,1fr)] gap-x-2 gap-y-0 text-[9px] leading-[15px] text-[var(--settings-text-secondary)]">
-                                            <span>Provider:</span>
-                                            <span className="truncate">{model.providerId}</span>
-                                            <span>API Base:</span>
-                                            <span className="truncate text-[var(--settings-text-secondary)]" title={model.baseUrl ?? ''}>{model.baseUrl ?? '未设置'}</span>
-                                            <span>能力:</span>
-                                            <span className="truncate">{apiLabel} / {contextLabel} / {keyLabel}</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex w-[100px] shrink-0 flex-col items-end pt-0">
-                                        <div className="flex items-center gap-[6px]">
-                                            <span className={`h-[5px] w-[5px] rounded-full ${model.hasApiKey ? 'bg-[#4fb866]' : 'bg-[var(--mm-text-tertiary)]'}`} aria-hidden />
-                                            <span className="min-w-[24px] text-[9px] text-[var(--mm-text-secondary)]">
-                                                {stateLabel}
-                                            </span>
-                                        </div>
-                                        <div className="mt-[22px] flex items-center gap-[6px]">
-                                            <button type="button" onClick={() => void testModel(model)} disabled={testingKey === key} aria-label={`测试 ${model.modelName}`} className="settings-pressable rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
-                                                {testingKey === key ? '测试中' : '测试'}
-                                            </button>
-                                            <button type="button" onClick={() => setForm(modelToForm(model))} aria-label={`编辑 ${model.modelName}`} className="settings-pressable rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
-                                                编辑
-                                            </button>
-                                            <button type="button" onClick={() => setPendingDeleteModel(model)} aria-label={`删除 ${model.modelName}`} className="settings-pressable rounded border border-transparent px-1 py-1 text-[9px] leading-none text-[var(--mm-text-tertiary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
-                                                删除
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                    <>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-main)] p-4">
+                                <div className="text-xs text-[var(--mm-text-tertiary)]">默认 Provider</div>
+                                <div className="mt-2 text-sm font-medium text-[var(--mm-text-primary)]">{result.defaultProvider || "未设置"}</div>
+                            </div>
+                            <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-main)] p-4">
+                                <div className="text-xs text-[var(--mm-text-tertiary)]">默认模型</div>
+                                <div className="mt-2 text-sm font-medium text-[var(--mm-text-primary)]">{result.defaultModel || "未设置"}</div>
+                            </div>
+                        </div>
+                        <div className="mt-3 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-main)] p-4">
+                            <div className="text-xs text-[var(--mm-text-tertiary)]">配置目录</div>
+                            <div className="mt-2 break-all font-mono text-xs text-[var(--mm-text-secondary)]">{result.configDir}</div>
+                        </div>
+                    </>
+                )}
+            </SettingsCard>
+
+            <SettingsCard anchorId="model-provider-list" className="px-5 py-4">
+                <SectionTitle title="Provider / 模型管理" description="在这里新增、测试、编辑和删除 Provider 下的模型条目。" />
+                {message && (
+                    <div className="mb-3 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-2 text-xs text-[var(--mm-text-secondary)]">
+                        {message}
                     </div>
                 )}
-            </div>
-        </div>
+
+                <div className="overflow-hidden rounded-[10px] border border-[var(--settings-border-soft)] bg-[var(--settings-bg-card)]">
+                    {!result ? (
+                        <div className="p-3 text-[10px] text-[var(--mm-text-tertiary)]">加载模型配置中...</div>
+                    ) : modelRows.length === 0 ? (
+                        <div className="p-3 text-[10px] text-[var(--mm-text-tertiary)]">暂未检测到模型配置。点击"新增模型"开始配置。</div>
+                    ) : (
+                        <div className="divide-y divide-[var(--settings-border-soft)]">
+                            {modelRows.map((model) => {
+                                const key = `${model.providerId}:${model.modelId}`;
+                                const apiLabel = labelForApi(model.api ?? model.apiType);
+                                const contextLabel = model.contextWindow ? `${model.contextWindow.toLocaleString()} tokens` : '未设置';
+                                const keyLabel = model.hasApiKey ? (model.apiKeyPreview ? `Key ${model.apiKeyPreview}` : 'Key 已配置') : '缺少 Key';
+                                const stateLabel = model.isDefault ? '默认' : model.hasApiKey ? '已配置' : '需配置';
+                                return (
+                                    <div key={key} className="grid min-h-[82px] grid-cols-[minmax(0,1fr)_auto] gap-2 bg-[var(--settings-bg-row)] px-3 py-[11px] transition-colors duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)]">
+                                        <div className="min-w-0 text-[10px] leading-[15px]">
+                                            <div className="flex items-center gap-1.5">
+                                                <div className="truncate text-[11px] font-normal text-[var(--mm-text-primary)]">{model.modelName}</div>
+                                                <span className="truncate text-[9px] text-[var(--mm-text-tertiary)]">
+                                                    {model.providerName}
+                                                </span>
+                                                {model.isDefault && <span className="rounded-[3px] bg-[var(--settings-bg-active)] px-1 text-[9px] text-[var(--mm-accent-blue)]">默认</span>}
+                                            </div>
+                                            <div className="mt-[4px] grid grid-cols-[48px_minmax(0,1fr)] gap-x-2 gap-y-0 text-[9px] leading-[15px] text-[var(--settings-text-secondary)]">
+                                                <span>Provider:</span>
+                                                <span className="truncate">{model.providerId}</span>
+                                                <span>API Base:</span>
+                                                <span className="truncate text-[var(--settings-text-secondary)]" title={model.baseUrl ?? ''}>{model.baseUrl ?? '未设置'}</span>
+                                                <span>能力:</span>
+                                                <span className="truncate">{apiLabel} / {contextLabel} / {keyLabel}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex w-[100px] shrink-0 flex-col items-end pt-0">
+                                            <div className="flex items-center gap-[6px]">
+                                                <span className={`h-[5px] w-[5px] rounded-full ${model.hasApiKey ? 'bg-[#4fb866]' : 'bg-[var(--mm-text-tertiary)]'}`} aria-hidden />
+                                                <span className="min-w-[24px] text-[9px] text-[var(--mm-text-secondary)]">
+                                                    {stateLabel}
+                                                </span>
+                                            </div>
+                                            <div className="mt-[22px] flex items-center gap-[6px]">
+                                                <button type="button" onClick={() => void testModel(model)} disabled={testingKey === key} aria-label={`测试 ${model.modelName}`} className="settings-pressable rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
+                                                    {testingKey === key ? '测试中' : '测试'}
+                                                </button>
+                                                <button type="button" onClick={() => setForm(modelToForm(model))} aria-label={`编辑 ${model.modelName}`} className="settings-pressable rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
+                                                    编辑
+                                                </button>
+                                                <button type="button" onClick={() => setPendingDeleteModel(model)} aria-label={`删除 ${model.modelName}`} className="settings-pressable rounded border border-transparent px-1 py-1 text-[9px] leading-none text-[var(--mm-text-tertiary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
+                                                    删除
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </SettingsCard>
+        </SettingsPage>
         {formDialog && typeof document !== 'undefined' ? createPortal(formDialog, document.body) : formDialog}
         {deleteDialog && typeof document !== 'undefined' ? createPortal(deleteDialog, document.body) : deleteDialog}
         </>

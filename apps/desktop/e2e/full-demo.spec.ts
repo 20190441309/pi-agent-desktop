@@ -14,15 +14,17 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
+  const userDataDir = test.info().outputPath(`full-demo-${Date.now()}`);
   const app = await _electron.launch({
       executablePath: resolveElectronExecutablePath(),
-    args: [electronMainEntry],
-    env: { ...process.env, CI: '1' },
+    args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
+    env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
   });
-  const page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
+  await app.firstWindow();
+  const page = await getWindowByUrl(app, 'index.html');
 
   // 跳过 onboarding
   const modalCount = await page.locator('[data-testid="onboarding-modal"]').count();
@@ -46,6 +48,14 @@ test.describe('Pi Desktop 完整功能演示', () => {
 
   test('启动 → 导航 → 设置 → 技能 → 聊天 → 截图', async () => {
     ({ app, page } = await launchApp());
+    const workspacePath = test.info().outputPath('full-demo-workspace');
+    await page.evaluate(async (path) => {
+      window.localStorage.setItem('pi-desktop:firstLaunchDone', 'true');
+      window.localStorage.setItem('pi-desktop.onboarding.completed', 'true');
+      const ws = await window.piAPI.createWorkspace('full-demo', path);
+      await window.piAPI.selectWorkspace(ws.path);
+    }, workspacePath);
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     // ── 1. 启动确认 ──────────────────────────────
     await page.screenshot({ path: 'e2e-output/demo-01-launch.png' });
@@ -56,7 +66,7 @@ test.describe('Pi Desktop 完整功能演示', () => {
     // 新建任务 (默认)
     await expect(page.locator('button[data-mmcode-section="new-task"]')).toBeVisible({ timeout: 10000 });
 
-    await page.getByRole('tab', { name: '技能' }).click();
+    await page.getByRole('tab', { name: '工具' }).click();
     await page.waitForTimeout(500);
     await page.screenshot({ path: 'e2e-output/demo-02-skills.png' });
 
@@ -80,7 +90,7 @@ test.describe('Pi Desktop 完整功能演示', () => {
     await page.screenshot({ path: 'e2e-output/demo-04-chat-empty.png' });
 
     // ── 4. 聊天输入 ──────────────────────────────
-    const input = page.locator('textarea[placeholder]').first();
+    const input = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="输入消息" i], textarea[placeholder*="描述" i]').first();
     await input.fill('用 TypeScript 写一个简单的 TODO 应用，包含增删改查功能');
     await page.screenshot({ path: 'e2e-output/demo-05-input.png' });
 

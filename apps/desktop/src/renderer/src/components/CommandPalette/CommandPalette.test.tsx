@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
+import { useSessionStore } from "../../stores/session-store";
 import { CommandPalette } from "./CommandPalette";
 
 const filesList = vi.fn();
@@ -31,6 +32,7 @@ describe("CommandPalette", () => {
     detectProject.mockReset();
     getGitStatus.mockReset();
     gitAdd.mockReset();
+    filesList.mockResolvedValue([]);
     getGitStatus.mockResolvedValue({
       branch: "main",
       modified: [],
@@ -44,6 +46,41 @@ describe("CommandPalette", () => {
     Object.defineProperty(window, "piAPI", {
       value: { filesList, detectProject, getGitStatus, gitAdd },
       configurable: true,
+    });
+    useSessionStore.setState({
+      currentSessionId: "s1",
+      sessions: [
+        {
+          id: "s1",
+          title: "Generated UI History",
+          workspaceId: "ws1",
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "",
+              timestamp: new Date(0),
+              generatedUi: {
+                version: "v1",
+                id: "ui-history",
+                title: "交付摘要",
+                sections: [
+                  {
+                    id: "summary",
+                    kind: "summary",
+                    content: "已生成 docs/report.md",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+      sessionsLoading: false,
+      persistErrorCount: 0,
+      lastPersistError: null,
     });
   });
 
@@ -444,5 +481,20 @@ describe("CommandPalette", () => {
     expect(onRunCommand).toHaveBeenCalledWith("toggle_terminal");
     expect((await screen.findByRole("alert")).textContent).toContain("请先选择工作区");
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("surfaces generated ui-only messages in history mode", async () => {
+    renderPalette({
+      workspacePath: "C:/repo",
+      workspaceId: "ws1",
+      onSelectHistory: vi.fn(),
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "历史" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "搜索命令" }), {
+      target: { value: "report.md" },
+    });
+
+    expect(await screen.findByRole("button", { name: /docs\/report\.md/ })).toBeTruthy();
   });
 });

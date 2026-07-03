@@ -6,6 +6,7 @@ import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { join } from 'path';
 import { mkdirSync, writeFileSync } from 'fs';
+import { getWindowByUrl } from "./support/electron-windows";
 
 const TEST_TIMEOUT = 60_000;
 
@@ -15,8 +16,8 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
+    await app.firstWindow();
+    const page = await getWindowByUrl(app, 'index.html');
 
     // Skip onboarding
     const modalCount = await page.locator('[data-testid="onboarding-modal"]').count();
@@ -59,19 +60,15 @@ test.describe('Pi Desktop — File & Git Workflow', () => {
 
         const { app, page } = await launchApp(userDataDir);
 
-        await page.evaluate(async ({ wsPath }) => {
+        const gitStatus = await page.evaluate(async ({ wsPath }) => {
             await window.piAPI.createWorkspace('git-test', wsPath);
+            return await window.piAPI.getGitStatus(wsPath);
         }, { wsPath });
 
-        const gitStatus = await page.evaluate(async () => {
-            const workspaces = await window.piAPI.listWorkspaces();
-            const ws = workspaces[0];
-            if (!ws) return null;
-            return await window.piAPI.getGitStatus(ws.path);
-        });
-
         expect(gitStatus).toBeTruthy();
-        expect(gitStatus.branch).toBe('master');
+        expect(typeof gitStatus.branch).toBe('string');
+        expect(gitStatus.branch.length).toBeGreaterThan(0);
+        expect([...(gitStatus.modified ?? []), ...(gitStatus.untracked ?? [])]).toContain('modified.ts');
         console.log(`[TEST] Git branch: ${gitStatus.branch}, modified files: ${gitStatus.modified?.length ?? 0}`);
 
         await app.close();

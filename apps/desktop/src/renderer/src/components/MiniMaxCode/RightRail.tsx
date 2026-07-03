@@ -7,6 +7,7 @@ import { useSettingsStore } from "../../stores/settings-store";
 import { ToolPermissionsPanel } from "../ToolPermissions/ToolPermissionsPanel";
 import { UsageStatsPanel } from "../UsageStats/UsageStatsPanel";
 import { useI18n } from "../../i18n";
+import { contentWithGeneratedUiText } from "../../utils/generated-ui";
 import { classifyTerminalCommand } from "../../utils/terminal-command";
 import { projectScriptCommand } from "../../utils/project-scripts";
 import { useTransientState } from "./hooks/useTransientState";
@@ -266,7 +267,9 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
     currentSession?.lastOutputPaths?.forEach((path) => add(path, t("rightRail.source.taskOutput")));
     currentSession?.messages.forEach((message) => {
       if (message.role === "assistant") {
-        extractPathsFromValue(message.content).forEach((path) => add(path, t("rightRail.source.reply")));
+        extractPathsFromValue(contentWithGeneratedUiText(message.content, message.generatedUi)).forEach((path) =>
+          add(path, t("rightRail.source.reply")),
+        );
       }
       message.toolCalls?.forEach((toolCall) => {
         const values: unknown[] = [toolCall.output, toolCall.result];

@@ -1,4 +1,5 @@
-import { vi, describe, it, expect, beforeAll } from "vitest";
+import { ipcRenderer } from "electron";
+import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
 
 vi.mock("electron", () => ({
     contextBridge: { exposeInMainWorld: vi.fn() },
@@ -18,6 +19,10 @@ beforeAll(async () => {
 });
 
 describe("preload surface audit", () => {
+    beforeEach(() => {
+        vi.mocked(ipcRenderer.invoke).mockClear();
+    });
+
     const HIGH_FREQUENCY_METHODS = [
         "sendPrompt",
         "onEvent",
@@ -79,6 +84,12 @@ describe("preload surface audit", () => {
     it("exposes Pi config change subscription for model list refreshes", () => {
         expect(piAPI).toHaveProperty("onPiConfigChanged");
         expect(typeof piAPI.onPiConfigChanged).toBe("function");
+    });
+
+    it("forwards optional workspace ids when listing local skills", async () => {
+        const listSkills = piAPI.listSkills as (input?: { workspaceId?: string }) => Promise<unknown>;
+        await listSkills({ workspaceId: "ws-1" });
+        expect(ipcRenderer.invoke).toHaveBeenCalledWith("pi:list-skills", { workspaceId: "ws-1" });
     });
 
     it("no method name contains internal or debug", () => {

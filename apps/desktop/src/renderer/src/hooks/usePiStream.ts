@@ -18,9 +18,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PiEvent } from "@shared/events";
 import {
     isIpcError,
-    type CustomMessageCard,
-    type CustomMessageCardAction,
-    type CustomMessageCardKind,
     type SessionUsageSnapshot,
     type ToolCall,
 } from "@shared";
@@ -33,6 +30,16 @@ import { useAgentStore } from "../stores/agent-store";
 import { addToast } from "../stores/toast-store";
 import { playCompleteSound } from "../utils/sounds";
 import { notifyTaskComplete, canNotify } from "../utils/notifications";
+import { normalizeGeneratedUi } from "../utils/generated-ui";
+import { requestRunControlStop } from "../utils/run-control";
+import {
+    normalizeToolCallsForPersistence,
+    readToolCallId,
+    readToolCallInput,
+    readToolCallIsError,
+    readToolCallName,
+    readToolCallOutput,
+} from "../utils/tool-call";
 
 export interface ToolCallState {
     id: string;
@@ -89,22 +96,6 @@ function getAssistantMessageEvent(event: PiEvent): AssistantMessageEvent | null 
 
     return null;
 }
-
-const CUSTOM_CARD_KINDS = new Set<CustomMessageCardKind>([
-    "status-list",
-    "approval-actions",
-    "task-progress",
-    "result-summary",
-    "file-actions",
-]);
-
-const CUSTOM_CARD_ACTIONS = new Set<CustomMessageCardAction["kind"]>([
-    "slash-command",
-    "open-file",
-    "copy-text",
-    "switch-view",
-    "refresh",
-]);
 
 function asNumber(value: unknown): number | undefined {
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -168,51 +159,6 @@ function usageSnapshotFromRecord(
         totalTokens,
         estimatedCostUsd: asNumber(usage.estimatedCostUsd ?? usage.costUsd ?? usage.cost_usd ?? nestedCost?.total),
     });
-}
-
-function sanitizeCustomCard(raw: unknown): CustomMessageCard {
-    const data = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-    const requestedKind = typeof data.kind === "string" ? data.kind : typeof data.customType === "string" ? data.customType : "";
-    const kind: CustomMessageCard["kind"] = CUSTOM_CARD_KINDS.has(requestedKind as CustomMessageCardKind)
-        ? requestedKind as CustomMessageCardKind
-        : "markdown-fallback";
-    const actions = Array.isArray(data.actions)
-        ? data.actions.flatMap((action, index): CustomMessageCardAction[] => {
-            if (!action || typeof action !== "object") return [];
-            const a = action as Record<string, unknown>;
-            const actionKind = typeof a.kind === "string" ? a.kind : "";
-            if (!CUSTOM_CARD_ACTIONS.has(actionKind as CustomMessageCardAction["kind"])) return [];
-            const value = typeof a.value === "string" ? a.value : "";
-            if (!value) return [];
-            return [{
-                id: typeof a.id === "string" ? a.id : `action_${index}`,
-                label: typeof a.label === "string" ? a.label : actionKind,
-                kind: actionKind as CustomMessageCardAction["kind"],
-                value,
-            }];
-        })
-        : undefined;
-    const items = Array.isArray(data.items)
-        ? data.items.flatMap((item, index) => {
-            if (!item || typeof item !== "object") return [];
-            const i = item as Record<string, unknown>;
-            return [{
-                id: typeof i.id === "string" ? i.id : `item_${index}`,
-                label: typeof i.label === "string" ? i.label : String(i.name ?? `Item ${index + 1}`),
-                status: typeof i.status === "string" ? i.status : undefined,
-                description: typeof i.description === "string" ? i.description : undefined,
-                path: typeof i.path === "string" ? i.path : undefined,
-            }];
-        })
-        : undefined;
-    return {
-        id: typeof data.id === "string" ? data.id : `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        kind,
-        title: typeof data.title === "string" ? data.title : undefined,
-        content: typeof data.content === "string" ? data.content : undefined,
-        items,
-        actions,
-    };
 }
 
 function usageFromEvent(event: PiEvent, current?: SessionUsageSnapshot): SessionUsageSnapshot {
@@ -391,8 +337,18 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         if (!window.piAPI?.updateMessage) return;
         const session = useSessionStore.getState().sessions.find((s) => s.id === p.sessionId);
         const message = session?.messages.find((m) => m.id === p.messageId);
-        if (message?.toolCalls) {
-            p.toolCalls = message.toolCalls;
+        const sourceToolCalls = message?.toolCalls ?? p.toolCalls;
+        if (Array.isArray(sourceToolCalls)) {
+            const normalizedToolCalls = normalizeToolCallsForPersistence(sourceToolCalls);
+            if (normalizedToolCalls.length !== sourceToolCalls.length) {
+                logger.warn("[usePiStream] dropped malformed toolCalls before session:update-message", {
+                    sessionId: p.sessionId,
+                    messageId: p.messageId,
+                    before: sourceToolCalls.length,
+                    after: normalizedToolCalls.length,
+                });
+            }
+            p.toolCalls = normalizedToolCalls;
         }
 
         const updates: { content?: string; thinking?: string; toolCalls?: ToolCall[] } = {};
@@ -680,18 +636,24 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         scheduleStreamPersist();
                     }
                 } else if (assistantEvent.type === "toolcall_start") {
-                    const e = assistantEvent as { toolCallId: string; toolName: string; args: Record<string, unknown> };
-                    const existingTc = toolCallsRef.current.get(e.toolCallId);
+                    const toolCallId = readToolCallId(assistantEvent);
+                    const toolName = readToolCallName(assistantEvent);
+                    if (!toolCallId || !toolName) {
+                        logger.warn("[usePiStream] skip toolcall_start without canonical id/name", assistantEvent);
+                        break;
+                    }
+                    const input = readToolCallInput(assistantEvent);
+                    const existingTc = toolCallsRef.current.get(toolCallId);
                     if (existingTc) {
                         // tool_execution_start 先到达已创建条目 — 补充 tool name
-                        existingTc.name = e.toolName;
-                        existingTc.args = e.args;
-                        toolCallsRef.current.set(e.toolCallId, existingTc);
+                        existingTc.name = toolName;
+                        existingTc.args = input;
+                        toolCallsRef.current.set(toolCallId, existingTc);
                         setToolCalls(new Map(toolCallsRef.current));
                         if (sessionIdRef.current && messageIdRef.current) {
-                            useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
-                                name: e.toolName,
-                                input: e.args,
+                            useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, toolCallId, {
+                                name: toolName,
+                                input,
                             }, { persist: false });
                             scheduleStreamPersist();
                         }
@@ -699,19 +661,19 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     }
                     ensureAssistantMessage();
                     const tc: ToolCallState = {
-                        id: e.toolCallId,
-                        name: e.toolName,
-                        args: e.args,
+                        id: toolCallId,
+                        name: toolName,
+                        args: input,
                         status: "running",
                         startTime: Date.now(),
                     };
-                    toolCallsRef.current.set(e.toolCallId, tc);
+                    toolCallsRef.current.set(toolCallId, tc);
                     setToolCalls(new Map(toolCallsRef.current));
                     if (sessionIdRef.current && messageIdRef.current) {
                         useSessionStore.getState().addToolCall(sessionIdRef.current, messageIdRef.current, {
-                            id: e.toolCallId,
-                            name: e.toolName,
-                            input: e.args,
+                            id: toolCallId,
+                            name: toolName,
+                            input,
                             status: "running",
                             startTime: new Date(tc.startTime),
                         }, { persist: false });
@@ -729,18 +691,23 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         scheduleStreamPersist();
                     }
                 } else if (assistantEvent.type === "toolcall_end") {
-                    const e = assistantEvent as { toolCallId: string; result?: unknown };
-                    const tc = toolCallsRef.current.get(e.toolCallId);
+                    const toolCallId = readToolCallId(assistantEvent);
+                    if (!toolCallId) {
+                        logger.warn("[usePiStream] skip toolcall_end without canonical id", assistantEvent);
+                        break;
+                    }
+                    const output = readToolCallOutput(assistantEvent);
+                    const tc = toolCallsRef.current.get(toolCallId);
                     if (tc) {
                         tc.status = "completed";
-                        tc.result = e.result;
+                        tc.result = output;
                         tc.endTime = Date.now();
-                        toolCallsRef.current.set(e.toolCallId, tc);
+                        toolCallsRef.current.set(toolCallId, tc);
                         setToolCalls(new Map(toolCallsRef.current));
                         if (sessionIdRef.current && messageIdRef.current) {
-                            useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                            useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, toolCallId, {
                                 status: "completed",
-                                output: e.result,
+                                output,
                                 endTime: new Date(tc.endTime),
                             }, { persist: false });
                             scheduleStreamPersist();
@@ -794,16 +761,26 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
 
             case "tool_execution_start": {
-                const e = event as { toolCallId: string; toolName: string; args: Record<string, unknown> };
-                const existingTc = toolCallsRef.current.get(e.toolCallId);
+                const toolCallId = readToolCallId(event);
+                const toolName = readToolCallName(event);
+                if (!toolCallId || !toolName) {
+                    logger.warn("[usePiStream] skip tool_execution_start without canonical id/name", event);
+                    break;
+                }
+                const input = readToolCallInput(event);
+                const existingTc = toolCallsRef.current.get(toolCallId);
                 if (existingTc) {
                     // toolcall_start 先到达已创建条目 — 更新执行状态
+                    existingTc.name = toolName;
+                    existingTc.args = input;
                     existingTc.status = "running";
                     existingTc.startTime = Date.now();
-                    toolCallsRef.current.set(e.toolCallId, existingTc);
+                    toolCallsRef.current.set(toolCallId, existingTc);
                     setToolCalls(new Map(toolCallsRef.current));
                     if (sessionIdRef.current && messageIdRef.current) {
-                        useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                        useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, toolCallId, {
+                            name: toolName,
+                            input,
                             status: "running",
                             startTime: new Date(existingTc.startTime),
                         }, { persist: false });
@@ -814,19 +791,19 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 ensureAssistantMessage();
                 // toolcall_start 未先到达 — 创建最小条目(tool name 可能稍后由 toolcall_start 补充)
                 const tc: ToolCallState = {
-                    id: e.toolCallId,
-                    name: e.toolName,
-                    args: e.args,
+                    id: toolCallId,
+                    name: toolName,
+                    args: input,
                     status: "running",
                     startTime: Date.now(),
                 };
-                toolCallsRef.current.set(e.toolCallId, tc);
+                toolCallsRef.current.set(toolCallId, tc);
                 setToolCalls(new Map(toolCallsRef.current));
                 if (sessionIdRef.current && messageIdRef.current) {
                     useSessionStore.getState().addToolCall(sessionIdRef.current, messageIdRef.current, {
-                        id: e.toolCallId,
-                        name: e.toolName,
-                        input: e.args,
+                        id: toolCallId,
+                        name: toolName,
+                        input,
                         status: "running",
                         startTime: new Date(tc.startTime),
                     }, { persist: false });
@@ -845,15 +822,20 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
 
             case "tool_execution_end": {
-                const e = event as { toolCallId: string; isError: boolean };
-                const tc = toolCallsRef.current.get(e.toolCallId);
+                const toolCallId = readToolCallId(event);
+                if (!toolCallId) {
+                    logger.warn("[usePiStream] skip tool_execution_end without canonical id", event);
+                    break;
+                }
+                const isError = readToolCallIsError(event);
+                const tc = toolCallsRef.current.get(toolCallId);
                 if (tc) {
-                    tc.status = e.isError ? "error" : "completed";
+                    tc.status = isError ? "error" : "completed";
                     tc.endTime = Date.now();
                     setToolCalls(new Map(toolCallsRef.current));
                     if (sessionIdRef.current && messageIdRef.current) {
-                        useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
-                            status: e.isError ? "error" : "completed",
+                        useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, toolCallId, {
+                            status: isError ? "error" : "completed",
                             endTime: new Date(tc.endTime),
                         }, { persist: false });
                         scheduleStreamPersist();
@@ -905,14 +887,25 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 if (customType === "plan-pause" && usePlanStore.getState().activeExecution?.phase === "executing") {
                     usePlanStore.getState().markPaused();
                 }
-                const card = sanitizeCustomCard((event as unknown as { card?: unknown; details?: unknown }).card ?? (event as unknown as { details?: unknown }).details ?? event);
+                const generatedUi = normalizeGeneratedUi(
+                    (event as unknown as { ui?: unknown; card?: unknown; details?: unknown }).ui
+                    ?? (event as unknown as { card?: unknown; details?: unknown }).card
+                    ?? (event as unknown as { details?: unknown }).details
+                    ?? event,
+                );
+                if (!generatedUi) {
+                    if (customType === "plan-complete" || customType === "plan-pause") {
+                        hasCompletionSignalRef.current = true;
+                    }
+                    break;
+                }
                 hasCompletionSignalRef.current = true;
                 useSessionStore.getState().addMessage(session.id, {
-                    id: `cm_${card.id}`,
+                    id: `cm_${generatedUi.id}`,
                     role: "assistant",
-                    content: card.kind === "markdown-fallback" ? (card.content ?? "") : "",
+                    content: "",
                     timestamp: new Date(),
-                    customCard: card,
+                    generatedUi,
                 }, { persist: true });
                 break;
             }
@@ -1056,8 +1049,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         setCurrentThinking("");
         setToolCalls(new Map());
 
-        // Notify useTaskProgress: streaming started
-        window.dispatchEvent(new CustomEvent("pi:stream-start"));
+        // Notify useTaskProgress / progress reminder lanes.
+        window.dispatchEvent(new CustomEvent("pi:stream-start", {
+            detail: {
+                runContext: isExecutePlanCommand(content) ? "plan_execution" : "task",
+            },
+        }));
 
         // Agent runtime will later echo the canonical message list. Add an
         // optimistic row now so permission prompts cannot leave the chat empty.
@@ -1147,36 +1144,25 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     }, [appendAgentMessage, getTargetSession]);
 
     const stopStreaming = useCallback((workspaceId: string) => {
-        if (!window.piAPI) return;
-        try {
-            const aid = agentIdRef.current;
-            if (aid && window.piAPI.agentsAbort) {
-                void window.piAPI.agentsAbort(aid);
-            } else {
-                void Promise.resolve(window.piAPI.stop(workspaceId))
-                    .then((result) => {
-                        if (isIpcError(result)) {
-                            setError(result.fallback);
-                        }
-                    })
-                    .catch((err) => {
-                        setError(`停止失败: ${eventMessage(err, "未知错误")}`);
-                    });
-            }
-        } catch (err) {
-            setError(`停止失败: ${eventMessage(err, "未知错误")}`);
-            addToast("停止响应失败", "error");
-        }
-        setIsStreaming(false);
-        isStreamingRef.current = false;
-        promptInFlightRef.current = false;
-        hasCompletionSignalRef.current = false;
-        setStreamingMessageId(null);
-        if (usePlanStore.getState().activeExecution?.phase === "pausing" || usePlanStore.getState().activeExecution?.phase === "executing") {
-            usePlanStore.getState().markPaused();
-        }
-        // Notify useTaskProgress: streaming ended
-        window.dispatchEvent(new CustomEvent("pi:stream-end"));
+        void (async () => {
+            const stopped = await requestRunControlStop({
+                workspaceId,
+                agentId: agentIdRef.current,
+                runContext: usePlanStore.getState().activeExecution?.phase === "executing"
+                    || usePlanStore.getState().activeExecution?.phase === "pausing"
+                    ? "plan_execution"
+                    : "task",
+                onError: (message) => {
+                    setError(message);
+                },
+            });
+            if (!stopped) return;
+            setIsStreaming(false);
+            isStreamingRef.current = false;
+            promptInFlightRef.current = false;
+            hasCompletionSignalRef.current = false;
+            setStreamingMessageId(null);
+        })();
     }, []);
 
     const clearError = useCallback(() => {

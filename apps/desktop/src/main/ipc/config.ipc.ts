@@ -1,8 +1,15 @@
 import { BrowserWindow, ipcMain } from "electron";
 import { ipcError } from "@shared";
 import type { ManagedModelDeleteInput, ManagedModelSaveInput, PiAuthFile, PiModelsFile, PiSettingsFile } from "@shared";
+import { z } from "zod";
 import type { ConfigManager } from "../services/config/config-manager";
 import { isSafeUrl } from "../services/ssrf-guard";
+
+const describeImagesInputSchema = z.array(z.object({
+    name: z.string().trim().min(1),
+    dataUrl: z.string().trim().startsWith("data:"),
+    mimeType: z.string().trim().min(1).optional(),
+})).min(1).max(6);
 
 export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedModelsChanged?: () => void } = {}): void {
     const notifyIfValid = <T extends { valid: boolean }>(result: T): T => {
@@ -66,6 +73,13 @@ export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedMo
             providerId: input.providerId,
             api: input.api,
         });
+    });
+    ipcMain.handle("pi:describe-images", async (_event, rawImages: unknown) => {
+        const parsed = describeImagesInputSchema.safeParse(rawImages);
+        if (!parsed.success) {
+            throw new Error("无效的图片输入");
+        }
+        return configManager.describeImages(parsed.data);
     });
 }
 

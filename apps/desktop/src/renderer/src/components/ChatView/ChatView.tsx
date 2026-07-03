@@ -21,6 +21,7 @@ import { isIpcError, type AgentMessage } from '@shared';
 import { stripPlanFrontmatter } from './plan-utils';
 import { usePlanSyncEffect } from './hooks/usePlanSyncEffect';
 import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from '../MiniMaxCode/chromeButton';
+import { contentWithGeneratedUiText } from '../../utils/generated-ui';
 
 // Ref-based callback that always sees the latest state but has stable identity.
 // Used to avoid stale closures (e.g. handleStop reading an outdated messages array).
@@ -47,7 +48,7 @@ function hasVisibleAssistantContent(message: Message): boolean {
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/<think>[\s\S]*$/gi, "")
     .trim();
-  return Boolean(content || message.customCard || (message.toolCalls && message.toolCalls.length > 0));
+  return Boolean(content || message.generatedUi || message.customCard || (message.toolCalls && message.toolCalls.length > 0));
 }
 
 type ChatMessage = Message & {
@@ -171,7 +172,7 @@ function EmptyConversationIntro({
 
 function isCumulativeAssistantUpdate(previous: Message, next: Message): boolean {
   if (previous.role !== "assistant" || next.role !== "assistant") return false;
-  if (previous.customCard || next.customCard || previous.planAction || next.planAction) return false;
+  if (previous.generatedUi || next.generatedUi || previous.customCard || next.customCard || previous.planAction || next.planAction) return false;
   const previousContent = visibleText(previous);
   const nextContent = visibleText(next);
   if (!previousContent || !nextContent) return false;
@@ -277,7 +278,6 @@ export function ChatView({
       const sessionAgent = agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === currentSessionId);
       if (sessionAgent) return sessionAgent;
     }
-    if (!currentSessionId) return null;
     const selectedAgent = currentAgentId
       ? agents.find((agent) => agent.id === currentAgentId && agent.workspaceId === currentWorkspace.id && !agent.sessionId)
       : undefined;
@@ -412,6 +412,7 @@ export function ChatView({
         content: message.content,
         timestamp: new Date(message.createdAt),
         thinking: message.thinking,
+        generatedUi: message.generatedUi,
         planAction: message.planAction,
       }))
       : [], [agentMessages, currentSession?.messages, hasAgent, shouldUseSessionMessages]);
@@ -421,10 +422,11 @@ export function ChatView({
     return merged.filter((message) => {
       const hasVisible = visibleText(message).length > 0;
       const hasThinking = Boolean(message.thinking?.trim());
+      const hasGeneratedUi = Boolean(message.generatedUi);
       const hasCard = Boolean(message.customCard);
       const hasTools = Boolean(message.toolCalls && message.toolCalls.length > 0);
       const hasPlan = Boolean(message.planAction);
-      const isEmpty = !hasVisible && !hasThinking && !hasCard && !hasTools && !hasPlan;
+      const isEmpty = !hasVisible && !hasThinking && !hasGeneratedUi && !hasCard && !hasTools && !hasPlan;
       // 当前正在流式中的消息即使暂时为空也不删除,避免闪烁
       if (isEmpty && isStreaming && message.id === streamingMessageId) return true;
       return !isEmpty;
@@ -600,12 +602,13 @@ export function ChatView({
   const executePlanMessage = async (message: Message): Promise<void> => {
     if (!message.planAction) return;
     if (!currentWorkspace) return;
+    const planContent = contentWithGeneratedUiText(message.content, message.generatedUi).trim();
     let filename = message.planAction.filename;
-    if (!filename && window.piAPI?.planMaterialize && message.content.trim()) {
+    if (!filename && window.piAPI?.planMaterialize && planContent) {
       const result = await window.piAPI.planMaterialize({
         workspaceId: currentWorkspace.id,
         title: message.planAction.title,
-        content: message.content,
+        content: planContent,
       });
       if (isIpcError(result)) {
         setSendError(result.fallback);
@@ -618,7 +621,7 @@ export function ChatView({
     const executionPrompt = buildPlanExecutionPrompt({
       title: message.planAction.title,
       filename,
-      content: message.content,
+      content: planContent,
     });
     const visibleContent = name ? t("chatView.plan.executeNamed", { name }) : t("chatView.plan.execute");
     const nextMessage = filename && filename !== message.planAction.filename
@@ -864,25 +867,23 @@ export function ChatView({
             {/* 流式处理中指示器（仅在没有 assistant 消息占位符时显示） */}
             {isStreaming && !streamingMessageId && (
               <div
-                className="flex justify-start"
+                className="flex justify-center"
                 role="status"
                 aria-label={t('chatView.streamIndicator')}
                 aria-busy="true"
               >
-                <div className="flex items-start gap-3">
-                  <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-[#999] rounded-full animate-bounce" aria-hidden="true" />
-                      <div className="w-2 h-2 bg-[#999] rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} aria-hidden="true" />
-                      <div className="w-2 h-2 bg-[#999] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} aria-hidden="true" />
-                      <button
-                        type="button"
-                        onClick={handleStop}
-                        className="ml-3 text-xs text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-colors"
-                        aria-label={activePlanExecution?.phase === "executing" ? t("chatInput.pauseExecution") : t('chatView.stopGeneration')}
-                      >
-                        {activePlanExecution?.phase === "executing" ? t("chatInput.pauseExecution") : t('chatView.stop')}
-                      </button>
+                <div className="w-full max-w-[42rem]">
+                  <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
+                    <div className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
+                      <span className="relative inline-flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
+                        <span className="absolute inset-0 rounded-full bg-[var(--mm-bg-active)] opacity-25 animate-ping" />
+                        <span className="relative h-2.5 w-2.5 rounded-full bg-[var(--mm-bg-active)]" />
+                      </span>
+                      <span>
+                        {activePlanExecution?.phase === "executing"
+                          ? t("chatInput.running.plan")
+                          : t("chatInput.running.task")}
+                      </span>
                     </div>
                   </div>
                 </div>

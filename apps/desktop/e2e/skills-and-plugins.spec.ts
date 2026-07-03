@@ -10,6 +10,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const TEST_TIMEOUT = 60_000;
 
@@ -19,8 +20,8 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
+    await app.firstWindow();
+    const page = await getWindowByUrl(app, 'index.html');
 
     const modalCount = await page.locator('[data-testid="onboarding-modal"]').count();
     if (modalCount > 0) {
@@ -121,6 +122,13 @@ test.describe('Pi Desktop — Skills & Plugins', () => {
     test('skills IPC: listSkills returns array', async () => {
         const userDataDir = test.info().outputPath(`skills-ipc-${Date.now()}`);
         const { app, page } = await launchApp(userDataDir);
+
+        await page.evaluate(async (workspacePath) => {
+            window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
+            window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
+            const ws = await window.piAPI.createWorkspace("skills-ipc", workspacePath);
+            await window.piAPI.selectWorkspace(ws.path);
+        }, test.info().outputPath("skills-ipc-workspace"));
 
         const skills = await page.evaluate(async () => {
             return await window.piAPI.listSkills();

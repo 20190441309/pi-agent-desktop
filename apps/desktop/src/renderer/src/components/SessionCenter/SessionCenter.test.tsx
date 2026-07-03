@@ -47,8 +47,20 @@ describe("SessionCenter", () => {
             {
               id: "m2",
               role: "assistant",
-              content: "只提交 staged 文件，保留 unstaged 变更",
+              content: "",
               timestamp: new Date(2),
+              generatedUi: {
+                version: "v1",
+                id: "ui-session-center",
+                title: "提交策略",
+                sections: [
+                  {
+                    id: "summary",
+                    kind: "summary",
+                    content: "只提交 staged 文件，保留 unstaged 变更",
+                  },
+                ],
+              },
               toolCalls: [
                 { id: "tc1", name: "bash", status: "completed", input: { command: "git status" } },
                 { id: "tc2", name: "bash", status: "completed", input: { command: "pnpm test" } },

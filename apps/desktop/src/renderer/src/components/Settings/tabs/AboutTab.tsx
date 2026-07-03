@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { useI18n, useTranslateIpcError } from "../../../i18n";
-import { SectionTitle } from "../_shared";
+import { SectionTitle, SettingsCard, SettingsPage } from "../_shared";
 import { useUpdaterStore } from "../../../stores/updater-store";
 import type { IpcError } from "@shared";
 
@@ -165,14 +165,18 @@ function UpdaterActionRow(): React.JSX.Element {
 export function AboutTab(): React.JSX.Element {
     const { t } = useI18n();
     return (
-        <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-about" aria-labelledby="settings-tab-about">
-            <SectionTitle title={t("settings.about.heading")} />
-            <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4 text-sm leading-6 text-[var(--mm-text-secondary)]">
-                <p className="m-0 text-[var(--mm-text-primary)]">{t("settings.about.version", { version: getAppVersion() })}</p>
-                <p className="m-0 mt-2">{t("settings.about.description")}</p>
-                <p className="m-0 mt-2">{t("settings.about.stack")}</p>
+        <SettingsPage tabId="about" title={t("settings.about.heading")} description={t("settings.about.description")}>
+            <SettingsCard anchorId="about-overview" className="px-5 py-4">
+                <SectionTitle title={t("settings.about.summaryHeading")} />
+                <div className="text-sm leading-6 text-[var(--mm-text-secondary)]">
+                    <p className="m-0 text-[var(--mm-text-primary)]">{t("settings.about.version", { version: getAppVersion() })}</p>
+                    <p className="m-0 mt-2">{t("settings.about.description")}</p>
+                    <p className="m-0 mt-2">{t("settings.about.stack")}</p>
+                </div>
+            </SettingsCard>
+            <div data-settings-anchor="about-updates">
+                <UpdaterActionRow />
             </div>
-            <UpdaterActionRow />
-        </div>
+        </SettingsPage>
     );
 }

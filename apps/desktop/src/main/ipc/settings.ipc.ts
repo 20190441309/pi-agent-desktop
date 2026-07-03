@@ -12,10 +12,27 @@ export function setupSettingsIpc(opts: {
     set: (key: 'settings', value: AppSettings) => void;
   };
   getPiAgentConfig: () => PiAgentConfig | null;
+  reloadPiAgentConfig?: () => PiAgentConfig | null;
   piAgentDir: string;
   onSettingsChanged?: (next: AppSettings, previous: AppSettings) => void;
 }): void {
-  const { store, getPiAgentConfig, piAgentDir, onSettingsChanged } = opts;
+  const { store, getPiAgentConfig, reloadPiAgentConfig, piAgentDir, onSettingsChanged } = opts;
+
+  const serializePiAgentConfig = (config: PiAgentConfig | null): string => JSON.stringify(config ?? null);
+
+  const resolvePiAgentConfig = (): PiAgentConfig | null => {
+    if (!reloadPiAgentConfig) return getPiAgentConfig();
+    const previous = serializePiAgentConfig(getPiAgentConfig());
+    const next = reloadPiAgentConfig();
+    if (serializePiAgentConfig(next) !== previous) {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send("pi-config:changed");
+        }
+      }
+    }
+    return next;
+  };
 
   const broadcastSettingsChanged = (settings: AppSettings): void => {
     for (const win of BrowserWindow.getAllWindows()) {
@@ -51,7 +68,7 @@ export function setupSettingsIpc(opts: {
   });
 
   ipcMain.handle('settings:load-pi-config', async () => {
-    const piAgentConfig = getPiAgentConfig();
+    const piAgentConfig = resolvePiAgentConfig();
     if (!piAgentConfig) return { models: [], currentModel: null };
 
     const models = piAgentConfig.providers.flatMap(p =>
@@ -86,7 +103,7 @@ export function setupSettingsIpc(opts: {
   });
 
   ipcMain.handle('pi:get-full-config', async () => {
-    const piAgentConfig = getPiAgentConfig();
+    const piAgentConfig = resolvePiAgentConfig();
     if (!piAgentConfig) {
       return {
         configPath: piAgentDir,
@@ -114,8 +131,14 @@ export function setupSettingsIpc(opts: {
     try {
       const workspaceId = args?.workspaceId;
       const workspaces = store.get('workspaces');
-      const ws = workspaces.find(w => w.id === workspaceId);
-      if (!ws) return ipcError("ipcErrors.settings.workspaceNotFound", "工作区不存在");
+      const ws = workspaceId
+        ? workspaces.find(w => w.id === workspaceId)
+        : [...workspaces].sort((a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0))[0];
+      if (!ws) {
+        return workspaceId
+          ? ipcError("ipcErrors.chat.workspaceNotFound", `Workspace not found: ${workspaceId}`, { id: workspaceId })
+          : [];
+      }
       return await listLocalSkills(ws.path);
     } catch (error) {
       log.error('Failed to list skills:', error);

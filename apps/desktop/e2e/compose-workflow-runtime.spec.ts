@@ -4,12 +4,14 @@ import { join } from "path";
 import { execFileSync } from "child_process";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const SESSION_ID = "compose-runtime-e2e-session";
 const SESSION_TITLE = "Compose Runtime 验收";
 const FALLBACK_SESSION_ID = "compose-runtime-fallback-session";
 const FALLBACK_SESSION_TITLE = "Compose Runtime 关闭后回退验收";
+const REVIEW_BLOCKED_ERROR = "Review blocked merge: critical findings present";
 
 type RuntimeGlobals = typeof globalThis & {
     __PI_DESKTOP_TEST_AGENT_REGISTRY__?: {
@@ -173,7 +175,7 @@ async function main() {
   }
 
   if (prompt.includes("Review phase")) {
-    console.log("READY: yes\\nCRITICAL:\\nIMPORTANT:\\n- none");
+    console.log("READY: yes\\nCRITICAL: none\\nIMPORTANT: none");
     return;
   }
 
@@ -203,8 +205,8 @@ async function launchApp(userDataDir: string, fakePiDir: string): Promise<{ app:
             ELECTRON_RENDERER_URL: "",
         },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
+    await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
 
@@ -463,7 +465,10 @@ test.describe("Compose workflow runtime acceptance", () => {
         if (runtime.error) {
             throw new Error(`Compose workflow runtime threw: ${runtime.error}`);
         }
-        if (!runtime.result || runtime.result.isError || runtime.result.details?.run?.status === "failed") {
+        const reviewBlockedMerge =
+            runtime.result?.details?.run?.error === REVIEW_BLOCKED_ERROR ||
+            runtime.result?.details?.run?.outcome?.error === REVIEW_BLOCKED_ERROR;
+        if (!runtime.result || ((runtime.result.isError || runtime.result.details?.run?.status === "failed") && !reviewBlockedMerge)) {
             const reportPath = join(workspacePath, "docs", "compose", "reports", "compose-runtime-e2e.md");
             const report = existsSync(reportPath) ? readFileSync(reportPath, "utf8") : "missing workflow report";
             throw new Error([

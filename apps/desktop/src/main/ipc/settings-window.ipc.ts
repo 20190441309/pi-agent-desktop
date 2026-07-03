@@ -1,9 +1,14 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, ipcMain, screen } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
 import log from 'electron-log/main';
 
 let settingsWindow: BrowserWindow | null = null;
+
+const SETTINGS_WINDOW_WIDTH = 1067;
+const SETTINGS_WINDOW_HEIGHT = 800;
+const SETTINGS_WINDOW_MIN_WIDTH = 960;
+const SETTINGS_WINDOW_MIN_HEIGHT = 694;
 
 export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | null): void {
   ipcMain.handle('settings:open-window', () => {
@@ -13,10 +18,10 @@ export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | nul
     }
 
     settingsWindow = new BrowserWindow({
-      width: 800,
-      height: 600,
-      minWidth: 720,
-      minHeight: 520,
+      width: SETTINGS_WINDOW_WIDTH,
+      height: SETTINGS_WINDOW_HEIGHT,
+      minWidth: SETTINGS_WINDOW_MIN_WIDTH,
+      minHeight: SETTINGS_WINDOW_MIN_HEIGHT,
       resizable: true,
       title: '系统设置',
       modal: false,
@@ -37,11 +42,16 @@ export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | nul
     const mainWindow = getMainWindow?.();
     if (mainWindow && !mainWindow.isDestroyed()) {
       const mainBounds = mainWindow.getBounds();
+      const workArea = screen.getDisplayMatching(mainBounds).workArea;
+      const centeredX = mainBounds.x + Math.round((mainBounds.width - SETTINGS_WINDOW_WIDTH) / 2);
+      const centeredY = mainBounds.y + Math.round((mainBounds.height - SETTINGS_WINDOW_HEIGHT) / 2);
+      const maxX = Math.max(workArea.x, workArea.x + workArea.width - SETTINGS_WINDOW_WIDTH);
+      const maxY = Math.max(workArea.y, workArea.y + workArea.height - SETTINGS_WINDOW_HEIGHT);
       settingsWindow.setBounds({
-        x: mainBounds.x + 534,
-        y: mainBounds.y + 388,
-        width: 800,
-        height: 600,
+        x: Math.min(Math.max(centeredX, workArea.x), maxX),
+        y: Math.min(Math.max(centeredY, workArea.y), maxY),
+        width: SETTINGS_WINDOW_WIDTH,
+        height: SETTINGS_WINDOW_HEIGHT,
       });
     }
     settingsWindow.webContents.setZoomFactor(1.5);

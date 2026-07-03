@@ -13,6 +13,15 @@ interface ThinkingBlockProps {
   defaultExpanded?: boolean;
 }
 
+function StreamingIndicator(): React.JSX.Element {
+  return (
+    <span className="relative inline-flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
+      <span className="absolute inset-0 rounded-full bg-[var(--mm-bg-active)] opacity-25 animate-ping" />
+      <span className="relative h-2.5 w-2.5 rounded-full bg-[var(--mm-bg-active)]" />
+    </span>
+  );
+}
+
 export function ThinkingBlock({
   content,
   count = 1,
@@ -38,7 +47,7 @@ export function ThinkingBlock({
             {isStreaming ? '思考中' : `思考 ${Math.max(1, count)} 次`}
             {!isStreaming && ` · ${content.length} 字符`}
           </span>
-          {isStreaming && <span className="inline-block h-3 w-0.5 animate-pulse bg-[#999]" />}
+          {isStreaming && <StreamingIndicator />}
         </div>
 
         <div className="flex items-center gap-2">
@@ -66,7 +75,9 @@ export function ThinkingBlock({
           <div className="whitespace-pre-wrap text-xs leading-relaxed text-[var(--mm-text-tertiary)]">
             {content}
             {isStreaming && (
-              <span className="inline-block w-0.5 h-4 bg-[#1a1a1a] animate-pulse ml-0.5 align-text-bottom" />
+              <span className="ml-1 inline-flex align-text-bottom">
+                <StreamingIndicator />
+              </span>
             )}
           </div>
         </div>

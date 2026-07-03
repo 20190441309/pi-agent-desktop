@@ -12,6 +12,8 @@ import { logger } from '../utils/logger';
 import { isIpcError, type Message, type SessionUsageSnapshot, type ToolCall, type ToolPermissions } from '@shared';
 import { addToast } from './toast-store';
 import { getPiAPI } from '../utils/pi-api';
+import { cloneGeneratedUiCard } from '../utils/generated-ui';
+import { normalizeToolCallsForPersistence, normalizeToolCallsForRuntime } from '../utils/tool-call';
 
 // 2026-06-06 hotfix: 用 @shared 提供的 Message/ToolCall 类型,不再本地 duplicate
 // 主进程 store 里的 timestamp/startTime/endTime 是 string(JSON 反序列化后), 内存里
@@ -134,6 +136,17 @@ function summarizeTitle(content: string): string {
 //  - Date → ISO string(主进程 zod 接受 string | Date | number)
 //  - toolCalls 内的 Date 同理(startTime/endTime)
 function serializeMessageForIpc(message: Message): Message {
+  const hasToolCalls = Array.isArray(message.toolCalls);
+  const originalToolCalls = hasToolCalls ? message.toolCalls : undefined;
+  const normalizedToolCalls = hasToolCalls
+    ? normalizeToolCallsForPersistence(originalToolCalls)
+    : undefined;
+  if (originalToolCalls && normalizedToolCalls && normalizedToolCalls.length !== originalToolCalls.length) {
+    logger.warn("[session-store] dropped malformed toolCalls while serializing message", {
+      before: originalToolCalls.length,
+      after: normalizedToolCalls.length,
+    });
+  }
   return {
     ...message,
     timestamp: (
@@ -141,7 +154,7 @@ function serializeMessageForIpc(message: Message): Message {
         ? message.timestamp.toISOString()
         : String(message.timestamp)
     ) as unknown as Date,
-    toolCalls: message.toolCalls?.map((tc) => ({
+    toolCalls: normalizedToolCalls?.map((tc) => ({
       ...tc,
       startTime: (
         tc.startTime instanceof Date ? tc.startTime.toISOString() : String(tc.startTime)
@@ -166,7 +179,14 @@ function serializeUpdatesForIpc<T>(updates: T): T {
     result.endTime = (result.endTime as Date).toISOString();
   }
   if ("toolCalls" in result && Array.isArray(result.toolCalls)) {
-    result.toolCalls = (result.toolCalls as ToolCall[]).map((tc) => ({
+    const normalizedToolCalls = normalizeToolCallsForPersistence(result.toolCalls);
+    if (normalizedToolCalls.length !== result.toolCalls.length) {
+      logger.warn("[session-store] dropped malformed toolCalls while serializing updates", {
+        before: result.toolCalls.length,
+        after: normalizedToolCalls.length,
+      });
+    }
+    result.toolCalls = normalizedToolCalls.map((tc) => ({
       ...tc,
       startTime: (
         tc.startTime instanceof Date ? tc.startTime.toISOString() : String(tc.startTime)
@@ -237,6 +257,7 @@ function cloneMessageForFork(message: Message): Message {
             ? undefined
             : new Date(typeof tc.endTime === "number" ? tc.endTime : String(tc.endTime)),
     })),
+    generatedUi: cloneGeneratedUiCard(message.generatedUi),
     customCard: message.customCard ? { ...message.customCard } : undefined,
   };
 }
@@ -265,21 +286,9 @@ function reviveSession(raw: Session | import("@shared").Session): Session {
         message.timestamp instanceof Date
           ? message.timestamp
           : new Date(typeof message.timestamp === "number" ? message.timestamp : String(message.timestamp)),
-      toolCalls: message.toolCalls?.map((tc) => ({
-        ...tc,
-        startTime:
-          tc.startTime instanceof Date
-            ? tc.startTime
-            : tc.startTime == null
-              ? undefined
-              : new Date(typeof tc.startTime === "number" ? tc.startTime : String(tc.startTime)),
-        endTime:
-          tc.endTime instanceof Date
-            ? tc.endTime
-            : tc.endTime == null
-              ? undefined
-              : new Date(typeof tc.endTime === "number" ? tc.endTime : String(tc.endTime)),
-      })),
+      toolCalls: Array.isArray(message.toolCalls)
+        ? normalizeToolCallsForRuntime(message.toolCalls)
+        : undefined,
     })),
   };
 }

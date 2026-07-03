@@ -524,6 +524,18 @@ describe("RightRail", () => {
               role: "assistant",
               content: "计划里提到 C:/repo/plan_probe.txt，但这还不是实际产物。",
               timestamp: new Date(),
+              generatedUi: {
+                version: "v1",
+                id: "ui-file-output",
+                title: "交付物",
+                sections: [
+                  {
+                    id: "generated-files",
+                    kind: "file_list",
+                    items: [{ id: "file-1", label: "generated.ts", path: "src/generated.ts" }],
+                  },
+                ],
+              },
               toolCalls: [
                 {
                   id: "tc1",
@@ -571,8 +583,8 @@ describe("RightRail", () => {
     expect(fileOutputs.getByText("output.md")).toBeTruthy();
     expect(fileOutputs.getByText("result.md")).toBeTruthy();
     expect(fileOutputs.getByText("plan_probe.txt")).toBeTruthy();
+    expect(fileOutputs.getByText("generated.ts")).toBeTruthy();
     expect(fileOutputs.queryByText("create-plan-probe")).toBeNull();
-    expect(fileOutputs.queryByText("generated.ts")).toBeNull();
   });
 
   it("shows shell action errors for file outputs", async () => {

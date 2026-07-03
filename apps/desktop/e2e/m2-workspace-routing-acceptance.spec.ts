@@ -1,6 +1,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 import { join } from "path";
 import { mkdir } from "fs/promises";
 
@@ -16,8 +17,8 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
+    await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
 
     const onboarding = page.locator('[data-testid="onboarding-modal"]');
     if (await onboarding.count() > 0) {
@@ -85,7 +86,7 @@ test.describe("M2 acceptance — workspace routing, session center and history j
         );
 
         await page.reload({ waitUntil: "domcontentloaded" });
-        await page.getByRole("button", { name: "快速新建对话" }).click();
+        await page.locator('button[data-mmcode-section="new-task"]').click();
         const workspaceButton = page.getByRole("button", { name: /切换工作区：/ }).first();
         await expect(workspaceButton).toBeVisible({ timeout: 15_000 });
 
@@ -113,7 +114,9 @@ test.describe("M2 acceptance — workspace routing, session center and history j
         expect(typeof wsTwo?.lastActiveAt).toBe("number");
         expect((wsTwo?.lastActiveAt ?? 0)).toBeGreaterThanOrEqual(wsOne?.lastActiveAt ?? 0);
 
-        await page.getByRole("tab", { name: "历史" }).click();
+        await page.evaluate(() => {
+            window.dispatchEvent(new Event("slash-command:open-sessions"));
+        });
         await expect(page.getByRole("heading", { name: "会话中心" })).toBeVisible({ timeout: 5_000 });
         await page.screenshot({ path: join(acceptanceDir, "2026-06-24-m2-02-session-center.png"), fullPage: true });
 

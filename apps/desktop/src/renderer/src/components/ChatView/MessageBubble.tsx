@@ -7,11 +7,14 @@ import type { Message } from '../../stores/session-store';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { CommandCard } from './CommandCard';
 import { CustomMessageCard } from './CustomMessageCard';
+import { GeneratedUiCard } from './GeneratedUiCard';
 import { ThinkingBlock } from './ThinkingBlock';
 import { PlanCard } from './PlanCard';
 import { usePlanStore } from '../../stores/plan-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { formatTime, formatIso } from '../../utils/format';
+import { contentWithGeneratedUiText } from '../../utils/generated-ui';
+import type { GeneratedUiCardV1 } from '@shared';
 
 type ChatMessage = Message & {
   thinkingCount?: number;
@@ -24,7 +27,11 @@ interface MessageBubbleProps {
   onPlanAction?: (message: ChatMessage, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string) => Promise<void>;
 }
 
-function inferInlinePlanAction(message: ChatMessage, visibleContent: string): Message["planAction"] | undefined {
+function inferInlinePlanAction(
+  message: Pick<ChatMessage, "id" | "role" | "planAction">,
+  visibleContent: string,
+  generatedUi: GeneratedUiCardV1 | undefined,
+): Message["planAction"] | undefined {
   if (message.role !== "assistant" || message.planAction || !visibleContent.trim()) return undefined;
   const normalized = visibleContent.trim();
   const isExecutionSummary =
@@ -32,7 +39,11 @@ function inferInlinePlanAction(message: ChatMessage, visibleContent: string): Me
     /\/execute_plan|执行上述计划|退出计划模式/i.test(normalized);
   if (isExecutionSummary) return undefined;
   const titleMatch = normalized.match(/^\s*#{1,6}\s+(.+?)\s*$/m);
-  const title = titleMatch?.[1]?.trim() ?? "计划";
+  const firstLine = normalized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  const title = titleMatch?.[1]?.trim() ?? firstLine ?? "计划";
   const listStepCount = normalized
     .split(/\r?\n/)
     .filter((line) => /^\s*(?:[-*]|\d+[.)])\s+\S+/.test(line.trim()))
@@ -41,10 +52,13 @@ function inferInlinePlanAction(message: ChatMessage, visibleContent: string): Me
     .split(/\r?\n/)
     .filter((line) => /^\s*\|\s*\d+\s*\|/.test(line))
     .length;
+  const generatedUiStepCount = generatedUi?.sections.reduce((count, section) => (
+    section.kind === "steps" ? count + section.items.length : count
+  ), 0) ?? 0;
   const hasPlanSignal =
     /(?:^|\n)\s*#{1,6}\s*(?:执行计划|计划|plan)(?:\s|$)/i.test(normalized) ||
     /请执行上述步骤|等待执行|等待您的指令后开始执行|use\s*\/execute_plan|执行上述计划/i.test(normalized);
-  const stepCount = listStepCount + tableStepCount;
+  const stepCount = listStepCount + tableStepCount + generatedUiStepCount;
   if (!hasPlanSignal || stepCount < 2) return undefined;
   return {
     id: `inline_plan_${message.id}`,
@@ -198,14 +212,30 @@ function MessageBubbleImpl({
   );
   const thinkingCount = (message.thinkingCount ?? (message.thinking?.trim() ? 1 : 0)) + inlineThinking.count;
   const visibleContent = inlineThinking.content;
+  const assistantPlainTextContent = useMemo(
+    () => (!isUser ? contentWithGeneratedUiText(visibleContent, message.generatedUi) : ""),
+    [isUser, message.generatedUi, visibleContent],
+  );
+  const copyContent = assistantPlainTextContent;
+  const planContent = assistantPlainTextContent;
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const planAction = useMemo(
-    () => !isUser ? (message.planAction ?? inferInlinePlanAction(message, visibleContent)) : undefined,
-    [isUser, message.id, message.planAction, visibleContent],
+    () =>
+      !isUser
+        ? (message.planAction ??
+          inferInlinePlanAction(
+            { id: message.id, role: message.role, planAction: message.planAction },
+            planContent,
+            message.generatedUi,
+          ))
+        : undefined,
+    [isUser, message.generatedUi, message.id, message.planAction, message.role, planContent],
   );
   const planStatus = planAction?.status ?? "pending";
   const showPlanPanel = Boolean(planAction);
+  const laneAlignmentClassName = isUser ? 'justify-end' : 'justify-center';
+  const bubbleWidthClassName = isUser ? 'max-w-[74%]' : 'w-full max-w-[42rem]';
   // Narrow subscription: only re-render when the steps for THIS message's plan change.
   // The store tracks steps for the single active plan; return undefined when this
   // message's plan isn't the active one so other plans' step updates don't re-render us.
@@ -230,9 +260,9 @@ function MessageBubbleImpl({
   }, []);
 
   const handleCopy = useCallback(async () => {
-    if (!visibleContent) return;
+    if (!copyContent) return;
     try {
-      await navigator.clipboard.writeText(visibleContent);
+      await navigator.clipboard.writeText(copyContent);
     } catch (err) {
       setCopied(false);
       setCopyError(`复制失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -245,18 +275,18 @@ function MessageBubbleImpl({
       clearTimeout(copyTimerRef.current);
     }
     copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
-  }, [visibleContent]);
+  }, [copyContent]);
 
   return (
     <article
       data-message-id={message.id}
       data-search-target={isSearchTarget ? "true" : "false"}
-      className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
+      className={`flex ${laneAlignmentClassName}`}
       role="article"
       aria-label={articleLabel}
       aria-busy={isStreaming}
     >
-      <div className={isUser ? 'max-w-[74%]' : 'w-full max-w-full'}>
+      <div className={bubbleWidthClassName}>
         <div className={`mb-1 flex items-center gap-2 px-1 text-[11px] text-[#9a9a95] ${isUser ? 'justify-end' : 'justify-start'}`}>
           <time dateTime={timeIso}>{timeText}</time>
         </div>
@@ -306,10 +336,16 @@ function MessageBubbleImpl({
                   </div>
                 )}
 
+                {message.generatedUi && (
+                  <div className={message.content ? "mt-3" : ""}>
+                    <GeneratedUiCard card={message.generatedUi} />
+                  </div>
+                )}
+
                 {showPlanPanel && (
                   <PlanCard
                     title={planAction?.title ?? "计划"}
-                    content={visibleContent}
+                    content={planContent}
                     filename={planAction?.filename}
                     status={planStatus}
                     steps={planSteps}
@@ -335,7 +371,7 @@ function MessageBubbleImpl({
 
             {/* 底部栏: 复制 + 时间戳 */}
             <div className={`flex items-center gap-2 mt-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
-              {!isUser && visibleContent && (
+              {!isUser && copyContent && (
                 <button
                   type="button"
                   onClick={() => void handleCopy()}
@@ -376,6 +412,7 @@ function areEqual(prev: MessageBubbleProps, next: MessageBubbleProps): boolean {
     prev.message.thinking === next.message.thinking &&
     prev.message.thinkingCount === next.message.thinkingCount &&
     prev.message.toolCalls === next.message.toolCalls &&
+    prev.message.generatedUi === next.message.generatedUi &&
     prev.message.customCard === next.message.customCard &&
     prev.message.planAction === next.message.planAction &&
     prev.isStreaming === next.isStreaming &&

@@ -101,11 +101,38 @@ describe("PermissionRequestStack", () => {
   });
 
   it("renders the permission stack in a top-level overlay above the floating right rail", () => {
-    render(<PermissionRequestStack workspaceId="ws1" />);
+    render(
+      <div data-testid="host-shell">
+        <PermissionRequestStack workspaceId="ws1" />
+      </div>,
+    );
 
     const overlay = screen.getByTestId("permission-request-overlay");
 
+    expect(overlay.parentElement).toBe(document.body);
     expect(overlay.className).toContain("fixed");
-    expect(overlay.className).toContain("z-[80]");
+    expect(overlay.className).toContain("z-[90]");
+    expect((overlay as HTMLElement).style.left).toBe("var(--pi-global-composer-left, 0px)");
+    expect((overlay as HTMLElement).style.right).toBe("var(--pi-global-composer-right, 0px)");
+    expect((overlay as HTMLElement).style.bottom).toBe("calc(var(--pi-global-composer-height, 103px) + 12px)");
+  });
+
+  it("expands the more menu and dispatches the selected decision", () => {
+    render(<PermissionRequestStack workspaceId="ws1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "更多权限决策" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /始终授权/ }));
+
+    expect(permissionRespond).toHaveBeenCalledWith("perm_1", {
+      requestId: "perm_1",
+      decision: "allow_always",
+    });
+    expect(usePermissionStore.getState().pending).toHaveLength(0);
+  });
+
+  it("does not render permission cards in desktop overlay mode", () => {
+    render(<PermissionRequestStack workspaceId="ws1" displayMode="desktop" />);
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });

@@ -8,6 +8,7 @@ import { fuzzyScore } from "../../utils/fuzzy-match";
 import { useSessionStore } from "../../stores/session-store";
 import { useI18n } from "../../i18n";
 import { isIpcError, type FileEntry, type GitStatus, type ProjectInfo } from "@shared";
+import { contentWithGeneratedUiText } from "../../utils/generated-ui";
 import { classifyTerminalCommand } from "../../utils/terminal-command";
 import { projectScriptCommand } from "../../utils/project-scripts";
 
@@ -388,10 +389,12 @@ export function CommandPalette({
             const all: Array<{ id: string; primary: string; secondary?: string; onSelect: () => void }> = [];
             for (const s of filteredSessions) {
                 for (const m of s.messages) {
-                    if (q && !m.content.toLowerCase().includes(q)) continue;
+                    const messageContent = contentWithGeneratedUiText(m.content, m.generatedUi);
+                    if (!messageContent.trim()) continue;
+                    if (q && !messageContent.toLowerCase().includes(q)) continue;
                     all.push({
                         id: `${s.id}_${m.id}`,
-                        primary: m.content.length > 80 ? m.content.slice(0, 80) + "..." : m.content,
+                        primary: messageContent.length > 80 ? `${messageContent.slice(0, 80)}...` : messageContent,
                         secondary: t("commandPalette.historyLine", {
                             title: s.title,
                             role: m.role === "user" ? t("messageBubble.userAuthor") : t("messageBubble.piAuthor"),

@@ -1,5 +1,6 @@
 import type { Session } from "../stores/session-store";
 import type { Workspace } from "../stores/workspace-store";
+import { contentWithGeneratedUiText } from "./generated-ui";
 
 export function sessionMatches(session: Session, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -8,7 +9,7 @@ export function sessionMatches(session: Session, query: string): boolean {
     session.title,
     session.summary,
     ...(session.tags ?? []),
-    ...session.messages.map((message) => `${message.content} ${message.thinking ?? ""}`),
+    ...session.messages.map((message) => `${contentWithGeneratedUiText(message.content, message.generatedUi)} ${message.thinking ?? ""}`),
   ].join("\n").toLowerCase();
   return text.includes(q);
 }

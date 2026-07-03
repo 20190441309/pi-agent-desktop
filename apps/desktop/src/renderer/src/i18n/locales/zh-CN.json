@@ -78,8 +78,11 @@
     "newConversation": "新建对话",
     "quickNewConversation": "快速新建对话",
     "groupModeAria": "会话分组方式",
+    "groupModeLabel": "分组方式",
     "groupByDate": "按时间分组",
+    "groupByDateShort": "时间",
     "groupByWorkspace": "按工作区分组",
+    "groupByWorkspaceShort": "工作区",
     "status": {
       "checking": "pi-agent 检测中",
       "online": "pi-agent 在线",
@@ -735,9 +738,17 @@
   "settings": {
     "title": "设置",
     "tabsAria": "设置分类",
+    "nav": {
+      "common": "常用",
+      "advanced": "进阶",
+      "maintenance": "维护",
+      "searchPlaceholder": "搜索设置...",
+      "searchResults": "匹配结果",
+      "noResults": "没有匹配项"
+    },
     "tab": {
       "model": "模型",
-      "piagent": "Agent",
+      "piagent": "Pi Code Agent",
       "permissions": "权限",
       "usage": "用量",
       "longHorizon": "长程能力",
@@ -749,7 +760,7 @@
     },
     "tabCaption": {
       "model": "Provider 与模型",
-      "piagent": "CLI 与状态",
+      "piagent": "CLI 与默认配置",
       "permissions": "工具默认权限",
       "usage": "Token 统计",
       "longHorizon": "模式、Goal 与记忆",
@@ -762,6 +773,38 @@
     "appearance": {
       "heading": "外观",
       "description": "调整 Pi Agent 桌面的界面主题和文本密度。"
+    },
+    "permissions": {
+      "heading": "权限",
+      "description": "管理当前工作区的默认工具权限。会话内仍可在右侧上下文面板临时调整。",
+      "workspaceHeading": "当前工作区",
+      "workspaceDescription": "这里显示设置即将影响的工作区范围。",
+      "workspaceLabel": "工作区",
+      "workspaceEmpty": "未选择工作区",
+      "toolsHeading": "工具权限面板",
+      "toolsDescription": "所有白名单权限仍走宿主侧既有审批与错误提示链路。"
+    },
+    "usage": {
+      "heading": "用量",
+      "description": "查看本地会话的 Token 用量、趋势和模型分布。",
+      "overviewHeading": "Token 用量概览",
+      "overviewDescription": "统计当前范围内的总量、会话密度和主力模型。",
+      "filtersHeading": "范围与筛选",
+      "filtersDescription": "切换时间范围、工作区范围和归档会话可见性。"
+    },
+    "shortcuts": {
+      "heading": "快捷键",
+      "description": "集中管理桌面端的快捷键绑定与覆盖。",
+      "listHeading": "快捷键列表",
+      "listDescription": "按分类查看当前生效绑定，并在这里直接修改或重置。"
+    },
+    "config": {
+      "heading": "配置文件",
+      "description": "直接编辑本地配置文件和导入导出内容。",
+      "filesHeading": "配置文件编辑",
+      "filesDescription": "切换 `models.json`、`auth.json` 和 `settings.json` 并修改原始内容。",
+      "actionsHeading": "维护动作",
+      "actionsDescription": "保存、导入导出配置，并直接拉取模型或测试 Provider。"
     },
     "general": {
       "heading": "通用设置",
@@ -786,6 +829,8 @@
     "longHorizon": {
       "heading": "长程能力",
       "description": "控制 MiMoCode 风格的模式、Goal、计划联动、记忆和 checkpoint 适配层。",
+      "overviewHeading": "总开关与默认模式",
+      "overviewDescription": "先定义整体启用状态，再决定默认进入 Build、Plan 或 Compose。",
       "enabled": {
         "label": "启用增强能力",
         "description": "关闭后不注入模式 prompt、不处理 Goal judge、不写记忆或 checkpoint，并隐藏增强命令。"
@@ -880,7 +925,8 @@
     },
     "fontSize": {
       "label": "字体大小: {{value}}px",
-      "aria": "字体大小"
+      "aria": "字体大小",
+      "searchLabel": "字体大小"
     },
     "autoSave": {
       "label": "自动保存"
@@ -901,10 +947,23 @@
       "temperatureAria": "温度",
       "maxTokens": "最大 Token"
     },
+    "model": {
+      "defaultsHeading": "默认模型认知",
+      "defaultsDescription": "这里显示当前配置文件中的默认 Provider / 模型和配置目录。",
+      "providersHeading": "Provider / 模型管理",
+      "providersDescription": "在这里新增、测试、编辑和删除 Provider 下的模型条目。"
+    },
     "piagent": {
-      "heading": "Pi Agent 配置",
-      "description": "查看本机 Pi CLI、默认模型和 Provider 配置。",
+      "heading": "Pi Code Agent",
+      "description": "查看本机 Pi CLI 状态、默认 Provider / 模型、已配置 Provider 摘要和配置目录。",
+      "statusHeading": "Pi CLI 状态",
+      "statusDescription": "延续现有宿主状态面板，显示本机 Pi CLI 运行与配置状态。",
+      "defaultsHeading": "默认 Provider / 模型",
+      "defaultsDescription": "这里展示 Pi Code Agent 当前会使用的默认 Provider 和模型。",
+      "providersHeading": "已配置 Provider 摘要",
+      "providersDescription": "快速查看本机已配置 Provider 的名称、模型数量和 Base URL。",
       "configPath": "配置目录",
+      "configPathDescription": "Pi Code Agent 当前读取配置文件的本地目录。",
       "defaultProvider": "默认 Provider",
       "defaultModel": "默认模型",
       "notSet": "未设置",
@@ -914,6 +973,7 @@
     },
     "about": {
       "heading": "关于 Pi 桌面",
+      "summaryHeading": "应用信息",
       "version": "版本: {{version}}",
       "description": "Pi 桌面是一款 Windows 桌面应用程序，为 Pi Agent 提供图形化界面，方便与 Pi CLI 交互。",
       "stack": "基于 Electron + React + TypeScript 构建。",
@@ -925,6 +985,7 @@
         "lastChecked": "上次检查: {{timestamp}}",
         "progress": "下载进度",
         "releaseNotes": "更新说明",
+        "searchDescription": "检查版本、下载状态和 GitHub Releases 入口。",
         "phase": {
           "disabled": "不可用",
           "idle": "待检查",

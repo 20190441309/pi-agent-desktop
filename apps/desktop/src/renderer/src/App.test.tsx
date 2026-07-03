@@ -564,6 +564,50 @@ describe("App sidebar session navigation", () => {
         expect(screen.getByText("SkillsPanel")).toBeTruthy();
     });
 
+    it("权限请求在非聊天页到达时会自动切回对话页，并显示在主窗口 composer lane", async () => {
+        render(<App />);
+        fireEvent.click(screen.getByRole("tab", { name: "工具" }));
+
+        act(() => {
+            usePermissionStore.setState({
+                mode: "smart",
+                pending: [
+                    {
+                        requestId: "perm_main_lane",
+                        workspaceId: "ws_1",
+                        kind: "select",
+                        source: "permission",
+                        title: "Return to chat permission",
+                        createdAt: Date.now(),
+                    },
+                ],
+            });
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText("SkillsPanel")).toBeNull();
+            expect(screen.getByTestId("chat-view")).toBeTruthy();
+        });
+        expect(screen.getByRole("alertdialog", { name: "权限请求 1" })).toBeTruthy();
+    });
+
+    it("主窗口可见时会把运行提醒拉回对话页，但不再渲染 workspace 浮卡", async () => {
+        render(<App />);
+        fireEvent.click(screen.getByRole("tab", { name: "工具" }));
+
+        act(() => {
+            window.dispatchEvent(new CustomEvent("pi:stream-start", {
+                detail: { runContext: "task" },
+            }));
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText("SkillsPanel")).toBeNull();
+            expect(screen.getByTestId("chat-view")).toBeTruthy();
+        });
+        expect(screen.queryByRole("status", { name: "任务运行中提醒" })).toBeNull();
+    });
+
     it("手动点击展开右栏时不受空间阈值限制", async () => {
         Object.defineProperty(window, "innerWidth", {
             value: 850,

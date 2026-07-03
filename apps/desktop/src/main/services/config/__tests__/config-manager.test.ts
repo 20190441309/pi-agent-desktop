@@ -277,6 +277,65 @@ describe("ConfigManager", () => {
         );
     });
 
+    it("describes images with the configured vision provider and model", async () => {
+        const fetchMock = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                choices: [
+                    {
+                        message: {
+                            content: [
+                                { type: "text", text: "图中是设置窗口" },
+                            ],
+                        },
+                    },
+                ],
+            }),
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+        await writeFile(
+            join(dir, "models.json"),
+            JSON.stringify({
+                providers: {
+                    openai: {
+                        name: "OpenAI",
+                        baseUrl: "https://api.openai.com/v1",
+                        api: "openai-completions",
+                        models: [{ id: "gpt-4.1-mini", name: "GPT-4.1 Mini", api: "openai-completions" }],
+                    },
+                },
+            }),
+            "utf8",
+        );
+        await writeFile(join(dir, "auth.json"), JSON.stringify({ openai: { key: "sk-vision-key" } }), "utf8");
+        await writeFile(join(dir, "settings.json"), JSON.stringify({ visionProvider: "openai", visionModel: "gpt-4.1-mini" }), "utf8");
+
+        const result = await manager.describeImages([
+            { name: "settings.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" },
+        ]);
+
+        expect(result).toEqual({ text: "图中是设置窗口" });
+        expect(fetchMock).toHaveBeenCalledWith(
+            "https://api.openai.com/v1/chat/completions",
+            expect.objectContaining({
+                headers: expect.objectContaining({
+                    Authorization: "Bearer sk-vision-key",
+                }),
+            }),
+        );
+        const requestInit = fetchMock.mock.calls[0]?.[1];
+        if (!requestInit || typeof requestInit !== "object" || !("body" in requestInit)) {
+            throw new Error("missing vision request body");
+        }
+        const body = JSON.parse(String(requestInit.body));
+        expect(body.model).toBe("gpt-4.1-mini");
+        expect(body.messages[0]?.content).toEqual([
+            { type: "text", text: "请用简洁中文描述这张图片里的关键信息。" },
+            { type: "image_url", image_url: { url: "data:image/png;base64,Zm9v" } },
+        ]);
+    });
+
     describe("loadPiAgentConfig", () => {
         it("returns null when config dir does not exist", () => {
             const mgr = new ConfigManager(join(tmpdir(), "nonexistent-dir-" + Date.now()));

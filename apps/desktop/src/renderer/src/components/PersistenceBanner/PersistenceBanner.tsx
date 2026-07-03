@@ -15,7 +15,7 @@ export function PersistenceBanner(): React.JSX.Element | null {
         <div
             role="alert"
             data-persistence-banner="error"
-            className="flex items-center gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-2 text-sm text-[var(--mm-text-primary)]"
+            className="pointer-events-auto fixed inset-x-4 top-8 z-[95] mx-auto flex max-w-[960px] items-center gap-3 rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-2 text-sm text-[var(--mm-text-primary)] shadow-[0_10px_32px_rgba(15,23,42,0.14)]"
         >
             <svg
                 className="h-4 w-4 shrink-0"

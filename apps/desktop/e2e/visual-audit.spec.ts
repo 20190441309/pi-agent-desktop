@@ -427,7 +427,7 @@ test.describe("Pi Desktop — visual function audit", () => {
         await expect(settingsWindow.locator("html")).toHaveAttribute("data-theme", "dark");
         await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();
 
-        const tabLabels = ["模型", "Agent", "权限", "用量", "长程能力", "界面", "通用", "快捷键", "配置文件", "关于"];
+        const tabLabels = ["通用", "模型", "Pi Code Agent", "界面", "权限", "用量", "长程能力", "快捷键", "配置文件", "关于"];
         for (const label of tabLabels) {
             await settingsWindow.getByRole("tab", { name: label }).click();
             await expect(settingsWindow.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");

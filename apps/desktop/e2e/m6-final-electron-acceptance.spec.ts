@@ -5,11 +5,14 @@ import { mkdir as mkdirAsync } from "fs/promises";
 import { join } from "path";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const HISTORY_NEEDLE = "m6-history-needle";
 const HISTORY_REPLY = "m6-history-reply";
 const WORKSPACE_TWO_NEEDLE = "m6-workspace-two-needle";
+const HISTORY_SESSION_ID = "m6-history-session";
+const HISTORY_SESSION_TITLE = "M6 History Session";
 
 async function ensureAcceptanceDir(): Promise<void> {
     await mkdirAsync(ACCEPTANCE_DIR, { recursive: true });
@@ -50,8 +53,8 @@ async function launchApp(
             PI_DESKTOP_CONFIG_DIR: configDir,
         },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
+    await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
 
@@ -266,6 +269,13 @@ test.describe("M6 release gate — final Electron acceptance", () => {
                 const ws2 = await window.piAPI.createWorkspace("m6-workspace-two", workspaceTwoPath);
                 await window.piAPI.selectWorkspace(ws1.path);
 
+                const historySession = await window.piAPI.createSession(ws1.id, "M6 History Session", "m6-history-session");
+                await window.piAPI.agentsCreate({
+                    workspaceId: ws1.id,
+                    title: "M6 History Session Agent",
+                    sessionId: historySession.id,
+                });
+
                 const workspaceTwoSession = await window.piAPI.createSession(ws2.id, "M6 Workspace Two Session", "m6-workspace-two-session");
                 await window.piAPI.appendMessage(workspaceTwoSession.id, {
                     id: "m6-workspace-two-user",
@@ -308,7 +318,11 @@ test.describe("M6 release gate — final Electron acceptance", () => {
         await reloadAppShell(page);
 
         await test.step("M1 final gate: session message and reply survive relaunch", async () => {
-            await page.locator('button[data-mmcode-section="new-task"]').click();
+            const historySessionButton = page
+                .getByRole("navigation", { name: "会话列表" })
+                .getByRole("button", { name: HISTORY_SESSION_TITLE, exact: true });
+            await expect(historySessionButton).toBeVisible({ timeout: 15_000 });
+            await historySessionButton.click();
             const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="输入消息" i], textarea[placeholder*="描述" i]').first();
             await expect(textarea).toBeVisible({ timeout: 10_000 });
             await textarea.fill(HISTORY_NEEDLE);
@@ -338,9 +352,7 @@ test.describe("M6 release gate — final Electron acceptance", () => {
             await dismissOnboarding(page);
             const sidebarSession = page
                 .getByRole("navigation", { name: "会话列表" })
-                .getByRole("button")
-                .filter({ hasText: HISTORY_NEEDLE })
-                .first();
+                .getByRole("button", { name: HISTORY_SESSION_TITLE, exact: true });
             await expect(sidebarSession).toBeVisible({ timeout: 15_000 });
             await sidebarSession.click();
             await expect(page.getByRole("article", { name: /你 ·/ })).toContainText(HISTORY_NEEDLE, { timeout: 10_000 });
@@ -362,7 +374,9 @@ test.describe("M6 release gate — final Electron acceptance", () => {
             const ws2 = workspaces.find((workspace) => workspace.name === "m6-workspace-two");
             expect((ws2?.lastActiveAt ?? 0)).toBeGreaterThanOrEqual(ws1?.lastActiveAt ?? 0);
 
-            await page.getByRole("tab", { name: "历史" }).click();
+            await page.evaluate(() => {
+                window.dispatchEvent(new Event("slash-command:open-sessions"));
+            });
             await page.keyboard.press("Control+Shift+F");
             const search = page.getByRole("textbox", { name: "搜索对话历史" });
             await expect(search).toBeVisible({ timeout: 5_000 });
@@ -523,14 +537,18 @@ test.describe("M6 release gate — final Electron acceptance", () => {
             await fileSearch.fill(".v");
             await expect(page.locator('button[title=".vscode/settings.json"]')).toBeVisible({ timeout: 5_000 });
 
-            await page.getByRole("tab", { name: "Git" }).click();
+            await page.evaluate(() => {
+                window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "git" } }));
+            });
             await expect(page.getByRole("region", { name: "Git 面板" })).toBeVisible({ timeout: 5_000 });
             await page.getByRole("button", { name: "刷新 Git 状态" }).click();
             await expect(page.getByText(/0 staged \/ 1 changes/)).toBeVisible({ timeout: 10_000 });
             await page.getByRole("button", { name: "打开 README.md diff" }).click();
             await expect(page.getByText("README changed for release gate.")).toBeVisible({ timeout: 10_000 });
 
-            await page.getByRole("tab", { name: "历史" }).click();
+            await page.evaluate(() => {
+                window.dispatchEvent(new Event("slash-command:open-sessions"));
+            });
             await expect(page.getByRole("heading", { name: "会话中心" })).toBeVisible({ timeout: 5_000 });
             await page.getByRole("button", { name: "批量导出" }).click();
             const exportDialog = page.locator("div.fixed.inset-0");

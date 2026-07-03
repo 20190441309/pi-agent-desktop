@@ -1,6 +1,7 @@
 // 设置 UI 共享原子 — 从 SettingsContent.tsx 抽出, 供各 tab 子组件复用.
 
 import React from 'react';
+import type { SettingsTab } from './tab-defs';
 
 export function CloseIcon(): React.JSX.Element {
     return (
@@ -10,11 +11,65 @@ export function CloseIcon(): React.JSX.Element {
     );
 }
 
-export function SectionTitle({ title, description }: { title: string; description?: string }): React.JSX.Element {
+export function SettingsPage({
+    tabId,
+    title,
+    description,
+    actions,
+    children,
+}: {
+    tabId: SettingsTab;
+    title: string;
+    description?: string;
+    actions?: React.ReactNode;
+    children: React.ReactNode;
+}): React.JSX.Element {
     return (
-        <div className="mb-2">
-            <h3 className="m-0 text-[12px] font-medium text-[var(--mm-text-primary)]">{title}</h3>
-            {description && <p className="m-0 mt-0.5 text-[9px] leading-3 text-[var(--mm-text-tertiary)]">{description}</p>}
+        <div className="settings-tab-panel mx-auto w-full max-w-[960px] px-6 py-8" role="tabpanel" id={`settings-tabpanel-${tabId}`} aria-labelledby={`settings-tab-${tabId}`}>
+            <div data-settings-anchor={`page-${tabId}`} className="mb-6 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <h1 className="m-0 text-[28px] font-semibold tracking-[-0.02em] text-[var(--mm-text-primary)]">{title}</h1>
+                    {description && <p className="m-0 mt-2 max-w-[680px] text-[14px] leading-6 text-[var(--mm-text-secondary)]">{description}</p>}
+                </div>
+                {actions && <div className="shrink-0">{actions}</div>}
+            </div>
+            <div className="space-y-4">{children}</div>
+        </div>
+    );
+}
+
+export function SettingsCard({
+    children,
+    className = '',
+    anchorId,
+}: {
+    children: React.ReactNode;
+    className?: string;
+    anchorId?: string;
+}): React.JSX.Element {
+    return (
+        <section
+            data-settings-anchor={anchorId}
+            className={`rounded-[18px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-5 py-1 shadow-[0_10px_30px_rgba(15,23,42,0.05)] ${className}`.trim()}
+        >
+            {children}
+        </section>
+    );
+}
+
+export function SectionTitle({
+    title,
+    description,
+    anchorId,
+}: {
+    title: string;
+    description?: string;
+    anchorId?: string;
+}): React.JSX.Element {
+    return (
+        <div data-settings-anchor={anchorId} className="mb-3">
+            <h3 className="m-0 text-[13px] font-semibold tracking-[0.01em] text-[var(--mm-text-primary)]">{title}</h3>
+            {description && <p className="m-0 mt-1 text-[12px] leading-5 text-[var(--mm-text-tertiary)]">{description}</p>}
         </div>
     );
 }
@@ -22,14 +77,16 @@ export function SectionTitle({ title, description }: { title: string; descriptio
 export function FieldRow({
     label,
     description,
+    anchorId,
     children,
 }: {
     label: string;
     description?: string;
+    anchorId?: string;
     children: React.ReactNode;
 }): React.JSX.Element {
     return (
-        <div className="grid grid-cols-[minmax(160px,220px)_1fr] items-center gap-6 border-b border-[var(--mm-border)] py-4 last:border-b-0">
+        <div data-settings-anchor={anchorId} className="grid grid-cols-[minmax(210px,240px)_1fr] items-center gap-6 border-b border-[var(--mm-border)] py-4 last:border-b-0">
             <div>
                 <label className="block text-sm font-medium text-[var(--mm-text-primary)]">{label}</label>
                 {description && <p className="m-0 mt-1 text-xs leading-5 text-[var(--mm-text-tertiary)]">{description}</p>}

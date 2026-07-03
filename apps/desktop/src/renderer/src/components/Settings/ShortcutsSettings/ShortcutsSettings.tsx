@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { SHORTCUTS, type ShortcutDef, groupByCategory } from "../../../shortcuts/registry";
 import { useSettingsStore } from "../../../stores/settings-store";
+import { useI18n } from "../../../i18n";
+import { SectionTitle, SettingsCard, SettingsPage } from "../_shared";
 
 function KeyBadge({ keys }: { keys: string }): React.JSX.Element {
   return (
@@ -74,6 +76,7 @@ function ShortcutRecorder({
 }
 
 export function ShortcutsSettings(): React.JSX.Element {
+  const { t } = useI18n();
   const [editingId, setEditingId] = useState<string | null>(null);
   const overrides = useSettingsStore((state) => state.settings.shortcutOverrides ?? []);
   const updateSettings = useSettingsStore((state) => state.updateSettings);
@@ -111,30 +114,28 @@ export function ShortcutsSettings(): React.JSX.Element {
   }, [updateSettings]);
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h3 className="text-[15px] font-semibold text-[var(--mm-text-primary)]">快捷键设置</h3>
-          <p className="m-0 mt-1 text-xs text-[var(--mm-text-tertiary)]">自定义键盘快捷键绑定</p>
-        </div>
-        {overrides.length > 0 && (
-          <button
-            type="button"
-            onClick={handleResetAll}
-            className="rounded-lg border border-[var(--mm-border)] px-3 py-1.5 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)]"
-          >
-            重置全部
-          </button>
-        )}
-      </div>
-
-      <div className="space-y-6">
+    <SettingsPage
+      tabId="shortcuts"
+      title={t("settings.shortcuts.heading")}
+      description={t("settings.shortcuts.description")}
+      actions={overrides.length > 0 ? (
+        <button
+          type="button"
+          onClick={handleResetAll}
+          className="rounded-lg border border-[var(--mm-border)] px-3 py-1.5 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)]"
+        >
+          重置全部
+        </button>
+      ) : null}
+    >
+      <div data-settings-anchor="shortcuts-list" className="space-y-6">
+        <SectionTitle title={t("settings.shortcuts.listHeading")} description={t("settings.shortcuts.listDescription")} />
         {categories.map(({ category, items }) => (
           <div key={category}>
             <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--mm-text-tertiary)]">
               {category === "nav" ? "导航" : category === "chat" ? "对话" : category === "panel" ? "面板" : category === "edit" ? "编辑" : "帮助"}
             </h4>
-            <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)]">
+            <SettingsCard className="px-0 py-0">
               {items.map((shortcut) => {
                 const effectiveKeys = getEffectiveKeys(shortcut);
                 const isModified = overrides.some((o) => o.id === shortcut.id);
@@ -177,10 +178,10 @@ export function ShortcutsSettings(): React.JSX.Element {
                   </div>
                 );
               })}
-            </div>
+            </SettingsCard>
           </div>
         ))}
       </div>
-    </div>
+    </SettingsPage>
   );
 }

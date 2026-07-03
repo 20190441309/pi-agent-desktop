@@ -659,4 +659,51 @@ describe("session-store (2026-06-06 hotfix): loadSessions 行为", () => {
         seedSession("s1", "t");
         expect(useSessionStore.getState().sessions[0].messages).toEqual([]);
     });
+
+    it("loadSessions 会规范化 legacy tool call 并丢弃缺少标识的坏项", async () => {
+        const now = Date.now();
+        piAPI.listSessions.mockResolvedValueOnce([
+            {
+                id: "s1",
+                workspaceId: "ws1",
+                title: "loaded",
+                createdAt: now,
+                updatedAt: now,
+                messages: [
+                    {
+                        id: "m1",
+                        role: "assistant",
+                        content: "from disk",
+                        timestamp: new Date(now - 500).toISOString(),
+                        toolCalls: [
+                            {
+                                toolCallId: "tc_legacy",
+                                toolName: "read",
+                                args: { path: "README.md" },
+                                status: "running",
+                                startTime: new Date(now - 250).toISOString(),
+                            },
+                            {
+                                toolCallId: "tc_missing_name",
+                                status: "running",
+                            },
+                        ],
+                    },
+                ],
+            },
+        ]);
+
+        useSessionStore.setState({ sessions: [], currentSessionId: null });
+        await useSessionStore.getState().loadSessions();
+
+        const toolCalls = useSessionStore.getState().sessions[0].messages[0].toolCalls ?? [];
+        expect(toolCalls).toHaveLength(1);
+        expect(toolCalls[0]).toMatchObject({
+            id: "tc_legacy",
+            name: "read",
+            input: { path: "README.md" },
+            status: "running",
+        });
+        expect(toolCalls[0].startTime).toBeInstanceOf(Date);
+    });
 });

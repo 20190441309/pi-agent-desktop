@@ -86,6 +86,9 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
             />,
         );
 
+        expect(screen.getByText("分组方式")).toBeTruthy();
+        expect(screen.getByText("时间")).toBeTruthy();
+        expect(screen.getByText("工作区")).toBeTruthy();
         expect(screen.getByRole("button", { name: "按时间分组" }).getAttribute("aria-pressed")).toBe("true");
         fireEvent.click(screen.getByRole("button", { name: "按工作区分组" }));
 

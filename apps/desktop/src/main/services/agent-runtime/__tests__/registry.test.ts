@@ -274,6 +274,29 @@ describe("AgentRuntimeRegistry", () => {
         expect(sessions[0].prompt).toHaveBeenCalledWith("follow later", { streamingBehavior: "followUp" });
     });
 
+    it("returns from prompt submission before the full agent turn has finished", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+        let resolvePrompt: (() => void) | undefined;
+        sessions[0].prompt.mockImplementationOnce(() => new Promise<void>((resolve) => {
+            resolvePrompt = resolve;
+        }));
+
+        let settled = "pending";
+        void registry.prompt({ agentId: agent.id, message: "submit and continue" }).then(() => {
+            settled = "resolved";
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(settled).toBe("resolved");
+        expect(registry.getRuntimeState(agent.id)).toMatchObject({
+            status: "running",
+            isStreaming: true,
+        });
+
+        resolvePrompt?.();
+    });
+
     it("queues mode-exit commands with the same follow-up behavior before executing a queued prompt", async () => {
         const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
 

@@ -197,6 +197,51 @@ describe("ChatView", () => {
     });
   });
 
+  it("keeps generated ui only assistant messages visible in the message list", async () => {
+    useSessionStore.setState({
+      currentSessionId: "s1",
+      sessions: [
+        {
+          id: "s1",
+          title: "Session 1",
+          workspaceId: "ws1",
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+          messages: [
+            {
+              id: "u1",
+              role: "user",
+              content: "hello",
+              timestamp: new Date(0),
+            },
+            {
+              id: "a-generated",
+              role: "assistant",
+              content: "",
+              timestamp: new Date(1),
+              generatedUi: {
+                version: "v1",
+                id: "ui-1",
+                title: "生成式卡片",
+                sections: [{ id: "summary", kind: "summary", content: "完成" }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("message-bubble")).toHaveLength(2);
+    });
+  });
+
   it("does not render the legacy floating plan card", () => {
     mockedStreamError = null;
 
@@ -208,6 +253,23 @@ describe("ChatView", () => {
 
     expect(screen.getByText("hello")).toBeTruthy();
     expect(screen.queryByTestId("plan-card")).toBeNull();
+  });
+
+  it("shows a centered narrow running placeholder without the legacy inline stop button", () => {
+    mockedStreamError = null;
+    mockedIsStreaming = true;
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    const status = screen.getByRole("status", { name: "Pi 正在思考..." });
+    expect(status.className).toContain("justify-center");
+    expect(status.textContent).toContain("任务运行中 · 新输入会作为追加指令进入当前会话");
+    expect(screen.queryByRole("button", { name: "停止生成" })).toBeNull();
+    expect((status.firstElementChild as HTMLElement | null)?.className).toContain("max-w-[42rem]");
   });
 
   it("waits for the current stream to finish before surfacing a pending execute-plan card", async () => {
@@ -1133,6 +1195,76 @@ describe("ChatView", () => {
         workspaceId: "ws1",
         title: "内联计划",
         content: "- 创建 plan_probe.txt\n- 验证文件存在",
+      });
+      expect(startStreaming).toHaveBeenCalledWith(
+        "ws1",
+        expect.stringContaining("计划文件：inline-plan.md"),
+        {
+          agentId: "agent_s1",
+          visibleContent: "执行计划：inline-plan.md",
+          waitForAgentIdle: true,
+        },
+      );
+    });
+    expect(window.piAPI.planSetEnabled).not.toHaveBeenCalled();
+    expect(useAgentModeStore.getState().getMode("ws1")).toBe("build");
+  });
+
+  it("materializes and executes a generated-ui-only inline plan", async () => {
+    mockedStreamError = null;
+    useAgentModeStore.getState().setMode("ws1", "plan");
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                {
+                  id: "generated-ui-plan-message",
+                  role: "assistant",
+                  content: "",
+                  timestamp: new Date(0),
+                  generatedUi: {
+                    version: "v1",
+                    id: "generated-ui-plan-card",
+                    title: "内联计划",
+                    sections: [
+                      { id: "summary", kind: "summary", content: "先做文件修改，再做验证。" },
+                      {
+                        id: "steps",
+                        kind: "steps",
+                        items: [
+                          { id: "step-1", label: "创建 plan_probe.txt" },
+                          { id: "step-2", label: "验证文件存在" },
+                        ],
+                      },
+                    ],
+                  },
+                  planAction: {
+                    id: "plan_action_generated_ui",
+                    title: "内联计划",
+                    status: "pending",
+                  },
+                },
+              ],
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByText("execute-plan"));
+
+    await waitFor(() => {
+      expect(window.piAPI.planMaterialize).toHaveBeenCalledWith({
+        workspaceId: "ws1",
+        title: "内联计划",
+        content: "内联计划\n先做文件修改，再做验证。\n创建 plan_probe.txt\n验证文件存在",
       });
       expect(startStreaming).toHaveBeenCalledWith(
         "ws1",

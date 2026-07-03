@@ -85,35 +85,44 @@ interface GroupModeSwitchProps {
 
 function GroupModeSwitch({ mode, onChange, t }: GroupModeSwitchProps): React.JSX.Element {
     const buttonClass = (active: boolean): string =>
-        `h-8 min-w-0 flex-1 rounded-lg px-3 text-[11px] font-medium transition-[background-color,color,box-shadow] focus:outline-none ${
+        `h-8 min-w-0 flex-1 rounded-lg px-3 text-[12px] font-medium transition-[background-color,color,box-shadow] focus:outline-none ${
             active
                 ? "bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
                 : "bg-transparent text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
         }`;
 
     return (
-        <div
-            role="group"
-            aria-label={t("sidebar.groupModeAria")}
-            data-mmcode-group-switch="soft-segmented"
-            className="flex shrink-0 items-center gap-1 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] p-1 shadow-[0_10px_26px_rgba(15,23,42,0.05)]"
-        >
-            <button
-                type="button"
-                aria-pressed={mode === "date"}
-                onClick={() => onChange?.("date")}
-                className={buttonClass(mode === "date")}
+        <div className="flex shrink-0 flex-col gap-1.5">
+            <div className="px-1 text-[11px] font-medium text-[var(--mm-text-tertiary)]">
+                {t("sidebar.groupModeLabel")}
+            </div>
+            <div
+                role="group"
+                aria-label={t("sidebar.groupModeAria")}
+                data-mmcode-group-switch="soft-segmented"
+                className="flex items-center gap-1 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] p-1 shadow-[0_10px_26px_rgba(15,23,42,0.05)]"
             >
-                {t("sidebar.groupByDate")}
-            </button>
-            <button
-                type="button"
-                aria-pressed={mode === "workspace"}
-                onClick={() => onChange?.("workspace")}
-                className={buttonClass(mode === "workspace")}
-            >
-                {t("sidebar.groupByWorkspace")}
-            </button>
+                <button
+                    type="button"
+                    aria-label={t("sidebar.groupByDate")}
+                    title={t("sidebar.groupByDate")}
+                    aria-pressed={mode === "date"}
+                    onClick={() => onChange?.("date")}
+                    className={buttonClass(mode === "date")}
+                >
+                    <span className="truncate">{t("sidebar.groupByDateShort")}</span>
+                </button>
+                <button
+                    type="button"
+                    aria-label={t("sidebar.groupByWorkspace")}
+                    title={t("sidebar.groupByWorkspace")}
+                    aria-pressed={mode === "workspace"}
+                    onClick={() => onChange?.("workspace")}
+                    className={buttonClass(mode === "workspace")}
+                >
+                    <span className="truncate">{t("sidebar.groupByWorkspaceShort")}</span>
+                </button>
+            </div>
         </div>
     );
 }

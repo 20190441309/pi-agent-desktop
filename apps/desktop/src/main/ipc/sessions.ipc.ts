@@ -31,6 +31,7 @@ import {
     updateMessageSchema,
     updateToolCallSchema,
 } from "./schemas";
+import { normalizeLegacyMessagePayload } from "./tool-call-normalization";
 
 export interface SessionsIpcDeps {
     store: SessionPersistence;
@@ -146,7 +147,8 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
     ipcMain.handle(
         "session:append-message",
         async (_event, sessionId: string, raw: unknown) => {
-            const parsed = appendMessageSchema.safeParse([sessionId, raw]);
+            const normalizedRaw = normalizeLegacyMessagePayload(raw);
+            const parsed = appendMessageSchema.safeParse([sessionId, normalizedRaw]);
             if (!parsed.success) {
                 log.warn("[sessions.ipc] session:append-message invalid args:", parsed.error);
                 return ipcError(
@@ -156,7 +158,8 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
                 );
             }
             try {
-                await appendMessage(store, sessionId, toMessage(raw));
+                const [, message] = parsed.data;
+                await appendMessage(store, sessionId, toMessage(message));
             } catch (err) {
                 log.error("[sessions.ipc] session:append-message failed:", err);
                 return ipcError(
@@ -172,7 +175,8 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
     ipcMain.handle(
         "session:update-message",
         async (_event, sessionId: string, messageId: string, raw: unknown) => {
-            const parsed = updateMessageSchema.safeParse([sessionId, messageId, raw]);
+            const normalizedRaw = normalizeLegacyMessagePayload(raw);
+            const parsed = updateMessageSchema.safeParse([sessionId, messageId, normalizedRaw]);
             if (!parsed.success) {
                 log.warn("[sessions.ipc] session:update-message invalid args:", parsed.error);
                 return ipcError(
@@ -182,7 +186,8 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
                 );
             }
             try {
-                await updateMessage(store, sessionId, messageId, toMessage(raw));
+                const [, , updates] = parsed.data;
+                await updateMessage(store, sessionId, messageId, toMessage(updates));
             } catch (err) {
                 log.error("[sessions.ipc] session:update-message failed:", err);
                 return ipcError(

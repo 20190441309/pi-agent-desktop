@@ -259,14 +259,29 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     await expect(visibleUserArticle).not.toContainText("附加文件:");
     await expect(visibleUserArticle).not.toContainText("先只读探索");
 
+    if (calls[0].kind === "agent") {
+      await app.evaluate(({ BrowserWindow }, agentId: string) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send("agents:event", {
+            agentId,
+            workspaceId: "ws_e2e",
+            event: { type: "agent_end" },
+          });
+        }
+      }, calls[0].input.agentId);
+      await expect(page.getByRole("status", { name: "Pi 正在思考..." })).toHaveCount(0);
+    }
+
     await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.webContents.send("plan:card", {
-        id: "inline-plan-card",
-        title: "聊天输入区计划",
-        filename: "chat-input-plan.md",
-        content: "- 检查计划模式入口\n- 改成聊天内流程",
-        createdAt: Date.now(),
-      });
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send("plan:card", {
+          id: "inline-plan-card",
+          title: "聊天输入区计划",
+          filename: "chat-input-plan.md",
+          content: "- 检查计划模式入口\n- 改成聊天内流程",
+          createdAt: Date.now(),
+        });
+      }
     });
     await expect(page.getByRole("article", { name: /Pi ·/ }).filter({ hasText: "聊天内流程" })).toBeVisible();
     await expect(page.getByRole("button", { name: "执行计划" })).toBeVisible();

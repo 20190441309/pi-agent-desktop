@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(process.cwd(), "..", "..", "docs", "compose", "acceptance");
 const SESSION_ID = "m1-bound-session";
@@ -14,8 +15,8 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
+    await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
 
@@ -167,6 +168,7 @@ test.describe("Pi Desktop — session-bound agent persistence", () => {
         ]);
 
         await expect(page.getByRole("article").filter({ hasText: "bound agent persisted answer" }).first()).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('[data-persistence-banner="error"]')).toHaveCount(0);
 
         const preRestart = await page.evaluate(async (sessionId) => {
             const sessions = await window.piAPI.listSessions();
@@ -181,7 +183,7 @@ test.describe("Pi Desktop — session-bound agent persistence", () => {
                     Array.isArray(message.toolCalls) &&
                     message.toolCalls.some((toolCall) => toolCall.id === "tc_bound_1" && toolCall.status === "completed"),
                 ),
-                hasCustomCard: session.messages.some((message) => message.customCard?.id === "bound_card_1"),
+                hasCustomCard: session.messages.some((message) => message.generatedUi?.id === "bound_card_1"),
             };
         }, SESSION_ID);
 
@@ -198,6 +200,11 @@ test.describe("Pi Desktop — session-bound agent persistence", () => {
         });
 
         await page.screenshot({
+            path: join(ACCEPTANCE_DIR, "2026-07-03-persist-progress-01-no-persistence-banner.png"),
+            fullPage: true,
+        });
+
+        await page.screenshot({
             path: join(ACCEPTANCE_DIR, "2026-06-24-m1-02.png"),
             fullPage: true,
         });
@@ -211,6 +218,7 @@ test.describe("Pi Desktop — session-bound agent persistence", () => {
 
         await expect(page.getByRole("article", { name: /你 ·/ })).toContainText("bound session follow up", { timeout: 10_000 });
         await expect(page.getByRole("article").filter({ hasText: "bound agent persisted answer" }).first()).toBeVisible({ timeout: 10_000 });
+        await expect(page.locator('[data-persistence-banner="error"]')).toHaveCount(0);
 
         const postRestart = await page.evaluate(async (sessionId) => {
             const sessions = await window.piAPI.listSessions();
@@ -225,7 +233,7 @@ test.describe("Pi Desktop — session-bound agent persistence", () => {
                     Array.isArray(message.toolCalls) &&
                     message.toolCalls.some((toolCall) => toolCall.id === "tc_bound_1" && toolCall.status === "completed"),
                 ),
-                hasCustomCard: session.messages.some((message) => message.customCard?.id === "bound_card_1"),
+                hasCustomCard: session.messages.some((message) => message.generatedUi?.id === "bound_card_1"),
             };
         }, SESSION_ID);
 

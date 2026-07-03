@@ -3,6 +3,7 @@ import { join } from "path";
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 
@@ -19,8 +20,8 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
             PI_DESKTOP_CONFIG_DIR: configDir,
         },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
+    await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
 
@@ -63,7 +64,7 @@ async function openSettingsWindow(app: ElectronApplication, page: Page): Promise
     await settingsWindow.waitForLoadState("domcontentloaded");
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible({ timeout: 10_000 });
     await settingsWindow.getByRole("tab", { name: "通用" }).click();
-    await expect(settingsWindow.getByText("通用设置")).toBeVisible({ timeout: 10_000 });
+    await expect(settingsWindow.getByRole("switch", { name: "系统通知" })).toBeVisible({ timeout: 10_000 });
     return settingsWindow;
 }
 
