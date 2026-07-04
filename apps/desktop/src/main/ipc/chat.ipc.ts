@@ -36,7 +36,7 @@ import type { CheckpointService } from "../services/long-horizon/checkpoint-serv
 import type { MemoryService } from "../services/long-horizon/memory-service";
 import type { TaskService } from "../services/long-horizon/task-service";
 import { getProtectedPathReason } from "../services/protected-paths";
-import { gitUndoSchema } from "./schemas";
+import { gitUndoSchema, GoalEvaluateSchema } from "./schemas";
 import { buildAgentModePrompt, goalSlashCommands, normalizeAgentMode } from "../services/agent-modes";
 import { buildMiMoCodeRuntimePort } from "../services/mimocode-runtime-port";
 import { resolveBundledDesktopExtensionPaths } from "../services/pi-session/factory";
@@ -648,6 +648,70 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             return ipcError("ipcErrors.chat.workspaceNotFound", `Workspace not found: ${workspaceId}`, { id: workspaceId });
         }
         return deps.goalService?.get(ws.id, agentId) ?? null;
+    });
+
+    // Phase C Task 4: goal:evaluate — manually trigger the judge LLM against
+    // the active goal. Returns a GoalVerdict (or IpcError on misconfiguration).
+    // The verdict is also broadcast via `goal:evaluation` event by
+    // GoalService.applyVerdict (called from onTurnEnd); this handler emits the
+    // event only when the verdict is inconclusive (so the UI still gets a
+    // marker for manual evaluations).
+    ipcMain.handle("goal:evaluate", async (_event, raw: unknown) => {
+        const parsed = GoalEvaluateSchema.safeParse(raw);
+        if (!parsed.success) {
+            return ipcError(
+                "ipcErrors.goal.invalidInput",
+                `goal:evaluate 入参无效: ${parsed.error.message}`,
+            );
+        }
+        const { workspaceId, agentId } = parsed.data;
+        const ws = deps.getWorkspace(workspaceId);
+        if (!ws) {
+            return ipcError(
+                "ipcErrors.goal.notFound",
+                `Workspace 未找到: ${workspaceId}`,
+                { id: workspaceId },
+            );
+        }
+        const longHorizon = longHorizonSettings(deps.getSettings?.());
+        if (!longHorizon.enabled || !longHorizon.goal.enabled || !deps.goalService) {
+            return ipcError(
+                "ipcErrors.goal.disabled",
+                "长程 Goal 能力已关闭",
+            );
+        }
+        try {
+            const goal = await deps.goalService.get(ws.id, agentId);
+            if (!goal || goal.status === "cleared") {
+                return ipcError(
+                    "ipcErrors.goal.notFound",
+                    "未找到活动的 goal",
+                    { workspaceId: ws.id },
+                );
+            }
+            // Transcript extraction is wired in Task 6; manual evaluate uses an
+            // empty transcript which makes the judge return inconclusive —
+            // still useful for surfacing the judge's reason in the UI.
+            const transcript: Array<{ role: string; content: string }> = [];
+            const verdict = await deps.goalService.evaluate({
+                workspaceId: ws.id,
+                agentId,
+                condition: goal.condition,
+                transcript,
+            });
+            // Persist the verdict + broadcast goal:evaluation event so the UI
+            // gets a per-turn marker even for manual evaluations. applyVerdict
+            // handles the status mapping + event emission.
+            await deps.goalService.applyVerdict(ws.id, verdict, agentId);
+            return verdict;
+        } catch (err) {
+            log.error("[chat.ipc] goal:evaluate failed:", err);
+            return ipcError(
+                "ipcErrors.goal.failed",
+                `goal 评估失败: ${err instanceof Error ? err.message : String(err)}`,
+                { workspace: ws.name },
+            );
+        }
     });
 
     ipcMain.handle("pi:runtime-feature-state", async () => {

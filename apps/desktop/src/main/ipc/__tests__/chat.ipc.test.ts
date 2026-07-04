@@ -1010,4 +1010,131 @@ describe("setupChatIpc", () => {
             rmSync(workspacePath, { force: true, recursive: true });
         }
     });
+
+    // ── Phase C Task 4: goal:evaluate IPC handler ───────────────────────
+    // 4 tests covering the success path, disabled-goal guard, Zod validation,
+    // and workspace-not-found. The handler delegates to GoalService.evaluate
+    // + applyVerdict; we mock both to verify the IPC plumbing without
+    // spinning up a real judge LLM call.
+
+    /** Helper: minimal LongHorizonSettings shape with goal evaluation enabled. */
+    const longHorizonWithGoalEnabled = () => ({
+        enabled: true,
+        defaultMode: "build" as const,
+        planMode: { enabled: true },
+        composeMode: { enabled: true },
+        maxMode: { enabled: true, candidates: 5 },
+        memory: { enabled: true, ccIndex: false, reconcileOnSearch: true, searchScoreFloor: 0.15 },
+        history: { enabled: true },
+        checkpoint: { enabled: true },
+        goal: { enabled: true },
+        subagents: { enabled: true },
+        task: { enabled: true },
+        actor: { enabled: true },
+        workflow: { enabled: false, maxConcurrentAgents: 4, maxLifecycleAgents: 100, maxDepth: 4 },
+        dream: { enabled: false },
+        distill: { enabled: false },
+        composeWorkflow: { enabled: false },
+    });
+
+    it("goal:evaluate returns the verdict from goalService.evaluate on the success path", async () => {
+        const evaluate = vi.fn(async () => ({
+            verdict: "satisfied" as const,
+            reason: "goal completed",
+            confidence: 0.9,
+        }));
+        const applyVerdict = vi.fn(async () => null);
+        const goalGet = vi.fn(async () => ({
+            id: "g1",
+            workspaceId: "ws_1",
+            condition: "完成测试并通过验证",
+            status: "running" as const,
+            updatedAt: Date.now(),
+        }));
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            goalService: { get: goalGet, evaluate, applyVerdict } as any,
+            getSettings: () => ({ longHorizon: longHorizonWithGoalEnabled() }) as any,
+        });
+
+        const handler = handlers.get("goal:evaluate");
+        const result = await handler?.({}, { workspaceId: "ws_1" });
+
+        // evaluate was called with the active goal's condition + empty transcript
+        expect(evaluate).toHaveBeenCalledWith({
+            workspaceId: "ws_1",
+            agentId: undefined,
+            condition: "完成测试并通过验证",
+            transcript: [],
+        });
+        // applyVerdict was called to persist + broadcast the verdict
+        expect(applyVerdict).toHaveBeenCalledWith("ws_1", expect.objectContaining({ verdict: "satisfied" }), undefined);
+        // The handler returns the verdict shape (not an IpcError)
+        expect(result).toMatchObject({ verdict: "satisfied", reason: "goal completed" });
+    });
+
+    it("goal:evaluate returns ipcErrors.goal.disabled when longHorizon.goal.enabled is false", async () => {
+        const evaluate = vi.fn();
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            goalService: { get: vi.fn(), evaluate, applyVerdict: vi.fn() } as any,
+            getSettings: () => ({
+                longHorizon: { ...longHorizonWithGoalEnabled(), goal: { enabled: false } },
+            }) as any,
+        });
+
+        const handler = handlers.get("goal:evaluate");
+        const result = await handler?.({}, { workspaceId: "ws_1" });
+
+        expect(result).toMatchObject({ code: "ipcErrors.goal.disabled" });
+        // evaluate must not run when the goal feature is disabled
+        expect(evaluate).not.toHaveBeenCalled();
+    });
+
+    it("goal:evaluate returns ipcErrors.goal.invalidInput when Zod validation fails", async () => {
+        const evaluate = vi.fn();
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            goalService: { get: vi.fn(), evaluate, applyVerdict: vi.fn() } as any,
+            getSettings: () => ({ longHorizon: longHorizonWithGoalEnabled() }) as any,
+        });
+
+        const handler = handlers.get("goal:evaluate");
+        // Empty workspaceId fails the z.string().min(1) check
+        const result = await handler?.({}, { workspaceId: "" });
+
+        expect(result).toMatchObject({ code: "ipcErrors.goal.invalidInput" });
+        expect(evaluate).not.toHaveBeenCalled();
+    });
+
+    it("goal:evaluate returns ipcErrors.goal.notFound when the workspace is unknown", async () => {
+        const evaluate = vi.fn();
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            // Unknown workspace id — getWorkspace returns undefined
+            getWorkspace: () => undefined,
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            goalService: { get: vi.fn(), evaluate, applyVerdict: vi.fn() } as any,
+            getSettings: () => ({ longHorizon: longHorizonWithGoalEnabled() }) as any,
+        });
+
+        const handler = handlers.get("goal:evaluate");
+        const result = await handler?.({}, { workspaceId: "missing_ws" });
+
+        expect(result).toMatchObject({
+            code: "ipcErrors.goal.notFound",
+            params: { id: "missing_ws" },
+        });
+        expect(evaluate).not.toHaveBeenCalled();
+    });
 });

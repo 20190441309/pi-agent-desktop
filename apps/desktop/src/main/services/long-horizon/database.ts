@@ -61,22 +61,20 @@ function deriveLayer(scope: MemoryScope, kind: MemoryKind): LongHorizonMemoryLay
     return "project_memory";
 }
 
-function tokenize(text: string): string[] {
-    const tokens: string[] = [];
-    const ascii = text.match(/[a-zA-Z0-9]+/g) || [];
-    tokens.push(...ascii);
-    const cjk = text.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g) || [];
-    for (const segment of cjk) {
-        for (const ch of segment) tokens.push(ch);  // unigram
-        for (let i = 0; i < segment.length - 1; i++) {
-            tokens.push(segment.substring(i, i + 2));  // bigram
-        }
-    }
-    return tokens;
-}
-
-function buildSearchText(text: string, tags?: string[]): string {
-    return tokenize(`${text} ${(tags ?? []).join(" ")}`).join(" ");
+// Build an FTS5 MATCH expression from a free-form user query.
+//
+// Splits the query into Unicode word tokens (contiguous runs of letters,
+// numbers, and underscore), phrase-quotes each token (neutralizing FTS5
+// special characters like `*`, `(`, `)`, `:`, `"`, etc.), and OR-joins them
+// so BM25 can rank by how many/how-rare the matched tokens are.
+//
+// Returns `null` when no usable tokens are extracted. Callers must treat
+// `null` as "empty query, no results" without sending the query to MATCH
+// (an empty MATCH expression is a syntax error).
+function sanitizeFtsQuery(raw: string): string | null {
+    const tokens = raw.match(/[\p{L}\p{N}_]+/gu)?.map((t) => t.trim()).filter(Boolean) ?? [];
+    if (tokens.length === 0) return null;
+    return tokens.map((t) => `"${t.replaceAll('"', "")}"`).join(" OR ");
 }
 
 function rowToMemory(row: Record<string, unknown>): LongHorizonMemoryRecord {
@@ -98,17 +96,40 @@ function rowToMemory(row: Record<string, unknown>): LongHorizonMemoryRecord {
     };
 }
 
+function mapStatusDbToLegacy(status: string): LongHorizonTaskRecord["status"] {
+    switch (status) {
+        case "open": return "pending";
+        case "in_progress": return "running";
+        case "blocked": return "blocked";
+        case "done": return "completed";
+        case "abandoned": return "failed";
+        default: return status as LongHorizonTaskRecord["status"];
+    }
+}
+
+function mapStatusLegacyToDb(status: LongHorizonTaskRecord["status"]): string {
+    switch (status) {
+        case "pending": return "open";
+        case "running": return "in_progress";
+        case "completed": return "done";
+        case "failed": return "abandoned";
+        case "waiting": return "blocked";
+        case "blocked": return "blocked";
+        default: return status;
+    }
+}
+
 function rowToTask(row: Record<string, unknown>): LongHorizonTaskRecord {
     return {
         id: String(row.id),
         workspaceId: String(row.workspace_id),
         agentId: typeof row.agent_id === "string" && row.agent_id ? row.agent_id : undefined,
         source: row.source as "goal" | "plan",
-        text: String(row.text),
-        status: row.status as LongHorizonTaskRecord["status"],
+        text: String(row.summary),
+        status: mapStatusDbToLegacy(String(row.status)),
         ordinal: Number(row.ordinal),
         createdAt: Number(row.created_at),
-        updatedAt: Number(row.updated_at),
+        updatedAt: Number(row.last_event_at),
     };
 }
 
@@ -135,6 +156,15 @@ export class LongHorizonDatabase {
 
     get path(): string {
         return this.dbPath;
+    }
+
+    /**
+     * Returns the underlying DatabaseSync handle. Exposed so sibling services
+     * (e.g. TaskRegistry) can run their own transactions against the same
+     * connection without re-opening the file.
+     */
+    getDb(): DatabaseSync {
+        return this.db;
     }
 
     async migrateLegacyMemoryJsonl(jsonlPath: string): Promise<void> {
@@ -196,7 +226,9 @@ export class LongHorizonDatabase {
             updatedAt: timestamp,
         };
         const tagsJson = record.tags?.length ? JSON.stringify(record.tags) : null;
-        const searchText = buildSearchText(record.text, record.tags);
+        // FTS5 trigram tokenizer handles raw text directly — no pre-tokenization.
+        // Tags remain in `memories.tags_json` for structured access only.
+        const searchText = record.text;
         this.db.prepare(`
             INSERT OR REPLACE INTO memories (
                 id, scope, layer, kind, text, parent_id, workspace_id, session_id, tags_json, created_at, updated_at
@@ -248,11 +280,11 @@ export class LongHorizonDatabase {
 
     async searchMemories(query: string, options: MemorySearchOptions = {}): Promise<LongHorizonMemoryRecord[]> {
         await this.yieldToEventLoop();
-        const terms = tokenize(query);
-        if (terms.length === 0) return [];
-        const memoryHits = this.searchLayered(terms, options, false);
+        const trimmed = query.trim();
+        if (!trimmed) return [];
+        const memoryHits = this.searchLayered(trimmed, options, false);
         if (memoryHits.length > 0 || !options.includeHistoryFallback) return memoryHits;
-        return this.searchLayered(terms, options, true);
+        return this.searchLayered(trimmed, options, true);
     }
 
     async listRecentMemories(options: RecentMemoryOptions = {}): Promise<LongHorizonMemoryRecord[]> {
@@ -287,25 +319,28 @@ export class LongHorizonDatabase {
         const now = Date.now();
         this.db.exec("BEGIN");
         try {
-            this.db.prepare("DELETE FROM tasks WHERE workspace_id = ? AND agent_key = ? AND source = ?")
+            this.db.prepare("DELETE FROM task WHERE workspace_id = ? AND agent_key = ? AND source = ?")
                 .run(workspaceId, agentKey(agentId), source);
             const insert = this.db.prepare(`
-                INSERT INTO tasks (
-                    id, workspace_id, agent_id, agent_key, source, text, status, ordinal, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO task (
+                    id, session_id, parent_task_id, status, summary, owner,
+                    created_at, last_event_at, ended_at, cleanup_after,
+                    source, workspace_id, agent_id, agent_key, ordinal
+                ) VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, NULL, NULL, ?, ?, ?, ?, ?)
             `);
             for (const [index, item] of items.entries()) {
                 insert.run(
                     item.id,
                     workspaceId,
+                    mapStatusLegacyToDb(item.status),
+                    item.text,
+                    now,
+                    now,
+                    source,
+                    workspaceId,
                     agentId ?? null,
                     agentKey(agentId),
-                    source,
-                    item.text,
-                    item.status,
                     index,
-                    now,
-                    now,
                 );
             }
             this.db.exec("COMMIT");
@@ -319,10 +354,10 @@ export class LongHorizonDatabase {
         await this.yieldToEventLoop();
         const rows = this.db.prepare(`
             SELECT *
-            FROM tasks
+            FROM task
             WHERE workspace_id = ?1
               AND (agent_key = ?2 OR (?3 = 1 AND agent_key = '__default__'))
-            ORDER BY CASE source WHEN 'goal' THEN 0 ELSE 1 END, ordinal ASC, updated_at DESC
+            ORDER BY CASE source WHEN 'goal' THEN 0 ELSE 1 END, ordinal ASC, last_event_at DESC
         `).all(
             input.workspaceId,
             agentKey(input.agentId),
@@ -404,7 +439,8 @@ export class LongHorizonDatabase {
                     updatedAt: timestamp,
                 };
                 const tagsJson = record.tags?.length ? JSON.stringify(record.tags) : null;
-                const searchText = buildSearchText(record.text, record.tags);
+                // FTS5 trigram tokenizer handles raw text directly — no pre-tokenization.
+                const searchText = record.text;
                 insertMemoryStmt.run(
                     record.id,
                     record.scope,
@@ -452,28 +488,49 @@ export class LongHorizonDatabase {
         };
     }
 
-    private searchLayered(terms: string[], options: MemorySearchOptions, historyOnly: boolean): LongHorizonMemoryRecord[] {
+    private searchLayered(query: string, options: MemorySearchOptions, historyOnly: boolean): LongHorizonMemoryRecord[] {
         const limit = Math.max(1, Math.min((options.limit ?? 8) * 3, 50));
-        const query = terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(" OR ");
-        const rows = this.db.prepare(`
-            SELECT
-                m.*,
-                (-1 * bm25(memory_fts)) AS score
-            FROM memory_fts
-            JOIN memories m ON m.id = memory_fts.id
-            WHERE memory_fts.search_text MATCH ?1
-              AND (?2 IS NULL OR m.workspace_id = ?2 OR m.workspace_id IS NULL OR m.workspace_id = '')
-              AND (?3 IS NULL OR m.session_id = ?3 OR m.session_id IS NULL OR m.session_id = '')
-              AND (CASE WHEN ?4 = 1 THEN m.kind = 'history' ELSE m.kind <> 'history' END)
-            ORDER BY score DESC, m.created_at DESC
-            LIMIT ?5
-        `).all(
-            query,
-            options.workspaceId ?? null,
-            options.sessionId ?? null,
-            historyOnly ? 1 : 0,
-            limit,
-        ) as Array<Record<string, unknown>>;
+        const ftsQuery = sanitizeFtsQuery(query);
+        if (ftsQuery === null) return [];
+
+        const wsFilter = options.workspaceId ?? null;
+        const sessFilter = options.sessionId ?? null;
+        const historyFlag = historyOnly ? 1 : 0;
+
+        // The trigram tokenizer cannot match queries shorter than 3 characters.
+        // Fall back to a LIKE substring scan on `memories.text` so short CJK
+        // queries (e.g. "数", "数据") still return results. LIKE results carry
+        // a constant score (1.0); the relative score-floor filter below treats
+        // them uniformly.
+        let rows: Array<Record<string, unknown>>;
+        if (query.length < 3) {
+            const escaped = query.replace(/[%_\\]/g, "\\$&");
+            rows = this.db.prepare(`
+                SELECT m.*, 1.0 AS score
+                FROM memories m
+                WHERE m.text LIKE ?1 ESCAPE '\\'
+                  AND (?2 IS NULL OR m.workspace_id = ?2 OR m.workspace_id IS NULL OR m.workspace_id = '')
+                  AND (?3 IS NULL OR m.session_id = ?3 OR m.session_id IS NULL OR m.session_id = '')
+                  AND (CASE WHEN ?4 = 1 THEN m.kind = 'history' ELSE m.kind <> 'history' END)
+                ORDER BY m.created_at DESC
+                LIMIT ?5
+            `).all(`%${escaped}%`, wsFilter, sessFilter, historyFlag, limit) as Array<Record<string, unknown>>;
+        } else {
+            rows = this.db.prepare(`
+                SELECT
+                    m.*,
+                    (-1 * bm25(memory_fts)) AS score
+                FROM memory_fts
+                JOIN memories m ON m.id = memory_fts.id
+                WHERE memory_fts.search_text MATCH ?1
+                  AND (?2 IS NULL OR m.workspace_id = ?2 OR m.workspace_id IS NULL OR m.workspace_id = '')
+                  AND (?3 IS NULL OR m.session_id = ?3 OR m.session_id IS NULL OR m.session_id = '')
+                  AND (CASE WHEN ?4 = 1 THEN m.kind = 'history' ELSE m.kind <> 'history' END)
+                ORDER BY score DESC, m.created_at DESC
+                LIMIT ?5
+            `).all(ftsQuery, wsFilter, sessFilter, historyFlag, limit) as Array<Record<string, unknown>>;
+        }
+
         if (rows.length === 0) return [];
         const mapped = rows.map(rowToMemory);
         const floor = options.searchScoreFloor ?? 0.15;
@@ -509,8 +566,12 @@ export class LongHorizonDatabase {
     }
 
     private migrate(): void {
+        // PRAGMAs that affect connection behavior — must be outside transactions.
+        this.db.exec("PRAGMA journal_mode = WAL;");
+        this.db.exec("PRAGMA foreign_keys = ON;");
+
+        // Base schema (memories / goals) — always created, idempotent.
         this.db.exec(`
-            PRAGMA journal_mode = WAL;
             CREATE TABLE IF NOT EXISTS memories (
                 id TEXT PRIMARY KEY,
                 scope TEXT NOT NULL,
@@ -534,19 +595,6 @@ export class LongHorizonDatabase {
                 workspace_id UNINDEXED,
                 session_id UNINDEXED
             );
-            CREATE TABLE IF NOT EXISTS tasks (
-                id TEXT PRIMARY KEY,
-                workspace_id TEXT NOT NULL,
-                agent_id TEXT,
-                agent_key TEXT NOT NULL,
-                source TEXT NOT NULL,
-                text TEXT NOT NULL,
-                status TEXT NOT NULL,
-                ordinal INTEGER NOT NULL,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_tasks_scope ON tasks(workspace_id, agent_key, source, ordinal);
             CREATE TABLE IF NOT EXISTS goals (
                 workspace_id TEXT NOT NULL,
                 agent_id TEXT,
@@ -560,5 +608,180 @@ export class LongHorizonDatabase {
                 PRIMARY KEY (workspace_id, agent_key)
             );
         `);
+
+        // user_version gates incremental schema migrations.
+        const versionRow = this.db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined;
+        const userVersion = Number(versionRow?.user_version ?? 0);
+
+        // ---- v2: task schema rewrite ----
+        if (userVersion < 2) {
+        this.db.exec("BEGIN;");
+        try {
+            // Stage the new task + task_event tables under temporary names so the
+            // legacy `tasks` table can keep serving reads until cutover. The FK on
+            // task_event targets `task_new` (pre-rename); after `ALTER TABLE ...
+            // RENAME TO task` SQLite updates the reference automatically when
+            // foreign_keys is ON.
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS task_new (
+                    id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    parent_task_id TEXT,
+                    status TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    owner TEXT,
+                    created_at INTEGER NOT NULL,
+                    last_event_at INTEGER NOT NULL,
+                    ended_at INTEGER,
+                    cleanup_after INTEGER,
+                    source TEXT,
+                    workspace_id TEXT,
+                    agent_id TEXT,
+                    agent_key TEXT,
+                    ordinal INTEGER,
+                    PRIMARY KEY (session_id, id)
+                );
+                CREATE TABLE IF NOT EXISTS task_event (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    at INTEGER NOT NULL,
+                    kind TEXT NOT NULL,
+                    summary TEXT,
+                    FOREIGN KEY (session_id, task_id) REFERENCES task_new(session_id, id) ON DELETE CASCADE
+                );
+            `);
+
+            // Migrate legacy `tasks` rows if present. Each (workspace_id, source,
+            // ordinal) becomes ('T' || (ordinal+1)) keyed by session_id=workspace_id.
+            // INSERT OR IGNORE handles cross-source T<n> collisions (e.g. goal-T1 +
+            // plan-T1 in the same workspace) by keeping the first row encountered.
+            const legacy = this.db.prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'"
+            ).get() as { name?: string } | undefined;
+
+            if (legacy?.name === "tasks") {
+                this.db.exec(`
+                    INSERT OR IGNORE INTO task_new (
+                        id, session_id, parent_task_id, status, summary, owner,
+                        created_at, last_event_at, ended_at, cleanup_after,
+                        source, workspace_id, agent_id, agent_key, ordinal
+                    )
+                    SELECT
+                        'T' || (ordinal + 1),
+                        workspace_id,
+                        NULL,
+                        CASE status
+                            WHEN 'pending' THEN 'open'
+                            WHEN 'running' THEN 'in_progress'
+                            WHEN 'completed' THEN 'done'
+                            WHEN 'failed' THEN 'blocked'
+                            WHEN 'blocked' THEN 'blocked'
+                            ELSE 'open'
+                        END,
+                        text,
+                        NULL,
+                        created_at,
+                        updated_at,
+                        CASE
+                            WHEN CASE status
+                                WHEN 'pending' THEN 'open'
+                                WHEN 'running' THEN 'in_progress'
+                                WHEN 'completed' THEN 'done'
+                                WHEN 'failed' THEN 'blocked'
+                                WHEN 'blocked' THEN 'blocked'
+                                ELSE 'open'
+                            END IN ('done', 'abandoned')
+                            THEN updated_at
+                            ELSE NULL
+                        END,
+                        NULL,
+                        source,
+                        workspace_id,
+                        agent_id,
+                        agent_key,
+                        ordinal
+                    FROM tasks
+                    ORDER BY workspace_id, source, ordinal;
+
+                    INSERT INTO task_event (session_id, task_id, at, kind, summary)
+                    SELECT session_id, id, created_at, 'created', summary
+                    FROM task_new
+                    WHERE source IS NOT NULL;
+
+                    DROP TABLE IF EXISTS tasks;
+                `);
+            }
+
+            this.db.exec("ALTER TABLE task_new RENAME TO task;");
+
+            this.db.exec(`
+                CREATE INDEX IF NOT EXISTS task_session_idx ON task(session_id);
+                CREATE INDEX IF NOT EXISTS task_parent_idx ON task(session_id, parent_task_id);
+                CREATE INDEX IF NOT EXISTS task_status_idx ON task(status);
+                CREATE INDEX IF NOT EXISTS task_scope_idx ON task(workspace_id, agent_key, source, ordinal);
+                CREATE INDEX IF NOT EXISTS task_event_task_idx ON task_event(session_id, task_id, at);
+            `);
+
+            // Verify FK integrity post-rename (read-only PRAGMA, safe in-transaction).
+            const fkViolations = this.db.prepare("PRAGMA foreign_key_check;").all();
+            if (fkViolations.length > 0) {
+                throw new Error(
+                    `Foreign key violations detected after task schema migration: ${JSON.stringify(fkViolations)}`
+                );
+            }
+
+            this.db.exec("COMMIT;");
+        } catch (err) {
+            try {
+                this.db.exec("ROLLBACK;");
+            } catch {
+                // Ignore rollback failure — original error is more important.
+            }
+            throw err;
+        }
+
+        // PRAGMA user_version must be issued outside a transaction.
+        this.db.exec("PRAGMA user_version = 2;");
+        }
+
+        // ---- v3: FTS5 trigram tokenizer ----
+        // Replaces the legacy `memory_fts` (default unicode61 + hand-written
+        // pre-tokenized `search_text`) with a trigram-tokenizer table populated
+        // from raw `memories.text`. DROP + CREATE is required because tokenizer
+        // is fixed at table-creation time. Re-indexing all existing rows from
+        // `memories` preserves searchability.
+        if (userVersion < 3) {
+            this.db.exec("BEGIN;");
+            try {
+                this.db.exec("DROP TABLE IF EXISTS memory_fts;");
+                this.db.exec(`
+                    CREATE VIRTUAL TABLE memory_fts USING fts5(
+                        id UNINDEXED,
+                        search_text,
+                        kind UNINDEXED,
+                        layer UNINDEXED,
+                        workspace_id UNINDEXED,
+                        session_id UNINDEXED,
+                        tokenize='trigram'
+                    );
+                `);
+                this.db.exec(`
+                    INSERT INTO memory_fts (id, search_text, kind, layer, workspace_id, session_id)
+                    SELECT id, text, kind, layer, COALESCE(workspace_id, ''), COALESCE(session_id, '')
+                    FROM memories;
+                `);
+                this.db.exec("COMMIT;");
+            } catch (err) {
+                try {
+                    this.db.exec("ROLLBACK;");
+                } catch {
+                    // Ignore rollback failure — original error is more important.
+                }
+                throw err;
+            }
+            // PRAGMA user_version must be issued outside a transaction.
+            this.db.exec("PRAGMA user_version = 3;");
+        }
     }
 }

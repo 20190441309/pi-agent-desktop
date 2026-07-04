@@ -26,6 +26,7 @@ describe("TaskService", () => {
         return new TaskService(memory.getDatabase());
     }
 
+    // DEPRECATED: setSourceTasks will be removed in future spec; use createTask
     it("replaces per-source task snapshots and returns the active running task", async () => {
         const service = createService();
 
@@ -47,6 +48,7 @@ describe("TaskService", () => {
         );
     });
 
+    // DEPRECATED: setSourceTasks will be removed in future spec; use createTask
     it("clears the previous snapshot when a source is updated with an empty list", async () => {
         const service = createService();
         await service.setSourceTasks("ws1", "agent-1", "plan", [

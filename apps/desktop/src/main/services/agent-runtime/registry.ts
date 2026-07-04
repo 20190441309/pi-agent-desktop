@@ -49,6 +49,7 @@ interface AgentRuntimeRegistryDeps {
         workflowEnabled?: boolean;
         composeWorkflowEnabled?: boolean;
     };
+    /** @deprecated setSourceTasks is the legacy per-source snapshot API; migrate callers to TaskService.createTask in a future spec. */
     getTaskService?: () => Pick<TaskService, "setSourceTasks"> | null | undefined;
     getMemoryService?: () => Pick<MemoryService, "put"> | null | undefined;
 }
@@ -445,6 +446,7 @@ export class AgentRuntimeRegistry {
                 { agentId },
                 {
                     onPlanProgress: ({ workspaceId, agentId, items }) => {
+                        // TODO: migrate to TaskService.createTask in future spec
                         this.deps.getTaskService?.()?.setSourceTasks(workspaceId, agentId, "plan", items);
                     },
                 },

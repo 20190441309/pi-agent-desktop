@@ -30,6 +30,7 @@ import { setupWorkspaceIpc } from './ipc/workspace.ipc';
 import { setupProjectShellIpc } from './ipc/project-shell.ipc';
 import { setupWorkbenchIpc } from './ipc/workbench.ipc';
 import { setupPlanIpc } from './ipc/plan.ipc';
+import { setupTaskIpc } from './ipc/task.ipc';
 import { PlanFileService } from './services/plan/plan-file-service';
 import { registerLocalFileProtocol } from './services/local-file-protocol';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
@@ -359,6 +360,42 @@ function setupIPC(updaterService: AppUpdaterService): void {
     legacyStateFile: join(longHorizonRoot, 'goals.json'),
     send: (channel, _workspaceId, payload) => sendToRenderer(channel, payload),
     taskService,
+    // Stop-gate trigger (Phase C Task 3): let GoalService read the per-workspace
+    // long-horizon toggle so onTurnEnd can short-circuit when goal evaluation
+    // is disabled. Task 4 will additionally consult goal.evaluateInterval /
+    // goal.maxReact once that type is extended.
+    getLongHorizonSettings: () => store.get('settings').longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS,
+    // Inject verdict.reason as a synthetic followUp turn on inconclusive
+    // judge results. Wraps the existing Pi AgentSession.sendUserMessage
+    // (already patched in factory.ts to route `deliverAs: "followUp"` through
+    // the Pi queue when the agent is mid-stream).
+    agentSessionLookup: (workspaceId) => {
+      const ws = piRegistry.tryGetWorkspaceSession(workspaceId);
+      if (!ws) return null;
+      return {
+        followUp: async (message: string) => {
+          await ws.session.sendUserMessage(message, { deliverAs: 'followUp' } as never);
+        },
+      };
+    },
+    // Phase C Task 4: resolveActiveModel stub. AgentSession does not currently
+    // expose its active provider/model in a way GoalService can consume without
+    // a deeper refactor. Returning null lets GoalService.evaluate fall through
+    // to the documented "no judge model available" inconclusive verdict, which
+    // is safe (fail-open). Task 6+ will wire the real model resolution when
+    // transcript extraction lands.
+    resolveActiveModel: () => Promise.resolve(null),
+  });
+  // Wire the stop-gate hook: every `turn_end` Pi event forwarded by
+  // event-bridge.ts will now trigger GoalService.onTurnEnd, which runs the
+  // judge and either applies the verdict (satisfied/failed), injects a
+  // followUp (inconclusive, within MAX_GOAL_REACT), or fails open.
+  // Fire-and-forget with a catch so a flaky judge never tears down the
+  // session — GoalService.evaluate already fail-opens to inconclusive.
+  piRegistry.setOnTurnEnd((workspaceId) => {
+    void goalService?.onTurnEnd(workspaceId).catch((err) => {
+      log.warn('[Main] GoalService.onTurnEnd failed:', err);
+    });
   });
   checkpointService ??= new CheckpointService(memoryService);
   setupChatIpc({
@@ -470,6 +507,15 @@ function setupIPC(updaterService: AppUpdaterService): void {
   setupPlanIpc({
     planFileService,
     getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
+  });
+
+  // Task IPC (Phase B Task 4) — task:create/list/get/start/block/unblock/done/abandon/rename
+  // workspace → session 解析: Task 1 迁移策略把 session_id 设为 workspace_id,
+  // 当前每个 workspace 只有一个活跃 session,直接用 workspaceId 作为 session_id.
+  // TODO: 当 multi-session per workspace 上线后,需要真正的 workspace → session 映射.
+  setupTaskIpc({
+    taskRegistry: taskService.getRegistry(),
+    getWorkspaceSessionId: (workspaceId: string) => workspaceId,
   });
 
 }

@@ -63,6 +63,13 @@ import type {
     InstalledPiPackage,
     PiPackageActionResult,
     TerminalInfo,
+    // Phase B Task 4: task IPC surface — TaskRecord 用于 ipcRenderer.invoke 返回类型断言.
+    // 其它 Task input/options 类型通过 PiAPI 接口签名间接使用,无需显式导入.
+    TaskRecord,
+    // Phase C Task 4: goal:evaluate IPC surface — GoalVerdict 用于 invoke 返回类型断言,
+    // GoalEvaluationEvent 用于 onGoalEvaluation subscribe 泛型.
+    GoalVerdict,
+    GoalEvaluationEvent,
 } from "@shared";
 
 // 内部 helper: 把 ipcRenderer.on 的 (_event, payload) 签名转成 (payload)
@@ -180,10 +187,32 @@ const piAPI: PiAPI = {
         ipcRenderer.invoke("pi:memory-search", input) as Promise<LongHorizonMemoryRecord[] | IpcError>,
     memoryListRecent: (input) =>
         ipcRenderer.invoke("pi:memory-list-recent", input) as Promise<LongHorizonMemoryRecord[] | IpcError>,
-    taskList: (input) =>
+    // @deprecated Legacy per-source task list — use taskList(workspaceId, options?) for the new registry-backed API.
+    legacyTaskList: (input) =>
         ipcRenderer.invoke("pi:task-list", input) as Promise<LongHorizonTaskRecord[] | IpcError>,
-    taskGetActive: (input) =>
+    // @deprecated Legacy active lookup — use taskGet(workspaceId, id) for the new registry-backed API.
+    legacyTaskGetActive: (input) =>
         ipcRenderer.invoke("pi:task-get-active", input) as Promise<LongHorizonTaskRecord | null | IpcError>,
+    // Phase B Task 4: task IPC surface — 9 methods backed by TaskRegistry.
+    // 入参形式与 plan* 一致: workspaceId + 业务字段合并为单一 object 传给 handler.
+    taskCreate: (workspaceId, input) =>
+        ipcRenderer.invoke("task:create", { workspaceId, ...input }) as Promise<TaskRecord | IpcError>,
+    taskList: (workspaceId, options) =>
+        ipcRenderer.invoke("task:list", options ? { workspaceId, ...options } : { workspaceId }) as Promise<TaskRecord[] | IpcError>,
+    taskGet: (workspaceId, id) =>
+        ipcRenderer.invoke("task:get", { workspaceId, id }) as Promise<TaskRecord | null | IpcError>,
+    taskStart: (workspaceId, id, options) =>
+        ipcRenderer.invoke("task:start", options ? { workspaceId, id, ...options } : { workspaceId, id }) as Promise<TaskRecord | IpcError>,
+    taskBlock: (workspaceId, id, options) =>
+        ipcRenderer.invoke("task:block", options ? { workspaceId, id, ...options } : { workspaceId, id }) as Promise<TaskRecord | IpcError>,
+    taskUnblock: (workspaceId, id, options) =>
+        ipcRenderer.invoke("task:unblock", options ? { workspaceId, id, ...options } : { workspaceId, id }) as Promise<TaskRecord | IpcError>,
+    taskDone: (workspaceId, id, options) =>
+        ipcRenderer.invoke("task:done", options ? { workspaceId, id, ...options } : { workspaceId, id }) as Promise<TaskRecord | IpcError>,
+    taskAbandon: (workspaceId, id, options) =>
+        ipcRenderer.invoke("task:abandon", options ? { workspaceId, id, ...options } : { workspaceId, id }) as Promise<TaskRecord | IpcError>,
+    taskRename: (workspaceId, id, input) =>
+        ipcRenderer.invoke("task:rename", { workspaceId, id, ...input }) as Promise<TaskRecord | IpcError>,
 
     permissionSetMode: (mode: PermissionMode) => ipcRenderer.invoke("permission:set-mode", mode) as Promise<void>,
     permissionRespond: (
@@ -220,6 +249,10 @@ const piAPI: PiAPI = {
     goalSet: (input: GoalSetInput) => ipcRenderer.invoke("goal:set", input) as Promise<GoalState | IpcError>,
     goalClear: (workspaceId, agentId) => ipcRenderer.invoke("goal:clear", workspaceId, agentId) as Promise<GoalState | IpcError>,
     goalGet: (workspaceId, agentId) => ipcRenderer.invoke("goal:get", workspaceId, agentId) as Promise<GoalState | null | IpcError>,
+    // Phase C Task 4: manually trigger the judge LLM against the active goal.
+    goalEvaluate: (workspaceId, agentId) =>
+        ipcRenderer.invoke("goal:evaluate", { workspaceId, agentId }) as Promise<GoalVerdict | IpcError>,
+    onGoalEvaluation: (cb) => subscribe<GoalEvaluationEvent>("goal:evaluation", cb),
     onGoalChanged: (cb) => subscribe<GoalState>("goal:changed", cb),
 
     // Git

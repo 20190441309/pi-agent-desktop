@@ -42,7 +42,9 @@ beforeEach(() => {
     (globalThis as { window: unknown }).window = window;
     Object.assign(window, {
         piAPI: {
-            taskList,
+            // Phase B Task 4 renamed the legacy surface to legacyTaskList;
+            // the hook calls legacyTaskList, so the mock must match.
+            legacyTaskList: taskList,
             onPlanProgress: vi.fn((cb: (update: PlanProgressUpdate) => void) => {
                 emitPlanProgress = cb;
                 return vi.fn();

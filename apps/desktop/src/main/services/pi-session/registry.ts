@@ -28,6 +28,34 @@ export class WorkspaceRegistry {
     private entries = new Map<string, WorkspaceEntry>();
     // in-flight 创建 promise: 防止并发首次调用创建重复 session (TOCTOU)
     private creating = new Map<string, Promise<WorkspaceEntry>>();
+    /**
+     * Optional stop-gate hook threaded into `createEventBridge` for every
+     * workspace's event subscription. Set externally (e.g. from `main/index.ts`
+     * after `GoalService` is constructed) so the registry can be created early
+     * without depending on the goal service.
+     */
+    private onTurnEndHook?: (workspaceId: string) => void;
+
+    /**
+     * Install a stop-gate hook invoked on every `turn_end` Pi event forwarded
+     * by {@link createEventBridge}. Safe to call at any time — only affects
+     * subscriptions established after the call (existing subscriptions keep
+     * their previously-captured hook reference).
+     */
+    setOnTurnEnd(hook: ((workspaceId: string) => void) | undefined): void {
+        this.onTurnEndHook = hook;
+    }
+
+    /**
+     * Look up an existing workspace session WITHOUT triggering lazy creation.
+     * Returns `null` when no session has been created yet — used by
+     * `GoalService.agentSessionLookup` to deliver judge-driven followUp
+     * messages without forcing a session into existence.
+     */
+    tryGetWorkspaceSession(workspaceId: string): WorkspaceSession | null {
+        const entry = this.entries.get(workspaceId);
+        return entry?.session ?? null;
+    }
 
     async get(
         workspaceId: string,
@@ -87,7 +115,14 @@ export class WorkspaceRegistry {
 
         entry.subscribing = (async () => {
             try {
-                const bridge = createEventBridge(workspaceId, send);
+                // Capture the hook at subscription time so later setOnTurnEnd
+                // calls don't retroactively rebind a live subscription.
+                const onTurnEnd = this.onTurnEndHook;
+                const bridge = createEventBridge(
+                    workspaceId,
+                    send,
+                    onTurnEnd ? { onTurnEnd } : undefined,
+                );
                 const interceptor = createApprovalInterceptor(workspaceId, {
                     abort: () => entry.session.session.abort(),
                     pendingEdits,

@@ -40,7 +40,17 @@ const longHorizonSchema = z
         }),
         history: longHorizonToggleSchema,
         checkpoint: longHorizonToggleSchema,
-        goal: longHorizonToggleSchema,
+        // Phase C Task 4: goal extended to carry judge model overrides.
+        // Mirrors LongHorizonSettings.goal in @shared. Optional fields default
+        // to fallback behavior at runtime (judgeProvider/judgeModel unset →
+        // use workspace active model; evaluateInterval unset → 0 = stop-gate;
+        // maxReact unset → MAX_GOAL_REACT = 12).
+        goal: longHorizonToggleSchema.extend({
+            judgeProvider: z.string().optional(),
+            judgeModel: z.string().optional(),
+            evaluateInterval: z.number().int().min(0).optional(),
+            maxReact: z.number().int().min(1).max(100).optional(),
+        }),
         subagents: longHorizonToggleSchema,
         task: longHorizonToggleSchema,
         actor: longHorizonToggleSchema,
@@ -478,4 +488,62 @@ export const PlanListOptionsSchema = z.object({
 export const PlanFilenameSchema = z.object({
     workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
     filename: z.string().min(1, "filename must be a non-empty string"),
+}).strict();
+
+// ── Task IPC schemas (Phase B Task 4) ─────────────────────
+// 9 个 task IPC handler 入参校验. workspaceId 必填且非空,
+// id 必须匹配 T<n>(.<m>)* 格式, status 必须是 TaskStatus 枚举.
+
+const TaskIdSchema = z.string().regex(/^T\d+(\.\d+)*$/, "Task ID must be Tn or Tn.m...");
+const TaskStatusSchema = z.enum(["open", "in_progress", "blocked", "done", "abandoned"]);
+
+export const TaskCreateSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    summary: z.string().min(1, "summary must be a non-empty string"),
+    parentId: TaskIdSchema.optional(),
+    owner: z.string().optional(),
+}).strict();
+
+export const TaskListSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    status: TaskStatusSchema.optional(),
+    includeTerminal: z.boolean().optional(),
+    includeArchived: z.boolean().optional(),
+}).strict();
+
+export const TaskGetSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    id: TaskIdSchema,
+}).strict();
+
+export const TaskStartSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    id: TaskIdSchema,
+    owner: z.string().optional(),
+    eventSummary: z.string().optional(),
+}).strict();
+
+export const TaskBlockSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    id: TaskIdSchema,
+    eventSummary: z.string().optional(),
+}).strict();
+
+// task:unblock / task:done / task:abandon — 与 task:block 同 shape
+export const TaskUnblockSchema = TaskBlockSchema;
+export const TaskDoneSchema = TaskBlockSchema;
+export const TaskAbandonSchema = TaskBlockSchema;
+
+export const TaskRenameSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    id: TaskIdSchema,
+    summary: z.string().min(1, "summary must be a non-empty string"),
+}).strict();
+
+// ── Goal evaluate schema (Phase C Task 4) ───────────────
+// Validates input for the `goal:evaluate` IPC handler. workspaceId is required
+// and non-empty; agentId is optional (matches goal:get / goal:clear shape).
+export const GoalEvaluateSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    agentId: z.string().optional(),
 }).strict();

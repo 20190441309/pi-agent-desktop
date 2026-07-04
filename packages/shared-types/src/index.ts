@@ -193,7 +193,26 @@ export interface LongHorizonSettings {
     };
     history: LongHorizonToggle;
     checkpoint: LongHorizonToggle;
-    goal: LongHorizonToggle;
+    /**
+     * Goal stop-gate / judge configuration.
+     *
+     * Extended in Phase C Task 4 to carry judge model overrides:
+     *  - `judgeProvider` / `judgeModel`: explicit judge model. When either is
+     *    unset, GoalService falls back to the workspace's active provider/model.
+     *  - `evaluateInterval`: 0 (default) = stop-gate mode (evaluate on every
+     *    `turn_end`); N > 0 = periodic mode, evaluate every Nth turn_end.
+     *  - `maxReact`: cap on judge-driven re-entries per goal. Defaults to
+     *    `MAX_GOAL_REACT` (12) when unset.
+     *
+     * `DEFAULT_LONG_HORIZON_SETTINGS.goal` keeps `{ enabled: true }` so omitted
+     * optional fields fall back to the documented defaults.
+     */
+    goal: LongHorizonToggle & {
+        judgeProvider?: string;
+        judgeModel?: string;
+        evaluateInterval?: number;
+        maxReact?: number;
+    };
     subagents: LongHorizonToggle;
     task: LongHorizonToggle;
     actor: LongHorizonToggle;
@@ -347,6 +366,44 @@ export interface GoalJudgeResult {
     ok: boolean;
     impossible?: boolean;
     reason?: string;
+}
+
+/**
+ * Structured verdict returned by `GoalService.evaluate()` after the judge LLM
+ * decides whether the active goal is satisfied. Mirrors the verdict shape used
+ * internally by GoalService — Task 4 migrated this from a local type in
+ * goal-service.ts to the shared-types authority source.
+ *
+ *  - `verdict: "satisfied"` ⟺ judge returned `ok === true`
+ *  - `verdict: "failed"` ⟺ judge returned `ok === false && impossible === true`
+ *  - `verdict: "inconclusive"` ⟺ judge returned `ok === false && impossible !== true`
+ */
+export type GoalVerdict = {
+    verdict: "satisfied" | "failed" | "inconclusive";
+    reason: string;
+    confidence?: number;
+    raw?: unknown;
+};
+
+/**
+ * Payload of the `goal:evaluation` IPC event. Broadcast to the renderer
+ * whenever `GoalService.evaluate()` completes (including fail-open inconclusive
+ * results) so the UI can render a per-turn judge marker.
+ */
+export interface GoalEvaluationEvent {
+    workspaceId: string;
+    agentId?: string;
+    verdict: GoalVerdict["verdict"];
+    reason: string;
+    attempt: number;
+    judgedMessageId?: string;
+    error?: boolean;
+}
+
+/** Input shape for the `goal:evaluate` IPC handler. */
+export interface GoalEvaluateInput {
+    workspaceId: string;
+    agentId?: string;
 }
 
 export interface GoalSetInput {
@@ -782,6 +839,62 @@ export interface PlanListOptions {
     includeCancelled?: boolean;
 }
 
+// ── Task IPC surface (Phase B Task 4) ───────────────────────────
+// 主进程 TaskRegistry 落盘 task / task_event 表 (SQLite), IPC 层用这些
+// 类型与渲染层交换数据. shared-types 是权威源,主进程通过 @shared 引入.
+// 字段名 camelCase, 与 task-registry.ts 的 TaskRecord 结构一致.
+// 注意: input/options 类型不含 sessionId/id — 这些由 IPC handler 从
+// workspaceId 参数解析后注入 registry 调用.
+
+export type TaskStatus = "open" | "in_progress" | "blocked" | "done" | "abandoned";
+export type TaskEventKind =
+    | "created"
+    | "started"
+    | "unstarted"
+    | "blocked"
+    | "unblocked"
+    | "done"
+    | "abandoned"
+    | "renamed";
+
+export interface TaskRecord {
+    id: string;
+    sessionId: string;
+    parentTaskId?: string;
+    status: TaskStatus;
+    summary: string;
+    owner?: string;
+    createdAt: number;
+    lastEventAt: number;
+    endedAt?: number;
+    cleanupAfter?: number;
+}
+
+export interface TaskCreateInput {
+    summary: string;
+    parentId?: string;
+    owner?: string;
+}
+
+export interface TaskListOptions {
+    status?: TaskStatus;
+    includeTerminal?: boolean;
+    includeArchived?: boolean;
+}
+
+export interface TaskStartOptions {
+    owner?: string;
+    eventSummary?: string;
+}
+
+export interface TaskBlockOptions {
+    eventSummary?: string;
+}
+
+export interface TaskRenameInput {
+    summary: string;
+}
+
 // ── Pi Driver ─────────────────────────────────────────────────────
 
 export interface PiStatus {
@@ -1142,8 +1255,22 @@ export interface PiAPI {
     runtimeFeatureState(): Promise<MiMoCodeRuntimeFeatureState | IpcError>;
     memorySearch(input: LongHorizonMemorySearchInput): Promise<LongHorizonMemoryRecord[] | IpcError>;
     memoryListRecent(input: LongHorizonMemoryRecentInput): Promise<LongHorizonMemoryRecord[] | IpcError>;
-    taskList(input: LongHorizonTaskListInput): Promise<LongHorizonTaskRecord[] | IpcError>;
-    taskGetActive(input: LongHorizonTaskListInput): Promise<LongHorizonTaskRecord | null | IpcError>;
+    /** @deprecated Legacy per-source snapshot list — use taskList(workspaceId, options?) for the new registry-backed API. */
+    legacyTaskList(input: LongHorizonTaskListInput): Promise<LongHorizonTaskRecord[] | IpcError>;
+    /** @deprecated Legacy active lookup — use taskGet(workspaceId, id) for the new registry-backed API. */
+    legacyTaskGetActive(input: LongHorizonTaskListInput): Promise<LongHorizonTaskRecord | null | IpcError>;
+    // Phase B Task 4: task IPC surface — 9 methods backed by TaskRegistry.
+    // workspaceId is resolved to sessionId in the IPC handler (Task 1 migration:
+    // session_id = workspace_id).
+    taskCreate(workspaceId: string, input: TaskCreateInput): Promise<TaskRecord | IpcError>;
+    taskList(workspaceId: string, options?: TaskListOptions): Promise<TaskRecord[] | IpcError>;
+    taskGet(workspaceId: string, id: string): Promise<TaskRecord | null | IpcError>;
+    taskStart(workspaceId: string, id: string, options?: TaskStartOptions): Promise<TaskRecord | IpcError>;
+    taskBlock(workspaceId: string, id: string, options?: TaskBlockOptions): Promise<TaskRecord | IpcError>;
+    taskUnblock(workspaceId: string, id: string, options?: TaskBlockOptions): Promise<TaskRecord | IpcError>;
+    taskDone(workspaceId: string, id: string, options?: TaskBlockOptions): Promise<TaskRecord | IpcError>;
+    taskAbandon(workspaceId: string, id: string, options?: TaskBlockOptions): Promise<TaskRecord | IpcError>;
+    taskRename(workspaceId: string, id: string, input: TaskRenameInput): Promise<TaskRecord | IpcError>;
 
     // Extension UI bridge
     permissionSetMode(mode: PermissionMode): Promise<void>;
@@ -1167,6 +1294,13 @@ export interface PiAPI {
     goalSet(input: GoalSetInput): Promise<GoalState | IpcError>;
     goalClear(workspaceId: string, agentId?: string): Promise<GoalState | IpcError>;
     goalGet(workspaceId: string, agentId?: string): Promise<GoalState | null | IpcError>;
+    // Phase C Task 4: manually trigger the judge LLM against the active goal.
+    // Returns the GoalVerdict (or IpcError when goal/workspace missing / disabled).
+    // The verdict is also broadcast via onGoalEvaluation so the UI can render a
+    // per-turn judge marker even for manual invocations.
+    goalEvaluate(workspaceId: string, agentId?: string): Promise<GoalVerdict | IpcError>;
+    /** Subscribe to goal:evaluation events (judge verdict broadcast). Returns an unsubscribe. */
+    onGoalEvaluation(cb: (event: GoalEvaluationEvent) => void): Unsubscribe;
     onGoalChanged(cb: (goal: GoalState) => void): Unsubscribe;
 
     // Git

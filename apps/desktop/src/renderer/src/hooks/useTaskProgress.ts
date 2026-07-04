@@ -37,12 +37,12 @@ export function useTaskProgress(agentId?: string | null): {
     const refreshRevisionRef = useRef(0);
 
     const refreshTasks = useCallback(async () => {
-        if (!workspaceId || !window.piAPI?.taskList) {
+        if (!workspaceId || !window.piAPI?.legacyTaskList) {
             setTasks([]);
             return;
         }
         const revision = ++refreshRevisionRef.current;
-        const result = await window.piAPI.taskList({ workspaceId, agentId: agentId ?? undefined });
+        const result = await window.piAPI.legacyTaskList({ workspaceId, agentId: agentId ?? undefined });
         if (revision !== refreshRevisionRef.current) return;
         if (isIpcError(result)) {
             setTasks([]);
