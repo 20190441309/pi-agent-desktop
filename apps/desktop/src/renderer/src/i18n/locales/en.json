@@ -298,7 +298,9 @@
     "completedLabel": "Done {{completed}}/{{total}}",
     "terminalExecuted": "Plan executed successfully",
     "terminalCancelled": "Plan cancelled",
-    "terminalFailed": "Plan execution failed"
+    "terminalFailed": "Plan execution failed",
+    "writeFailed": "Write failed",
+    "retry": "Retry"
   },
   "chatInput": {
     "placeholder": {

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { GoalState, PlanCard, PlanDecisionRequest, PlanProgressItem, PlanProgressUpdate } from "@shared";
+import { isIpcError } from "@shared";
 import { createSubscriptionManager } from "../utils/subscription-manager";
 
 export type PlanFlowPhase =
@@ -23,6 +24,7 @@ export interface ActivePlanExecution {
 
 interface PlanState {
   enabled: boolean;
+  workspaceId: string | null;
   activeCard: PlanCard | null;
   decisionRequest: PlanDecisionRequest | null;
   pendingPlanClarification: { workspaceId: string; originalContent: string } | null;
@@ -46,6 +48,7 @@ interface PlanState {
   markPaused: () => void;
   markCompleted: () => void;
   markFailed: () => void;
+  cancel: () => void;
   clearPlanFlow: () => void;
   setProgress: (update: PlanProgressUpdate) => void;
   setGoal: (goal: GoalState | null) => void;
@@ -107,8 +110,29 @@ function shouldPreservePlanExecution(
   );
 }
 
+/**
+ * 推导 plan 文件 slug: 仅保留 [a-z0-9-] (中文降级为 -), 最长 50 字符.
+ * 真正的 sanitize 由 main 进程的 PlanFileService.sanitizeSlug 兜底; 这里只是 best-effort.
+ */
+function deriveSlug(title: string): string {
+  const sanitized = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 50);
+  return sanitized || "plan";
+}
+
+/** 把 unknown (Error / string / IpcError reject 等) 转成可展示的 lastError 文本. */
+function describeError(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message || fallback;
+  if (typeof err === "string") return err || fallback;
+  return fallback;
+}
+
 export const usePlanStore = create<PlanState>((set, get) => ({
   enabled: false,
+  workspaceId: null,
   activeCard: null,
   decisionRequest: null,
   pendingPlanClarification: null,
@@ -122,7 +146,12 @@ export const usePlanStore = create<PlanState>((set, get) => ({
 
   setEnabled: (workspaceId, enabled) => {
     const previousEnabled = get().enabled;
-    set({ enabled, lastError: null, ...(enabled ? {} : { pendingPlanClarification: null }) });
+    set({
+      enabled,
+      lastError: null,
+      ...(workspaceId ? { workspaceId } : {}),
+      ...(enabled ? {} : { pendingPlanClarification: null }),
+    });
     if (workspaceId && window.piAPI?.planSetEnabled) {
       const result = window.piAPI.planSetEnabled(workspaceId, enabled);
       if (result && typeof result.then === "function") {
@@ -142,6 +171,21 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       ...card,
       content: stripInlineThinking(card.content),
     };
+
+    const previousSnapshot = {
+      activeCard: get().activeCard,
+      steps: get().steps,
+      status: get().status,
+      activeExecution: get().activeExecution,
+      decisionRequest: get().decisionRequest,
+    };
+
+    const preserveExecution = shouldPreservePlanExecution(get().activeExecution, cleanCard);
+    const resolvedFilename = preserveExecution
+      ? (cleanCard.filename ?? get().activeExecution?.filename ?? undefined)
+      : cleanCard.filename;
+    const existingFilename = resolvedFilename?.trim() || undefined;
+
     set((state) => ({
       activeCard: cleanCard,
       steps: stepsFromMarkdown(cleanCard.content),
@@ -169,6 +213,40 @@ export const usePlanStore = create<PlanState>((set, get) => ({
               createdAt: Date.now(),
             },
     }));
+
+    // IPC persistence — see SubTasks 5.1 / 5.5
+    const wsId = get().workspaceId;
+    if (!wsId) return;
+    if (existingFilename) {
+      if (!window.piAPI?.planUpdate) return;
+      window.piAPI.planUpdate(wsId, existingFilename, { content: cleanCard.content })
+        .then((res) => {
+          if (isIpcError(res)) {
+            set({ ...previousSnapshot, lastError: res.fallback });
+          }
+        })
+        .catch((err) => {
+          set({ ...previousSnapshot, lastError: describeError(err, "Plan 文件更新失败") });
+        });
+    } else {
+      if (!window.piAPI?.planCreate) return;
+      const slug = deriveSlug(cleanCard.title);
+      window.piAPI.planCreate(wsId, { slug, title: cleanCard.title, content: cleanCard.content })
+        .then((res) => {
+          if (isIpcError(res)) {
+            set({ ...previousSnapshot, lastError: res.fallback });
+            return;
+          }
+          set((s) => ({
+            activeExecution: s.activeExecution
+              ? { ...s.activeExecution, filename: res.filename }
+              : s.activeExecution,
+          }));
+        })
+        .catch((err) => {
+          set({ ...previousSnapshot, lastError: describeError(err, "Plan 文件创建失败") });
+        });
+    }
   },
 
   setDecisionRequest: (request) => set({ decisionRequest: request }),
@@ -212,17 +290,38 @@ export const usePlanStore = create<PlanState>((set, get) => ({
         }
   )),
 
-  startExecution: (input) => set({
-    activeExecution: {
-      activePlanId: input.activePlanId,
-      title: input.title,
-      filename: input.filename,
-      sourceMessageId: input.sourceMessageId,
-      executionMessageId: input.executionMessageId,
-      phase: "executing",
-    },
-    status: "executing",
-  }),
+  startExecution: (input) => {
+    const previousSnapshot = {
+      activeExecution: get().activeExecution,
+      status: get().status,
+    };
+    const filename = input.filename?.trim() || previousSnapshot.activeExecution?.filename?.trim() || undefined;
+
+    set({
+      activeExecution: {
+        activePlanId: input.activePlanId,
+        title: input.title,
+        filename: input.filename,
+        sourceMessageId: input.sourceMessageId,
+        executionMessageId: input.executionMessageId,
+        phase: "executing",
+      },
+      status: "executing",
+    });
+
+    // IPC persistence — SubTask 5.2
+    const wsId = get().workspaceId;
+    if (!wsId || !filename || !window.piAPI?.planUpdate) return;
+    window.piAPI.planUpdate(wsId, filename, { status: "executing" })
+      .then((res) => {
+        if (isIpcError(res)) {
+          set({ ...previousSnapshot, lastError: res.fallback });
+        }
+      })
+      .catch((err) => {
+        set({ ...previousSnapshot, lastError: describeError(err, "Plan 状态更新失败") });
+      });
+  },
 
   setExecutionMessageId: (messageId) => set((state) => ({
     activeExecution: state.activeExecution
@@ -244,17 +343,39 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     status: "waiting_decision",
   })),
 
-  markCompleted: () => set((state) => ({
-    activeExecution: state.activeExecution
-      ? { ...state.activeExecution, phase: "completed" }
-      : null,
-    status: "completed",
-    steps: state.steps.map((step) => (
-      step.status === "failed"
-        ? step
-        : { ...step, status: "completed" }
-    )),
-  })),
+  markCompleted: () => {
+    const previousSnapshot = {
+      activeExecution: get().activeExecution,
+      status: get().status,
+      steps: get().steps,
+    };
+    const filename = previousSnapshot.activeExecution?.filename?.trim() || undefined;
+
+    set((state) => ({
+      activeExecution: state.activeExecution
+        ? { ...state.activeExecution, phase: "completed" }
+        : null,
+      status: "completed",
+      steps: state.steps.map((step) => (
+        step.status === "failed"
+          ? step
+          : { ...step, status: "completed" }
+      )),
+    }));
+
+    // IPC persistence — SubTask 5.3 (skip when filename missing, still update local state)
+    const wsId = get().workspaceId;
+    if (!wsId || !filename || !window.piAPI?.planComplete) return;
+    window.piAPI.planComplete(wsId, filename)
+      .then((res) => {
+        if (isIpcError(res)) {
+          set({ ...previousSnapshot, lastError: res.fallback });
+        }
+      })
+      .catch((err) => {
+        set({ ...previousSnapshot, lastError: describeError(err, "Plan 完成失败") });
+      });
+  },
 
   markFailed: () => set((state) => ({
     activeExecution: state.activeExecution
@@ -262,6 +383,41 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       : null,
     status: "idle",
   })),
+
+  cancel: () => {
+    const previousSnapshot = {
+      activeCard: get().activeCard,
+      decisionRequest: get().decisionRequest,
+      pendingPlanClarification: get().pendingPlanClarification,
+      activeExecution: get().activeExecution,
+      steps: get().steps,
+      status: get().status,
+    };
+    const filename = previousSnapshot.activeExecution?.filename?.trim() || undefined;
+
+    // Optimistically clear local state (mirrors clearPlanFlow).
+    set({
+      activeCard: null,
+      decisionRequest: null,
+      pendingPlanClarification: null,
+      activeExecution: null,
+      steps: [],
+      status: "idle",
+    });
+
+    // IPC persistence — SubTask 5.4 (skip when filename missing)
+    const wsId = get().workspaceId;
+    if (!wsId || !filename || !window.piAPI?.planDelete) return;
+    window.piAPI.planDelete(wsId, filename)
+      .then((res) => {
+        if (isIpcError(res)) {
+          set({ ...previousSnapshot, lastError: res.fallback });
+        }
+      })
+      .catch((err) => {
+        set({ ...previousSnapshot, lastError: describeError(err, "Plan 取消失败") });
+      });
+  },
 
   clearPlanFlow: () => set({
     activeCard: null,

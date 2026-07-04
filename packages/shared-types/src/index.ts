@@ -748,6 +748,40 @@ export interface PlanDecisionRequest {
     createdAt?: number;
 }
 
+// ── Plan file persistence (Task 4: plan IPC surface) ────────────────
+// 主进程 PlanFileService 落盘 .pi/plans/*.md,IPC 层用这些类型与渲染层
+// 交换数据. shared-types 是权威源,主进程通过 @shared 引入.
+
+export type PlanStatus = "draft" | "executing" | "completed" | "cancelled";
+
+export interface PlanRecord {
+    id: string;
+    filename: string;
+    path: string;
+    title: string;
+    status: PlanStatus;
+    createdAt: number;
+    updatedAt: number;
+    content: string;
+}
+
+export interface PlanCreateInput {
+    slug: string;
+    title: string;
+    content: string;
+}
+
+export interface PlanUpdateInput {
+    content?: string;
+    status?: PlanStatus;
+    title?: string;
+}
+
+export interface PlanListOptions {
+    includeCompleted?: boolean;
+    includeCancelled?: boolean;
+}
+
 // ── Pi Driver ─────────────────────────────────────────────────────
 
 export interface PiStatus {
@@ -1119,6 +1153,13 @@ export interface PiAPI {
 
     planSetEnabled(workspaceId: string, enabled: boolean): Promise<void>;
     planMaterialize(input: InlinePlanMaterializeInput): Promise<InlinePlanMaterializeResult | IpcError>;
+    // Task 4: plan file CRUD IPC surface (delegated to PlanFileService).
+    planCreate(workspaceId: string, input: PlanCreateInput): Promise<PlanRecord | IpcError>;
+    planList(workspaceId: string, options?: PlanListOptions): Promise<PlanRecord[] | IpcError>;
+    planGet(workspaceId: string, filename: string): Promise<PlanRecord | null | IpcError>;
+    planUpdate(workspaceId: string, filename: string, input: PlanUpdateInput): Promise<PlanRecord | IpcError>;
+    planComplete(workspaceId: string, filename: string): Promise<PlanRecord | IpcError>;
+    planDelete(workspaceId: string, filename: string): Promise<void | IpcError>;
     planRespond(requestId: string, decision: "execute" | "refine" | "cancel", text?: string): void;
     onPlanCard(cb: (card: PlanCard) => void): Unsubscribe;
     onPlanDecisionRequest(cb: (req: PlanDecisionRequest) => void): Unsubscribe;

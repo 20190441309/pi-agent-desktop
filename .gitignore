@@ -123,6 +123,9 @@ opencode.jsonc
 .claude/
 .trae/
 
+# External reference repos cloned for audit/comparison (not project source)
+external/
+
 # Dev scratch screenshots
 apps/desktop/test-sidebar-*.png
 apps/desktop/test-sidebar-*.mjs

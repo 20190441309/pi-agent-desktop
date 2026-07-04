@@ -5,6 +5,7 @@ import { PendingEdits } from "../../approval/pending-edits";
 import { createExtensionUiBridge } from "../../extensions/extension-ui-bridge";
 import { createApprovalInterceptor } from "../../approval/interceptor";
 import { createWorkspaceSession } from "../../pi-session/factory";
+import { PLAN_DIRECTIVE } from "../../agent-modes/plan-prompt";
 
 const sessions: Array<{
     prompt: ReturnType<typeof vi.fn>;
@@ -254,7 +255,12 @@ describe("AgentRuntimeRegistry", () => {
         await registry.prompt({ agentId: agent.id, message: "改输入区", mode: "plan" });
 
         expect(sessions[0].prompt).toHaveBeenNthCalledWith(1, "/plan");
-        expect(sessions[0].prompt).toHaveBeenNthCalledWith(2, "改输入区", undefined);
+        // Task 2 (CRIT-2): plan mode + enabled prepends PLAN_DIRECTIVE to user content.
+        // The runtime constructs `${PLAN_DIRECTIVE}\n\n<user text>` via buildAgentModePrompt.
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(2, `${PLAN_DIRECTIVE}\n\n改输入区`, undefined);
+        const outbound = sessions[0].prompt.mock.calls[1][0] as string;
+        expect(outbound).toContain(PLAN_DIRECTIVE);
+        expect(outbound.endsWith("改输入区")).toBe(true);
     });
 
     it("enters real compose mode before sending the raw user request", async () => {
@@ -309,8 +315,13 @@ describe("AgentRuntimeRegistry", () => {
         });
 
         expect(sessions[0].prompt).toHaveBeenNthCalledWith(1, "/plan");
-        expect(sessions[0].prompt).toHaveBeenNthCalledWith(2, "先生成计划", undefined);
+        // Task 2 (CRIT-2): first prompt is in plan mode → directive prepended.
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(2, `${PLAN_DIRECTIVE}\n\n先生成计划`, undefined);
+        const planOutbound = sessions[0].prompt.mock.calls[1][0] as string;
+        expect(planOutbound).toContain(PLAN_DIRECTIVE);
+        expect(planOutbound.endsWith("先生成计划")).toBe(true);
         expect(sessions[0].prompt).toHaveBeenNthCalledWith(3, "/plan", { streamingBehavior: "followUp" });
+        // Second prompt is in build mode → passes through unchanged.
         expect(sessions[0].prompt).toHaveBeenNthCalledWith(4, "现在执行计划", { streamingBehavior: "followUp" });
     });
 

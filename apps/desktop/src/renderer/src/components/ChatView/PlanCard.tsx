@@ -32,11 +32,15 @@ export interface PlanCardProps {
   filename?: string;
   status: PlanCardStatus;
   steps?: PlanStepItem[];
+  /** Plan-store 的 lastError; 仅当与当前 plan 关联时透传. */
+  lastError?: string | null;
   onExecute?: () => void;
   onRefine?: (text: string) => void;
   onCancel?: () => void;
   onPause?: () => void;
   onResume?: () => void;
+  /** 重试按钮回调; 通常调用 plan-store.clearError() 让用户重发. */
+  onRetry?: () => void;
 }
 
 function statusBadgeClass(status: PlanCardStatus): string {
@@ -131,11 +135,13 @@ export function PlanCard({
   filename,
   status,
   steps,
+  lastError,
   onExecute,
   onRefine,
   onCancel,
   onPause,
   onResume,
+  onRetry,
 }: PlanCardProps): React.JSX.Element {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -144,6 +150,10 @@ export function PlanCard({
 
   const options = useMemo(() => extractChoiceOptions(content), [content]);
   const hasOptions = options && options.length >= 2;
+
+  // 写失败: lastError 非空且 filename 仍为空 (说明 planCreate 失败, 还未持久化).
+  // 此时禁用 Execute, 显示重试按钮.
+  const isWriteFailure = Boolean(lastError) && !filename;
 
   const statusLabel = useMemo(() => {
     switch (status) {
@@ -221,13 +231,14 @@ export function PlanCard({
           <button
             type="button"
             onClick={openPlanFile}
-            className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-0.5 text-[10px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] transition-colors"
+            data-testid="plan-filename"
+            className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-0.5 text-[10px] font-mono text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] transition-colors"
             title={filename}
           >
             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <span className="truncate max-w-[120px]">{filename.replace(/^.*[\\/]/, "")}</span>
+            <span className="truncate max-w-[160px]">{filename.replace(/^.*[\\/]/, "")}</span>
           </button>
         )}
       </div>
@@ -349,8 +360,9 @@ export function PlanCard({
               <button
                 type="button"
                 onClick={handleExecute}
+                data-testid="plan-execute-button"
                 className="h-8 rounded-full bg-[#242423] px-3 text-xs font-medium text-white hover:bg-[#111] disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={Boolean(hasOptions && !selectedOption)}
+                disabled={isWriteFailure || Boolean(hasOptions && !selectedOption)}
               >
                 {hasOptions ? (selectedOption ? t("planCard.confirmAndExecute") : t("planCard.selectOptionPrompt")) : t("planCard.executePlan")}
               </button>
@@ -371,6 +383,25 @@ export function PlanCard({
               </button>
               {hasOptions && !selectedOption && status !== "refining" && (
                 <span className="text-xs text-[var(--mm-text-tertiary)]">{t("planCard.selectFirstHint")}</span>
+              )}
+              {isWriteFailure && (
+                <span
+                  data-testid="plan-write-error"
+                  className="inline-flex items-center gap-2 rounded-full border border-[#fecaca] bg-[#fee2e2] px-2 py-0.5 text-[11px] text-[var(--color-error)]"
+                  title={lastError ?? undefined}
+                >
+                  <span>{t("planCard.writeFailed")}</span>
+                  {onRetry && (
+                    <button
+                      type="button"
+                      data-testid="plan-retry-button"
+                      onClick={onRetry}
+                      className="font-medium underline underline-offset-2 hover:opacity-80"
+                    >
+                      {t("planCard.retry")}
+                    </button>
+                  )}
+                </span>
               )}
             </div>
           </div>

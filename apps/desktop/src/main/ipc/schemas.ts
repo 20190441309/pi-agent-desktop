@@ -448,3 +448,34 @@ export const workbenchSetActiveFileSchema = z.tuple([
     z.string().min(1, "workspaceId must be a non-empty string"),
     z.union([z.string().min(1), z.null()]),
 ]);
+
+// ── Plan file CRUD schemas (Task 4.2) ──────────────────────
+// 6 个 plan IPC handler 入参校验. workspaceId 必填且非空, slug / filename 非空,
+// status 必须是 PlanStatus 枚举. content / title 允许空串 (UI 兜底为默认文案).
+
+export const PlanCreateSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    slug: z.string().min(1, "slug must be a non-empty string"),
+    title: z.string(),
+    content: z.string(),
+}).strict();
+
+export const PlanUpdateSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    filename: z.string().min(1, "filename must be a non-empty string"),
+    content: z.string().optional(),
+    status: z.enum(["draft", "executing", "completed", "cancelled"]).optional(),
+    title: z.string().optional(),
+}).strict();
+
+export const PlanListOptionsSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    includeCompleted: z.boolean().optional(),
+    includeCancelled: z.boolean().optional(),
+}).strict();
+
+// plan:get / plan:complete / plan:delete — 仅 (workspaceId, filename)
+export const PlanFilenameSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    filename: z.string().min(1, "filename must be a non-empty string"),
+}).strict();

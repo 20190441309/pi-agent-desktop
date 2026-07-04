@@ -51,6 +51,7 @@ vi.mock("fs", async (importOriginal) => {
 });
 
 import { setupChatIpc } from "../chat.ipc";
+import { PLAN_DIRECTIVE } from "../../services/agent-modes/plan-prompt";
 
 describe("setupChatIpc", () => {
     beforeEach(() => {
@@ -90,7 +91,7 @@ describe("setupChatIpc", () => {
         expect(webContentsSend).toHaveBeenCalledWith("pi:event", event);
     });
 
-    it("forwards raw plan-mode prompts because the runtime extension now owns plan behavior", async () => {
+    it("prepends the plan-mode directive when plan mode is enabled (CRIT-2)", async () => {
         const prompt = vi.fn(async () => undefined);
         const registry = {
             get: vi.fn(async () => ({
@@ -111,7 +112,43 @@ describe("setupChatIpc", () => {
 
         expect(prompt).toHaveBeenCalledTimes(1);
         const outbound = prompt.mock.calls[0]?.[0] as string;
+        // Default long-horizon settings have planMode.enabled = true, so the
+        // directive must be prepended (followed by a blank line) before the
+        // user's content. This is the CRIT-2 fix: previously plan mode passed
+        // the prompt through unchanged, leaving the agent without constraints.
+        expect(outbound).toBe(`${PLAN_DIRECTIVE}\n\n改输入区`);
+        expect(outbound).toContain(PLAN_DIRECTIVE);
+        expect(outbound.endsWith("改输入区")).toBe(true);
+    });
+
+    it("passes plan-mode prompts through unchanged when plan mode is disabled (CRIT-2)", async () => {
+        const prompt = vi.fn(async () => undefined);
+        const registry = {
+            get: vi.fn(async () => ({
+                session: { prompt, abort: vi.fn() },
+            })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            // Per-workspace override flips plan mode OFF even though the
+            // global default would be ON.
+            getWorkspacePlanMode: () => false,
+        });
+
+        const handler = handlers.get("pi:send");
+        await handler?.({}, "ws_1", "改输入区", { mode: "plan" });
+
+        expect(prompt).toHaveBeenCalledTimes(1);
+        const outbound = prompt.mock.calls[0]?.[0] as string;
+        // When plan mode is disabled, buildAgentModePrompt returns the trimmed
+        // content untouched — no directive, no transformation.
         expect(outbound).toBe("改输入区");
+        expect(outbound).not.toContain(PLAN_DIRECTIVE);
     });
 
     it("rebuilds long-horizon context before storing the current prompt in memory", async () => {
@@ -657,6 +694,194 @@ describe("setupChatIpc", () => {
 
         expect(result).toBeUndefined();
         expect(refreshWorkspace).toHaveBeenCalledWith("ws_1");
+    });
+
+    it("persists planModeEnabled=true when plan:set-enabled is invoked with true (CRIT-1)", async () => {
+        const refreshWorkspace = vi.fn(async () => undefined);
+        const setWorkspacePlanMode = vi.fn(async (_id: string, _enabled: boolean) => undefined);
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            agentRegistry: { refreshWorkspace } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            setWorkspacePlanMode,
+        });
+
+        const handler = handlers.get("plan:set-enabled");
+        const result = await handler?.({}, "ws_1", true);
+
+        expect(result).toBeUndefined();
+        expect(setWorkspacePlanMode).toHaveBeenCalledWith("ws_1", true);
+        expect(refreshWorkspace).toHaveBeenCalledWith("ws_1");
+    });
+
+    it("persists planModeEnabled=false when plan:set-enabled is invoked with false (CRIT-1)", async () => {
+        const refreshWorkspace = vi.fn(async () => undefined);
+        const setWorkspacePlanMode = vi.fn(async (_id: string, _enabled: boolean) => undefined);
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            agentRegistry: { refreshWorkspace } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            setWorkspacePlanMode,
+        });
+
+        const handler = handlers.get("plan:set-enabled");
+        const result = await handler?.({}, "ws_1", false);
+
+        expect(result).toBeUndefined();
+        expect(setWorkspacePlanMode).toHaveBeenCalledWith("ws_1", false);
+        expect(refreshWorkspace).toHaveBeenCalledWith("ws_1");
+    });
+
+    it("round-trips planModeEnabled through setWorkspacePlanMode → getWorkspacePlanMode (CRIT-1)", async () => {
+        // In-memory mock store mirroring the production electron-store persistence pattern
+        const store = new Map<string, boolean>();
+        const setWorkspacePlanMode = vi.fn(async (id: string, enabled: boolean) => {
+            store.set(id, enabled);
+        });
+        const getWorkspacePlanMode = vi.fn((id: string) => store.get(id));
+
+        const refreshWorkspace = vi.fn(async () => undefined);
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            agentRegistry: { refreshWorkspace } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            setWorkspacePlanMode,
+            getWorkspacePlanMode,
+        });
+
+        const handler = handlers.get("plan:set-enabled");
+
+        // Before toggle: no per-workspace override → falls back to global (undefined)
+        expect(getWorkspacePlanMode("ws_1")).toBeUndefined();
+
+        // Toggle ON
+        await handler?.({}, "ws_1", true);
+        expect(store.get("ws_1")).toBe(true);
+        expect(getWorkspacePlanMode("ws_1")).toBe(true);
+
+        // Toggle OFF
+        await handler?.({}, "ws_1", false);
+        expect(store.get("ws_1")).toBe(false);
+        expect(getWorkspacePlanMode("ws_1")).toBe(false);
+    });
+
+    it("returns ipcError when workspace is unknown for plan:set-enabled (CRIT-1)", async () => {
+        const setWorkspacePlanMode = vi.fn(async () => undefined);
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => undefined,
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            setWorkspacePlanMode,
+        });
+
+        const handler = handlers.get("plan:set-enabled");
+        const result = await handler?.({}, "missing_ws", true);
+
+        expect(result).toMatchObject({
+            code: "ipcErrors.chat.workspaceNotFound",
+            params: { id: "missing_ws" },
+        });
+        expect(setWorkspacePlanMode).not.toHaveBeenCalled();
+    });
+
+    it("returns ipcError when setWorkspacePlanMode throws (CRIT-1)", async () => {
+        const refreshWorkspace = vi.fn(async () => undefined);
+        const setWorkspacePlanMode = vi.fn(async () => {
+            throw new Error("disk full");
+        });
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            agentRegistry: { refreshWorkspace } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            setWorkspacePlanMode,
+        });
+
+        const handler = handlers.get("plan:set-enabled");
+        const result = await handler?.({}, "ws_1", true);
+
+        expect(result).toMatchObject({
+            code: "ipcErrors.chat.promptFailed",
+            params: { workspace: "demo" },
+        });
+        expect(refreshWorkspace).not.toHaveBeenCalled();
+    });
+
+    it("overrides global planModeEnabled with the per-workspace toggle when building prompts (CRIT-1)", async () => {
+        // In-memory mock store so we can toggle and observe the value flow into modeOptions
+        const store = new Map<string, boolean>();
+        const setWorkspacePlanMode = vi.fn(async (id: string, enabled: boolean) => {
+            store.set(id, enabled);
+        });
+        const getWorkspacePlanMode = vi.fn((id: string) => store.get(id));
+
+        const prompt = vi.fn(async () => undefined);
+        // Capture the getMode callback so we can observe the normalized mode after each toggle
+        let capturedGetMode: (() => string) | undefined;
+        const registry = {
+            get: vi.fn(async (_id: unknown, _path: unknown, _pe: unknown, _send: unknown, getMode: () => string) => {
+                capturedGetMode = getMode;
+                return { session: { prompt, abort: vi.fn() } };
+            }),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            getSettings: () => ({
+                longHorizon: {
+                    enabled: true,
+                    defaultMode: "build",
+                    planMode: { enabled: false }, // global toggle OFF
+                    composeMode: { enabled: false },
+                    maxMode: { enabled: false },
+                    memory: { enabled: false },
+                    history: { enabled: false },
+                    checkpoint: { enabled: false },
+                    goal: { enabled: false },
+                    subagents: { enabled: false },
+                    task: { enabled: false },
+                    actor: { enabled: false },
+                    workflow: { enabled: false },
+                    dream: { enabled: false },
+                    distill: { enabled: false },
+                    composeWorkflow: { enabled: false },
+                },
+            }) as any,
+            setWorkspacePlanMode,
+            getWorkspacePlanMode,
+        });
+
+        const planHandler = handlers.get("plan:set-enabled");
+        const sendHandler = handlers.get("pi:send");
+
+        // Before per-workspace toggle: global planMode.enabled=false → mode normalized to "build"
+        await sendHandler?.({}, "ws_1", "first", { mode: "plan" });
+        expect(capturedGetMode).toBeTruthy();
+        expect(capturedGetMode!()).toBe("build");
+
+        // Enable plan mode per-workspace → overrides global → mode normalized to "plan"
+        await planHandler?.({}, "ws_1", true);
+        expect(getWorkspacePlanMode("ws_1")).toBe(true);
+        await sendHandler?.({}, "ws_1", "second", { mode: "plan" });
+        expect(capturedGetMode!()).toBe("plan");
+
+        // Disable plan mode per-workspace → overrides global → mode normalized back to "build"
+        await planHandler?.({}, "ws_1", false);
+        expect(getWorkspacePlanMode("ws_1")).toBe(false);
+        await sendHandler?.({}, "ws_1", "third", { mode: "plan" });
+        expect(capturedGetMode!()).toBe("build");
     });
 
     it("materializes inline plans using a preferred filename when provided", async () => {

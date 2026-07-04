@@ -8,6 +8,7 @@ if (typeof (globalThis as Record<string, unknown>).window === "undefined") {
 beforeEach(() => {
   usePlanStore.setState({
     enabled: false,
+    workspaceId: null,
     activeCard: null,
     decisionRequest: null,
     renderedPlanCardIds: [],
@@ -228,6 +229,273 @@ describe("setAwaitingConfirmation", () => {
       filename: "create-plan-probe",
       title: "创建并验证 plan_probe.txt",
     });
+    expect(usePlanStore.getState().status).toBe("executing");
+  });
+});
+
+// ── Task 5: IPC persistence wired into store mutations ────────────────
+// SubTasks 5.1–5.6: setCard → planCreate / planUpdate, startExecution →
+// planUpdate(status: executing), markCompleted → planComplete, cancel →
+// planDelete, and rollback + lastError on IPC failure.
+
+const PLAN_RECORD_FIXTURE = {
+  id: "rec_1",
+  filename: "1730000000000-test-plan.md",
+  path: "/tmp/.pi/plans/1730000000000-test-plan.md",
+  title: "Test Plan",
+  status: "draft" as const,
+  createdAt: 1730000000000,
+  updatedAt: 1730000000000,
+  content: "1. step one\n2. step two",
+};
+
+describe("setCard IPC persistence", () => {
+  it("creates a plan file when no existing filename is present", async () => {
+    usePlanStore.setState({ workspaceId: "ws-1", activeExecution: null });
+    const mockPlanCreate = vi.fn().mockResolvedValue(PLAN_RECORD_FIXTURE);
+    const mockPlanUpdate = vi.fn().mockResolvedValue({ ...PLAN_RECORD_FIXTURE, status: "draft" });
+    (globalThis as Record<string, unknown>).piAPI = {
+      planCreate: mockPlanCreate,
+      planUpdate: mockPlanUpdate,
+    };
+
+    usePlanStore.getState().setCard({
+      id: "plan_1",
+      title: "Test Plan",
+      content: "1. step one\n2. step two",
+      createdAt: Date.now(),
+    });
+
+    // optimistic state already applied synchronously
+    expect(usePlanStore.getState().activeExecution?.phase).toBe("awaiting_confirmation");
+    expect(mockPlanCreate).toHaveBeenCalledTimes(1);
+    expect(mockPlanCreate).toHaveBeenCalledWith("ws-1", {
+      slug: "test-plan",
+      title: "Test Plan",
+      content: "1. step one\n2. step two",
+    });
+    expect(mockPlanUpdate).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => {
+      expect(usePlanStore.getState().activeExecution?.filename).toBe(PLAN_RECORD_FIXTURE.filename);
+    });
+  });
+
+  it("updates an existing plan file when filename is already present", async () => {
+    usePlanStore.setState({
+      workspaceId: "ws-1",
+      activeExecution: {
+        activePlanId: "plan_existing",
+        title: "Old Title",
+        filename: "existing.md",
+        phase: "awaiting_confirmation",
+      },
+    });
+    const mockPlanCreate = vi.fn().mockResolvedValue(PLAN_RECORD_FIXTURE);
+    const mockPlanUpdate = vi.fn().mockResolvedValue({ ...PLAN_RECORD_FIXTURE, filename: "existing.md" });
+    (globalThis as Record<string, unknown>).piAPI = {
+      planCreate: mockPlanCreate,
+      planUpdate: mockPlanUpdate,
+    };
+
+    usePlanStore.getState().setCard({
+      id: "plan_existing",
+      title: "Old Title",
+      filename: "existing.md",
+      content: "updated content",
+      createdAt: Date.now(),
+    });
+
+    expect(mockPlanUpdate).toHaveBeenCalledTimes(1);
+    expect(mockPlanUpdate).toHaveBeenCalledWith("ws-1", "existing.md", { content: "updated content" });
+    expect(mockPlanCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("startExecution IPC persistence", () => {
+  it("calls planUpdate with status executing for an existing filename", async () => {
+    usePlanStore.setState({
+      workspaceId: "ws-1",
+      activeExecution: {
+        activePlanId: "plan_existing",
+        title: "Test Plan",
+        filename: "existing.md",
+        phase: "awaiting_confirmation",
+      },
+    });
+    const mockPlanUpdate = vi.fn().mockResolvedValue({ ...PLAN_RECORD_FIXTURE, filename: "existing.md", status: "executing" });
+    (globalThis as Record<string, unknown>).piAPI = { planUpdate: mockPlanUpdate };
+
+    usePlanStore.getState().startExecution({
+      activePlanId: "plan_existing",
+      title: "Test Plan",
+      filename: "existing.md",
+      sourceMessageId: "msg_1",
+      executionMessageId: "msg_2",
+    });
+
+    expect(usePlanStore.getState().activeExecution?.phase).toBe("executing");
+    expect(mockPlanUpdate).toHaveBeenCalledTimes(1);
+    expect(mockPlanUpdate).toHaveBeenCalledWith("ws-1", "existing.md", { status: "executing" });
+  });
+});
+
+describe("markCompleted IPC persistence", () => {
+  it("calls planComplete with the current filename", async () => {
+    usePlanStore.setState({
+      workspaceId: "ws-1",
+      activeExecution: {
+        activePlanId: "plan_1",
+        title: "Test Plan",
+        filename: "existing.md",
+        phase: "executing",
+      },
+      steps: [],
+      status: "executing",
+    });
+    const mockPlanComplete = vi.fn().mockResolvedValue({ ...PLAN_RECORD_FIXTURE, filename: "existing.md", status: "completed" });
+    (globalThis as Record<string, unknown>).piAPI = { planComplete: mockPlanComplete };
+
+    usePlanStore.getState().markCompleted();
+
+    expect(usePlanStore.getState().activeExecution?.phase).toBe("completed");
+    expect(mockPlanComplete).toHaveBeenCalledTimes(1);
+    expect(mockPlanComplete).toHaveBeenCalledWith("ws-1", "existing.md");
+  });
+
+  it("skips IPC when filename is missing but still updates local state", () => {
+    usePlanStore.setState({
+      workspaceId: "ws-1",
+      activeExecution: {
+        activePlanId: "plan_1",
+        title: "Test Plan",
+        phase: "executing",
+      },
+      steps: [],
+      status: "executing",
+    });
+    const mockPlanComplete = vi.fn();
+    (globalThis as Record<string, unknown>).piAPI = { planComplete: mockPlanComplete };
+
+    usePlanStore.getState().markCompleted();
+
+    expect(usePlanStore.getState().activeExecution?.phase).toBe("completed");
+    expect(mockPlanComplete).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancel IPC persistence", () => {
+  it("calls planDelete with the current filename and clears local state", async () => {
+    usePlanStore.setState({
+      workspaceId: "ws-1",
+      activeExecution: {
+        activePlanId: "plan_1",
+        title: "Test Plan",
+        filename: "existing.md",
+        phase: "executing",
+      },
+      activeCard: { id: "plan_1", title: "Test Plan", content: "x", createdAt: 0 },
+      steps: [{ id: "s1", text: "step", status: "pending" }],
+      status: "executing",
+    });
+    const mockPlanDelete = vi.fn().mockResolvedValue(undefined);
+    (globalThis as Record<string, unknown>).piAPI = { planDelete: mockPlanDelete };
+
+    usePlanStore.getState().cancel();
+
+    expect(usePlanStore.getState().activeExecution).toBeNull();
+    expect(usePlanStore.getState().activeCard).toBeNull();
+    expect(usePlanStore.getState().steps).toEqual([]);
+    expect(mockPlanDelete).toHaveBeenCalledTimes(1);
+    expect(mockPlanDelete).toHaveBeenCalledWith("ws-1", "existing.md");
+  });
+});
+
+describe("IPC failure rollback", () => {
+  it("reverts optimistic setCard state and sets lastError when planCreate rejects", async () => {
+    usePlanStore.setState({
+      workspaceId: "ws-1",
+      activeExecution: null,
+      status: "idle",
+    });
+    const mockPlanCreate = vi.fn().mockRejectedValue(new Error("disk full"));
+    (globalThis as Record<string, unknown>).piAPI = { planCreate: mockPlanCreate };
+
+    usePlanStore.getState().setCard({
+      id: "plan_1",
+      title: "Test Plan",
+      content: "1. step",
+      createdAt: Date.now(),
+    });
+
+    await vi.waitFor(() => {
+      expect(usePlanStore.getState().lastError).toBe("disk full");
+    });
+
+    // previous state restored
+    expect(usePlanStore.getState().activeExecution).toBeNull();
+    expect(usePlanStore.getState().activeCard).toBeNull();
+    expect(usePlanStore.getState().status).toBe("idle");
+  });
+
+  it("reverts optimistic state when planComplete returns an IpcError", async () => {
+    usePlanStore.setState({
+      workspaceId: "ws-1",
+      activeExecution: {
+        activePlanId: "plan_1",
+        title: "Test Plan",
+        filename: "existing.md",
+        phase: "executing",
+      },
+      steps: [{ id: "s1", text: "step", status: "pending" }],
+      status: "executing",
+    });
+    const ipcErr = {
+      __brand: "IpcError" as const,
+      code: "plan.completeFailed",
+      fallback: "完成 plan 文件失败",
+    };
+    const mockPlanComplete = vi.fn().mockResolvedValue(ipcErr);
+    (globalThis as Record<string, unknown>).piAPI = { planComplete: mockPlanComplete };
+
+    usePlanStore.getState().markCompleted();
+
+    await vi.waitFor(() => {
+      expect(usePlanStore.getState().lastError).toBe("完成 plan 文件失败");
+    });
+
+    expect(usePlanStore.getState().activeExecution?.phase).toBe("executing");
+    expect(usePlanStore.getState().status).toBe("executing");
+    expect(usePlanStore.getState().steps[0]?.status).toBe("pending");
+  });
+
+  it("reverts cancel and restores activeExecution when planDelete rejects", async () => {
+    usePlanStore.setState({
+      workspaceId: "ws-1",
+      activeExecution: {
+        activePlanId: "plan_1",
+        title: "Test Plan",
+        filename: "existing.md",
+        phase: "executing",
+      },
+      activeCard: { id: "plan_1", title: "Test Plan", content: "x", createdAt: 0 },
+      steps: [{ id: "s1", text: "step", status: "pending" }],
+      status: "executing",
+    });
+    const mockPlanDelete = vi.fn().mockRejectedValue(new Error("delete denied"));
+    (globalThis as Record<string, unknown>).piAPI = { planDelete: mockPlanDelete };
+
+    usePlanStore.getState().cancel();
+
+    await vi.waitFor(() => {
+      expect(usePlanStore.getState().lastError).toBe("delete denied");
+    });
+
+    // restored
+    expect(usePlanStore.getState().activeExecution?.phase).toBe("executing");
+    expect(usePlanStore.getState().activeExecution?.filename).toBe("existing.md");
+    expect(usePlanStore.getState().activeCard?.id).toBe("plan_1");
+    expect(usePlanStore.getState().steps).toHaveLength(1);
     expect(usePlanStore.getState().status).toBe("executing");
   });
 });

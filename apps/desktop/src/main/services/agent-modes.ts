@@ -1,5 +1,6 @@
 import { isAbsolute, relative, resolve } from "path";
 import type { AgentMode, PiSlashCommand } from "@shared";
+import { PLAN_DIRECTIVE } from "./agent-modes/plan-prompt";
 
 export interface AgentModeRuntimeOptions {
     longHorizonEnabled?: boolean;
@@ -153,7 +154,17 @@ export function buildAgentModePrompt(mode: AgentMode, text: string, options: Age
     const content = text.trim();
     if (options.longHorizonEnabled === false) return content;
     if (mode === "build") return content;
-    if (mode === "plan") return content;
+    if (mode === "plan") {
+        // `longHorizonEnabled === false` already returned above, so only
+        // `planModeEnabled` can still disable the directive here. Using
+        // `!== false` (not `=== true`) preserves the default-enabled
+        // behavior set by `normalizeAgentMode` (which defaults `undefined`
+        // to `true`).
+        if (options.planModeEnabled !== false) {
+            return [PLAN_DIRECTIVE, "", content].join("\n");
+        }
+        return content;
+    }
     if (options.workflowEnabled && options.composeWorkflowEnabled) {
         return [
             "Compose workflow runtime is enabled.",

@@ -234,6 +234,118 @@ describe("PlanCard", () => {
     expect(screen.getByText("test.md")).toBeTruthy();
   });
 
+  // ── Task 6: filename display + write-failure UI ───────────────────────
+
+  it("renders filename pill (basename) when filename is provided", () => {
+    render(
+      <I18nProvider>
+        <PlanCard
+          title="有文件的计划"
+          content="内容"
+          status="pending"
+          filename=".pi/plans/1700000000-my-plan.md"
+          onExecute={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const pill = screen.getByTestId("plan-filename");
+    expect(pill).toBeTruthy();
+    // basename 提取后展示
+    expect(screen.getByText("1700000000-my-plan.md")).toBeTruthy();
+    // tooltip/title 保留完整路径
+    expect(pill.getAttribute("title")).toBe(".pi/plans/1700000000-my-plan.md");
+  });
+
+  it("does not render the filename pill when filename is missing (in-memory only)", () => {
+    render(
+      <I18nProvider>
+        <PlanCard
+          title="无文件计划"
+          content="内容"
+          status="pending"
+          onExecute={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByTestId("plan-filename")).toBeNull();
+  });
+
+  it("disables Execute button and shows retry button when lastError is set and filename is empty", () => {
+    const onRetry = vi.fn();
+    render(
+      <I18nProvider>
+        <PlanCard
+          title="写失败计划"
+          content="内容"
+          status="pending"
+          lastError="Plan 文件创建失败: disk full"
+          onExecute={vi.fn()}
+          onRetry={onRetry}
+        />
+      </I18nProvider>,
+    );
+
+    // Execute 按钮 disabled
+    const executeBtn = screen.getByRole("button", { name: "执行计划" });
+    expect((executeBtn as HTMLButtonElement).disabled).toBe(true);
+
+    // 写失败指示 + 重试按钮可见
+    const errorIndicator = screen.getByTestId("plan-write-error");
+    expect(errorIndicator).toBeTruthy();
+    const retryBtn = screen.getByTestId("plan-retry-button");
+    expect(retryBtn).toBeTruthy();
+    expect(retryBtn.textContent).toContain("重试");
+
+    // 点击重试 → 调用 onRetry
+    fireEvent.click(retryBtn);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Execute enabled when filename is set and lastError is null", () => {
+    render(
+      <I18nProvider>
+        <PlanCard
+          title="正常计划"
+          content="内容"
+          status="pending"
+          filename=".pi/plans/ok.md"
+          lastError={null}
+          onExecute={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const executeBtn = screen.getByRole("button", { name: "执行计划" });
+    expect((executeBtn as HTMLButtonElement).disabled).toBe(false);
+    // 写失败指示不渲染
+    expect(screen.queryByTestId("plan-write-error")).toBeNull();
+    // 重试按钮也不渲染
+    expect(screen.queryByTestId("plan-retry-button")).toBeNull();
+  });
+
+  it("does not treat lastError as write failure when filename is already present", () => {
+    // 即便 lastError 有值, 只要 filename 已存在 (说明 create 成功过), 不进入写失败态.
+    render(
+      <I18nProvider>
+        <PlanCard
+          title="已持久化但有错误"
+          content="内容"
+          status="pending"
+          filename=".pi/plans/ok.md"
+          lastError="某次 update 失败"
+          onExecute={vi.fn()}
+          onRetry={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const executeBtn = screen.getByRole("button", { name: "执行计划" });
+    expect((executeBtn as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId("plan-write-error")).toBeNull();
+  });
+
   it("calls onRefine with input text when 发送补充 clicked", () => {
     const onRefine = vi.fn();
     render(

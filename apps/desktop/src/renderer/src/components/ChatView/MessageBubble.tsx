@@ -244,6 +244,15 @@ function MessageBubbleImpl({
     const active = state.activeExecution;
     return active && active.activePlanId === planAction.id ? state.steps : undefined;
   });
+  // 仅当此 plan 是当前 active plan 时, 透传 store 的 lastError (用于显示写失败 + 重试).
+  const planLastError = usePlanStore((state) => {
+    if (!planAction?.id) return null;
+    const active = state.activeExecution;
+    return active && active.activePlanId === planAction.id ? state.lastError : null;
+  });
+  const handlePlanRetry = useCallback(() => {
+    usePlanStore.getState().clearError();
+  }, []);
   const effectiveMessage = planAction && !message.planAction
     ? { ...message, planAction }
     : message;
@@ -349,11 +358,13 @@ function MessageBubbleImpl({
                     filename={planAction?.filename}
                     status={planStatus}
                     steps={planSteps}
+                    lastError={planLastError}
                     onExecute={() => void onPlanAction?.(effectiveMessage, "execute")}
                     onRefine={() => void onPlanAction?.(effectiveMessage, "refine")}
                     onCancel={() => void onPlanAction?.(effectiveMessage, "cancel")}
                     onPause={() => void onPlanAction?.(effectiveMessage, "pause")}
                     onResume={() => void onPlanAction?.(effectiveMessage, "resume")}
+                    onRetry={handlePlanRetry}
                   />
                 )}
 

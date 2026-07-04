@@ -298,7 +298,9 @@
     "completedLabel": "完成 {{completed}}/{{total}}",
     "terminalExecuted": "计划已执行完毕",
     "terminalCancelled": "计划已取消",
-    "terminalFailed": "计划执行失败"
+    "terminalFailed": "计划执行失败",
+    "writeFailed": "写入失败",
+    "retry": "重试"
   },
   "chatInput": {
     "placeholder": {

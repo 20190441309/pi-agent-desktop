@@ -29,6 +29,8 @@ import { setupWindowIpc, setupWindowEvents } from './ipc/window.ipc';
 import { setupWorkspaceIpc } from './ipc/workspace.ipc';
 import { setupProjectShellIpc } from './ipc/project-shell.ipc';
 import { setupWorkbenchIpc } from './ipc/workbench.ipc';
+import { setupPlanIpc } from './ipc/plan.ipc';
+import { PlanFileService } from './services/plan/plan-file-service';
 import { registerLocalFileProtocol } from './services/local-file-protocol';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 import { clearPendingExtensionUiRequests } from './services/extensions/extension-ui-bridge';
@@ -82,6 +84,8 @@ type PiDesktopTestGlobals = typeof globalThis & {
 // Pi session (long-lived AgentSession per workspace)
 const piRegistry = new WorkspaceRegistry();
 const piPendingEdits = new PendingEdits();
+// Plan file service singleton (Task 4.4) — injected into setupPlanIpc.
+const planFileService = new PlanFileService();
 
 const PI_AGENT_DIR = process.env.PI_DESKTOP_CONFIG_DIR || join(homedir(), '.pi', 'agent');
 
@@ -94,6 +98,14 @@ interface Workspace {
   path: string;
   createdAt: number;
   lastActiveAt?: number;
+  /**
+   * Per-workspace plan-mode runtime toggle (CRIT-1).
+   * - `undefined` (legacy workspaces pre-migration): falls back to global `settings.longHorizon.planMode.enabled`
+   * - `true` / `false`: overrides the global toggle for this workspace
+   * Persisted in electron-store alongside the rest of the Workspace record
+   * (same pattern as `lastActiveAt` / `createdAt`).
+   */
+  planModeEnabled?: boolean;
 }
 
 // Session type from @shared (includes messages field for persistence)
@@ -175,16 +187,79 @@ function shouldRefreshSessionsForSettingsChange(previous: AppSettings, next: App
     || JSON.stringify(prevLongHorizon) !== JSON.stringify(nextLongHorizon);
 }
 
-const getLongHorizonModeOptions = () => {
+/**
+ * Build per-workspace mode options for AgentRuntimeRegistry.
+ *
+ * CRIT-1: when a workspace has its `planModeEnabled` field set (true/false),
+ * it overrides the global `settings.longHorizon.planMode.enabled`. Workspaces
+ * created before this field existed (undefined) fall back to the global toggle
+ * so existing behavior is preserved.
+ *
+ * Call chain (verified):
+ *   plan:set-enabled IPC → setWorkspacePlanMode() (persists) + agentRegistry.refreshWorkspace(wsId)
+ *     → refreshRuntimeSession → createPrimarySession → buildDesktopExtensions(wsId)
+ *       → getModeOptions(wsId) → resolveBundledDesktopExtensionPaths (loads pi-openplan)
+ *   prompt() → getModeOptions(wsId) → buildAgentModePrompt(mode, text, options)
+ *     (Task 2 will read options.planModeEnabled to inject PLAN_DIRECTIVE)
+ */
+const getLongHorizonModeOptions = (workspaceId?: string) => {
   const longHorizon = store.get('settings').longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
+  const workspace = workspaceId
+    ? store.get('workspaces').find((w) => w.id === workspaceId)
+    : undefined;
+  const workspacePlanMode = workspace?.planModeEnabled;
   return {
     longHorizonEnabled: longHorizon.enabled,
-    planModeEnabled: longHorizon.planMode.enabled,
+    planModeEnabled:
+      workspacePlanMode !== undefined ? workspacePlanMode : longHorizon.planMode.enabled,
     composeModeEnabled: longHorizon.composeMode.enabled,
     workflowEnabled: longHorizon.workflow.enabled,
     composeWorkflowEnabled: longHorizon.composeWorkflow.enabled,
   };
 };
+
+/**
+ * Read a workspace's plan-mode runtime toggle (CRIT-1).
+ * Returns `undefined` for unknown workspaces or workspaces that haven't opted
+ * into a per-workspace override (so callers can fall back to the global setting).
+ */
+const getWorkspacePlanMode = (workspaceId: string): boolean | undefined => {
+  const workspace = store.get('workspaces').find((w) => w.id === workspaceId);
+  return workspace?.planModeEnabled;
+};
+
+// Serial mutation chain for workspace records — mirrors workspace.ipc.ts's pattern
+// to avoid concurrent electron-store writes clobbering each other.
+let workspaceMutationChain: Promise<unknown> = Promise.resolve();
+
+function mutateWorkspaces(fn: (current: Workspace[]) => Workspace[]): Promise<Workspace[]> {
+  return new Promise((resolve, reject) => {
+    workspaceMutationChain = workspaceMutationChain.then(() => {
+      try {
+        const current = store.get('workspaces') ?? [];
+        const next = fn(current);
+        store.set('workspaces', next);
+        resolve(next);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+/**
+ * Persist a workspace's plan-mode runtime toggle (CRIT-1).
+ * Called by the `plan:set-enabled` IPC handler in chat.ipc.ts.
+ */
+async function setWorkspacePlanMode(workspaceId: string, enabled: boolean): Promise<void> {
+  await mutateWorkspaces((current) =>
+    current.map((workspace) =>
+      workspace.id === workspaceId
+        ? { ...workspace, planModeEnabled: enabled, lastActiveAt: workspace.lastActiveAt ?? Date.now() }
+        : workspace,
+    ),
+  );
+}
 
 const agentRegistry = new AgentRuntimeRegistry({
   getWorkspace: (workspaceId: string) => store.get('workspaces').find((workspace) => workspace.id === workspaceId),
@@ -299,6 +374,8 @@ function setupIPC(updaterService: AppUpdaterService): void {
     getDefaultWorkspace: () => {
       return getMostRecentlyActiveWorkspace(store.get('workspaces'));
     },
+    getWorkspacePlanMode,
+    setWorkspacePlanMode,
   });
 
   setupAgentsIpc(agentRegistry);
@@ -388,6 +465,12 @@ function setupIPC(updaterService: AppUpdaterService): void {
 
   // Workbench context (renderer tells main which file user is viewing)
   setupWorkbenchIpc();
+
+  // Plan file CRUD IPC (Task 4.4) — plan:create/list/get/update/complete/delete
+  setupPlanIpc({
+    planFileService,
+    getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
+  });
 
 }
 

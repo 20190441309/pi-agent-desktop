@@ -6,6 +6,7 @@ import {
     isPlanModeToolAllowed,
     normalizeAgentMode,
 } from "../agent-modes";
+import { PLAN_DIRECTIVE } from "../agent-modes/plan-prompt";
 
 describe("agent modes", () => {
     it("normalizes unknown values to build", () => {
@@ -41,9 +42,53 @@ describe("agent modes", () => {
         expect(buildAgentModePrompt("compose", "hello", { longHorizonEnabled: false })).toBe("hello");
     });
 
-    it("leaves plan and compose prompts untouched because runtime extensions now own those modes", () => {
-        expect(buildAgentModePrompt("plan", "改输入区")).toBe("改输入区");
+    it("leaves compose prompts untouched when workflow runtime is not enabled", () => {
         expect(buildAgentModePrompt("compose", "全面审查代码")).toBe("全面审查代码");
+    });
+
+    it("prepends plan directive when plan mode is enabled (default options)", () => {
+        const outbound = buildAgentModePrompt("plan", "改输入区", {
+            planModeEnabled: true,
+            longHorizonEnabled: true,
+        });
+        expect(outbound).toContain("Plan mode is active");
+        expect(outbound).toContain("You are read-only");
+        expect(outbound.startsWith(PLAN_DIRECTIVE)).toBe(true);
+        expect(outbound.endsWith("改输入区")).toBe(true);
+        expect(outbound).toBe([PLAN_DIRECTIVE, "", "改输入区"].join("\n"));
+    });
+
+    it("prepends plan directive when planModeEnabled and longHorizonEnabled are undefined (default-enabled behavior)", () => {
+        const outbound = buildAgentModePrompt("plan", "hello world", {});
+        expect(outbound).toContain("Plan mode is active");
+        expect(outbound).toContain("Output plans ONLY to `.pi/plans/");
+        expect(outbound.endsWith("hello world")).toBe(true);
+    });
+
+    it("returns content unchanged when plan mode is explicitly disabled", () => {
+        expect(buildAgentModePrompt("plan", "改输入区", {
+            planModeEnabled: false,
+            longHorizonEnabled: true,
+        })).toBe("改输入区");
+    });
+
+    it("returns content unchanged for plan mode when long horizon is disabled", () => {
+        expect(buildAgentModePrompt("plan", "改输入区", {
+            planModeEnabled: true,
+            longHorizonEnabled: false,
+        })).toBe("改输入区");
+    });
+
+    it("returns content unchanged for build mode regardless of options (backward compat)", () => {
+        expect(buildAgentModePrompt("build", "hello")).toBe("hello");
+        expect(buildAgentModePrompt("build", "hello", {
+            planModeEnabled: true,
+            longHorizonEnabled: true,
+        })).toBe("hello");
+        expect(buildAgentModePrompt("build", "hello", {
+            planModeEnabled: false,
+            longHorizonEnabled: false,
+        })).toBe("hello");
     });
 
     it("injects workflow-tool instructions for compose mode when workflow runtime is enabled", () => {

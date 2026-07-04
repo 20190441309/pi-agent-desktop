@@ -35,7 +35,14 @@ interface AgentRuntimeRegistryDeps {
     agentDir?: string;
     getSettings?: () => AppSettings;
     getPiAgentConfig?: () => PiAgentConfig | null;
-    getModeOptions?: () => {
+    /**
+     * Returns mode options for the given workspace (CRIT-1).
+     * Implementations should override `planModeEnabled` with the workspace's
+     * persisted `planModeEnabled` field when set, so per-workspace toggles
+     * flow through to `buildAgentModePrompt` via `options.planModeEnabled`.
+     * Passing `undefined` returns the global defaults (legacy behavior).
+     */
+    getModeOptions?: (workspaceId?: string) => {
         longHorizonEnabled: boolean;
         planModeEnabled?: boolean;
         composeModeEnabled?: boolean;
@@ -111,7 +118,7 @@ export class AgentRuntimeRegistry {
         const runtime = this.requireRuntime(input.agentId);
         const text = input.message.trim();
         if (!text) return;
-        const modeOptions = this.deps.getModeOptions?.();
+        const modeOptions = this.deps.getModeOptions?.(runtime.workspace.id);
         const mode = normalizeAgentMode(input.mode, modeOptions);
         await this.syncRuntimeMode(runtime, mode, input.streamingBehavior);
         runtime.mode = mode;
@@ -411,8 +418,8 @@ export class AgentRuntimeRegistry {
         };
     }
 
-    private buildDesktopExtensions(): string[] {
-        const options = this.deps.getModeOptions?.();
+    private buildDesktopExtensions(workspaceId: string): string[] {
+        const options = this.deps.getModeOptions?.(workspaceId);
         if (!options?.longHorizonEnabled) return [];
         return resolveBundledDesktopExtensionPaths({
             planModeEnabled: options.planModeEnabled,
@@ -432,7 +439,7 @@ export class AgentRuntimeRegistry {
             workspacePath: workspace.path,
             ...this.currentModelSelection(),
             sessionPath,
-            desktopExtensions: this.buildDesktopExtensions(),
+            desktopExtensions: this.buildDesktopExtensions(workspace.id),
             uiContext: createExtensionUiBridge(
                 workspace.id,
                 { agentId },

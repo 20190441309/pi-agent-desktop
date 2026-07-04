@@ -62,6 +62,16 @@ interface ChatIpcDeps {
     memoryService?: MemoryService;
     checkpointService?: CheckpointService;
     taskService?: TaskService;
+    /**
+     * 读取 workspace 级别 plan-mode 持久化状态 (CRIT-1)。
+     * 返回 undefined 表示该 workspace 未设置 per-workspace override，调用方应回退到全局设置。
+     */
+    getWorkspacePlanMode?: (workspaceId: string) => boolean | undefined;
+    /**
+     * 持久化 workspace 级别 plan-mode 开关 (CRIT-1)。
+     * 由 `plan:set-enabled` IPC handler 调用。
+     */
+    setWorkspacePlanMode?: (workspaceId: string, enabled: boolean) => Promise<void>;
 }
 
 type SlashSession = {
@@ -447,7 +457,11 @@ function longHorizonSettings(settings?: AppSettings): NonNullable<AppSettings["l
     return normalizeLongHorizonSettings(settings?.longHorizon);
 }
 
-function modeOptions(settings?: AppSettings): {
+function modeOptions(
+    settings?: AppSettings,
+    workspaceId?: string,
+    getWorkspacePlanMode?: (workspaceId: string) => boolean | undefined,
+): {
     longHorizonEnabled: boolean;
     planModeEnabled: boolean;
     composeModeEnabled: boolean;
@@ -455,9 +469,15 @@ function modeOptions(settings?: AppSettings): {
     composeWorkflowEnabled: boolean;
 } {
     const longHorizon = longHorizonSettings(settings);
+    // CRIT-1: per-workspace planModeEnabled overrides the global toggle when set.
+    // Falling back to the global value preserves legacy behavior for workspaces
+    // that haven't opted into a per-workspace override.
+    const workspacePlanMode =
+        workspaceId && getWorkspacePlanMode ? getWorkspacePlanMode(workspaceId) : undefined;
     return {
         longHorizonEnabled: longHorizon.enabled,
-        planModeEnabled: longHorizon.planMode.enabled,
+        planModeEnabled:
+            workspacePlanMode !== undefined ? workspacePlanMode : longHorizon.planMode.enabled,
         composeModeEnabled: longHorizon.composeMode.enabled,
         workflowEnabled: longHorizon.workflow.enabled,
         composeWorkflowEnabled: longHorizon.composeWorkflow.enabled,
@@ -532,7 +552,20 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                 { id: workspaceId },
             );
         }
-        void enabled;
+        // CRIT-1: persist the per-workspace plan-mode toggle before refreshing the
+        // runtime so the recreated session picks up the new value via getModeOptions.
+        if (deps.setWorkspacePlanMode) {
+            try {
+                await deps.setWorkspacePlanMode(ws.id, enabled);
+            } catch (err) {
+                log.error("[chat.ipc] plan:set-enabled persist failed:", err);
+                return ipcError(
+                    "ipcErrors.chat.promptFailed",
+                    `切换 Plan 模式失败: ${err instanceof Error ? err.message : String(err)}`,
+                    { workspace: ws.name },
+                );
+            }
+        }
         if (deps.agentRegistry && typeof deps.agentRegistry.refreshWorkspace === "function") {
             await deps.agentRegistry.refreshWorkspace(ws.id);
         } else if (typeof deps.registry.dispose === "function") {
@@ -844,7 +877,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             : text;
         const settings = deps.getSettings?.();
         const longHorizon = longHorizonSettings(settings);
-        const currentModeOptions = modeOptions(settings);
+        const currentModeOptions = modeOptions(settings, ws.id, deps.getWorkspacePlanMode);
         const mode = normalizeAgentMode(options?.mode, currentModeOptions);
         // Set the workspace's active mode BEFORE any await so concurrent prompts / event-bridge
         // reads don't observe a stale value during the async window below.

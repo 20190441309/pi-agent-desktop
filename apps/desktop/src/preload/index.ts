@@ -19,6 +19,7 @@ import type {
     PlanCard,
     PlanDecisionRequest,
     PlanProgressUpdate,
+    PlanRecord,
     AgentMessage,
     AgentRuntimeState,
     AgentTab,
@@ -196,6 +197,20 @@ const piAPI: PiAPI = {
 
     planSetEnabled: (workspaceId, enabled) => ipcRenderer.invoke("plan:set-enabled", workspaceId, enabled) as Promise<void>,
     planMaterialize: (input) => ipcRenderer.invoke("plan:materialize-inline", input) as Promise<InlinePlanMaterializeResult | IpcError>,
+    // Task 4.5: plan file CRUD IPC surface — 渲染层通过这 6 个方法操作 .pi/plans/*.md.
+    // 入参形式与 chat.ipc / git.ipc 一致: 单一 object 携带 workspaceId + 业务字段.
+    planCreate: (workspaceId, input) =>
+        ipcRenderer.invoke("plan:create", { workspaceId, ...input }) as Promise<PlanRecord | IpcError>,
+    planList: (workspaceId, options) =>
+        ipcRenderer.invoke("plan:list", options ? { workspaceId, ...options } : { workspaceId }) as Promise<PlanRecord[] | IpcError>,
+    planGet: (workspaceId, filename) =>
+        ipcRenderer.invoke("plan:get", { workspaceId, filename }) as Promise<PlanRecord | null | IpcError>,
+    planUpdate: (workspaceId, filename, input) =>
+        ipcRenderer.invoke("plan:update", { workspaceId, filename, ...input }) as Promise<PlanRecord | IpcError>,
+    planComplete: (workspaceId, filename) =>
+        ipcRenderer.invoke("plan:complete", { workspaceId, filename }) as Promise<PlanRecord | IpcError>,
+    planDelete: (workspaceId, filename) =>
+        ipcRenderer.invoke("plan:delete", { workspaceId, filename }) as Promise<void | IpcError>,
     planRespond: (requestId, decision, text) => {
         ipcRenderer.send("plan:respond", requestId, decision, text);
     },
