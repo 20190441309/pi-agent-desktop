@@ -245,6 +245,38 @@ describe("createActorTool", () => {
             expect(mockManager.spawn).not.toHaveBeenCalled();
         });
 
+        it("rejects non-positive timeout_ms before spawning a subagent", async () => {
+            const tool = createActorTool(mockManager.manager, "agent1", WORKSPACE);
+
+            await expect(
+                callActor(tool, {
+                    action: "run",
+                    subagent_type: "explore",
+                    description: "task",
+                    prompt: "go",
+                    timeout_ms: 0,
+                }),
+            ).rejects.toThrow(/timeout_ms must be between/);
+
+            expect(mockManager.spawn).not.toHaveBeenCalled();
+        });
+
+        it("rejects oversized timeout_ms before spawning a subagent", async () => {
+            const tool = createActorTool(mockManager.manager, "agent1", WORKSPACE);
+
+            await expect(
+                callActor(tool, {
+                    action: "run",
+                    subagent_type: "explore",
+                    description: "task",
+                    prompt: "go",
+                    timeout_ms: 86_400_001,
+                }),
+            ).rejects.toThrow(/timeout_ms must be between/);
+
+            expect(mockManager.spawn).not.toHaveBeenCalled();
+        });
+
         it("accepts context='none' and passes through to spawn", async () => {
             const actorId = "explore-non1";
             mockManager.spawn.mockResolvedValue({

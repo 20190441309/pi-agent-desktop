@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiSlashCommand } from "@shared";
 import { useSlashCommands } from "./useSlashCommands";
@@ -70,7 +70,15 @@ describe("useSlashCommands", () => {
       expect(result.current.candidates[0]?.command.name).toBe("skill:tdd");
     });
 
-    const selectedText = result.current.selectCandidate(result.current.candidates[0]);
+    const candidate = result.current.candidates[0];
+    if (!candidate) {
+      throw new Error("Expected a slash command candidate");
+    }
+
+    let selectedText = "";
+    act(() => {
+      selectedText = result.current.selectCandidate(candidate);
+    });
     expect(selectedText).toBe("/skill:tdd");
 
     rerender({ text: selectedText, cursor: selectedText.length });
@@ -97,6 +105,15 @@ describe("useSlashCommands", () => {
       expect(result.current.candidates[0]?.command.name).toBe("compact");
     });
 
-    expect(result.current.selectCandidate(result.current.candidates[0])).toBe("/compact ");
+    const candidate = result.current.candidates[0];
+    if (!candidate) {
+      throw new Error("Expected a slash command candidate");
+    }
+
+    let selectedText = "";
+    act(() => {
+      selectedText = result.current.selectCandidate(candidate);
+    });
+    expect(selectedText).toBe("/compact ");
   });
 });

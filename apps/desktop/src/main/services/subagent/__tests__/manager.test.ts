@@ -233,6 +233,31 @@ describe("SubagentManager", () => {
             const result = await manager.wait("agent1", actorId, 50);
             expect(result).toBeNull();
         }, 10000);
+
+        it("removes a timed-out waiter while leaving the subagent running", async () => {
+            vi.useFakeTimers();
+            try {
+                const { manager } = createManagerWithMockSession();
+                const { actorId } = await manager.spawn({
+                    context: { workspaceId: "ws1", workspacePath: "/tmp", agentId: "agent1" },
+                    subagentType: "general",
+                    description: "task",
+                    prompt: "go",
+                });
+
+                const waitPromise = manager.wait("agent1", actorId, 100);
+                await vi.advanceTimersByTimeAsync(100);
+
+                await expect(waitPromise).resolves.toBeNull();
+                const state = manager as unknown as {
+                    waitersByActor: Map<string, readonly unknown[]>;
+                };
+                expect(state.waitersByActor.has(actorId)).toBe(false);
+                expect(manager.status("agent1", actorId)?.status).toBe("running");
+            } finally {
+                vi.useRealTimers();
+            }
+        });
     });
 
     describe("cancel", () => {

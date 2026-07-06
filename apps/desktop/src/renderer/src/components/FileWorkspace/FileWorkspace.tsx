@@ -234,7 +234,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
     setExpanded(new Set());
     void loadTree();
     void loadGitStatus();
-  }, [loadGitStatus, loadTree]);
+  }, [diffReadReq, fileReadReq, gitStatusReq, loadGitStatus, loadTree, treeLoadReq]);
 
   useEffect(() => {
     if (!query.trim() || !window.piAPI?.filesSearch) {
@@ -525,7 +525,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
         }
       }
     })();
-  }, [initialTarget?.nonce, initialTarget?.path, initialTarget?.mode, openFile, workspacePath]);
+  }, [diffReadReq, initialTarget?.nonce, initialTarget?.path, initialTarget?.mode, openFile, workspacePath]);
 
   const handleSelectNode = (node: FileTreeNode): void => {
     if (node.type === "file") void openFile(node.path);

@@ -6,6 +6,19 @@ import { usePiPackagesStore } from "../../stores/pi-packages-store";
 import { PiPackagesMarketplace } from "./PiPackagesMarketplace";
 
 describe("PiPackagesMarketplace", () => {
+  async function renderMarketplace(): Promise<void> {
+    await act(async () => {
+      render(<PiPackagesMarketplace />);
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+    });
+  }
+
+  async function flushAsyncUpdates(): Promise<void> {
+    await act(async () => {
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+    });
+  }
+
   beforeEach(() => {
     usePiPackagesStore.setState({
       query: "",
@@ -56,26 +69,30 @@ describe("PiPackagesMarketplace", () => {
   });
 
   afterEach(() => {
-    usePiPackagesStore.setState({
-      query: "",
-      results: [],
-      installed: [],
-      loading: false,
-      installedLoading: false,
-      actionSource: null,
-      error: null,
-      retryAction: null,
-      lastFailedAction: null,
-      lastAction: null,
+    act(() => {
+      usePiPackagesStore.setState({
+        query: "",
+        results: [],
+        installed: [],
+        loading: false,
+        installedLoading: false,
+        actionSource: null,
+        error: null,
+        retryAction: null,
+        lastFailedAction: null,
+        lastAction: null,
+      });
     });
     vi.restoreAllMocks();
   });
 
   it("shows source protocol, target and trust guidance before installing", async () => {
-    render(<PiPackagesMarketplace />);
+    await renderMarketplace();
 
     const installButton = await screen.findByRole("button", { name: "安装 pi-git" });
-    fireEvent.click(installButton);
+    await act(async () => {
+      fireEvent.click(installButton);
+    });
 
     const dialog = await screen.findByRole("dialog", { name: "确认安装 Pi 插件" });
     expect(dialog).toBeTruthy();
@@ -87,16 +104,19 @@ describe("PiPackagesMarketplace", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "确认安装" }));
     });
+    await flushAsyncUpdates();
 
     await waitFor(() => expect(window.piAPI?.packagesInstall).toHaveBeenCalledWith("npm:pi-git"));
     await waitFor(() => expect(usePiPackagesStore.getState().actionSource).toBeNull());
   });
 
   it("uses file source trust copy for local packages", async () => {
-    render(<PiPackagesMarketplace />);
+    await renderMarketplace();
 
     const installButton = await screen.findByRole("button", { name: "安装 local-pack" });
-    fireEvent.click(installButton);
+    await act(async () => {
+      fireEvent.click(installButton);
+    });
 
     const dialog = await screen.findByRole("dialog", { name: "确认安装 Pi 插件" });
     expect(within(dialog).getByText("file")).toBeTruthy();
@@ -112,14 +132,22 @@ describe("PiPackagesMarketplace", () => {
       })
       .mockResolvedValueOnce({ success: true, message: "已安装 npm:pi-git", requiresRestart: true });
 
-    render(<PiPackagesMarketplace />);
+    await renderMarketplace();
 
-    fireEvent.click(await screen.findByRole("button", { name: "安装 pi-git" }));
-    fireEvent.click(await screen.findByRole("button", { name: "确认安装" }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "安装 pi-git" }));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "确认安装" }));
+    });
+    await flushAsyncUpdates();
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("安装 npm:pi-git 失败：安装失败: network unavailable");
-    fireEvent.click(screen.getByRole("button", { name: "重试安装" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "重试安装" }));
+    });
+    await flushAsyncUpdates();
 
     await waitFor(() => {
       expect(window.piAPI?.packagesInstall).toHaveBeenCalledTimes(2);
@@ -143,12 +171,18 @@ describe("PiPackagesMarketplace", () => {
         },
       ]);
 
-    render(<PiPackagesMarketplace />);
+    await renderMarketplace();
 
-    fireEvent.click(await screen.findByRole("button", { name: "刷新目录" }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "刷新目录" }));
+    });
+    await flushAsyncUpdates();
 
     expect((await screen.findByRole("alert")).textContent).toContain("刷新目录失败：刷新 Pi 插件市场失败: network unavailable");
-    fireEvent.click(screen.getByRole("button", { name: "重试刷新目录" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "重试刷新目录" }));
+    });
+    await flushAsyncUpdates();
 
     expect(await screen.findByRole("button", { name: "安装 pi-subagents" })).toBeTruthy();
     expect(window.piAPI?.packagesRefreshCatalog).toHaveBeenCalledTimes(2);

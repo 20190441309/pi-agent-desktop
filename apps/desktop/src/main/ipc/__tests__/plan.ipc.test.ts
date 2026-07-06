@@ -180,6 +180,33 @@ describe("setupPlanIpc", () => {
         });
     });
 
+    it("returns ipcError.plan.invalidInput when plan:create content exceeds the IPC size limit", async () => {
+        const createHandler = handlers.get("plan:create");
+        const result = await createHandler?.({}, {
+            workspaceId: "ws_1",
+            slug: "too-large",
+            title: "t",
+            content: "x".repeat(1_048_577),
+        });
+        expect(result).toMatchObject({
+            __brand: "IpcError",
+            code: "ipcErrors.plan.invalidInput",
+        });
+    });
+
+    it("returns ipcError.plan.invalidInput when plan:update content exceeds the IPC size limit", async () => {
+        const updateHandler = handlers.get("plan:update");
+        const result = await updateHandler?.({}, {
+            workspaceId: "ws_1",
+            filename: "123-too-large.md",
+            content: "x".repeat(1_048_577),
+        });
+        expect(result).toMatchObject({
+            __brand: "IpcError",
+            code: "ipcErrors.plan.invalidInput",
+        });
+    });
+
     it("returns ipcError.plan.invalidInput when workspaceId is empty on plan:get", async () => {
         const getHandler = handlers.get("plan:get");
         const result = await getHandler?.({}, {

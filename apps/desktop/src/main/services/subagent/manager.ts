@@ -83,6 +83,8 @@ export interface SubagentManagerOpts {
 
 /** Default 10 min timeout, matching spec.md "Subagent Result Handoff". */
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+const MIN_TIMEOUT_MS = 1;
+const MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 /** GC sweep interval. */
 const GC_INTERVAL_MS = 60 * 1000;
 /** Idle grace period before GC reclaims a session. */
@@ -133,6 +135,11 @@ export class SubagentConcurrencyLimitError extends Error {
     }
 }
 
+interface WaiterEntry {
+    readonly resolve: (r: SubagentResult | null) => void;
+    timer?: NodeJS.Timeout;
+}
+
 export class SubagentManager {
     private readonly sessionFactory: SubagentSessionFactory;
     private readonly onEvent?: (event: SubagentManagerEvent) => void;
@@ -145,10 +152,7 @@ export class SubagentManager {
     /** actorId → primary agentId (reverse lookup for GC). */
     private readonly agentByActor = new Map<string, string>();
     /** actorId → waiter Resolvers (for `wait()`). */
-    private readonly waitersByActor = new Map<
-        string,
-        Array<{ resolve: (r: SubagentResult | null) => void; timer?: NodeJS.Timeout }>
-    >();
+    private readonly waitersByActor = new Map<string, WaiterEntry[]>();
 
     private gcHandle?: NodeJS.Timeout;
 
@@ -185,7 +189,7 @@ export class SubagentManager {
      */
     async spawn(opts: SubagentSpawnOptions): Promise<SubagentSpawnResult> {
         const actorId = makeActorId(opts.subagentType);
-        const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+        const timeoutMs = normalizeTimeoutMs(opts.timeoutMs);
 
         // Phase 3 Task 10: per-type concurrency check (BEFORE session creation
         // so we don't allocate a Pi AgentSession we'll immediately dispose).
@@ -298,13 +302,13 @@ export class SubagentManager {
             };
         }
 
+        const boundedTimeoutMs = normalizeTimeoutMs(timeoutMs);
         return new Promise<SubagentResult | null>((resolve) => {
-            const entry: { resolve: (r: SubagentResult | null) => void; timer?: NodeJS.Timeout } = {
-                resolve,
-            };
+            const entry: WaiterEntry = { resolve };
             entry.timer = setTimeout(() => {
+                this.removeWaiter(actorId, entry);
                 resolve(null);
-            }, timeoutMs);
+            }, boundedTimeoutMs);
             const list = this.waitersByActor.get(actorId) ?? [];
             list.push(entry);
             this.waitersByActor.set(actorId, list);
@@ -483,6 +487,17 @@ export class SubagentManager {
         this.waitersByActor.delete(actorId);
     }
 
+    private removeWaiter(actorId: string, entry: WaiterEntry): void {
+        const list = this.waitersByActor.get(actorId);
+        if (!list) return;
+        const next = list.filter((candidate) => candidate !== entry);
+        if (next.length === 0) {
+            this.waitersByActor.delete(actorId);
+            return;
+        }
+        this.waitersByActor.set(actorId, next);
+    }
+
     private runGcSweep(): void {
         const now = this.now();
         for (const [actorId, instance] of this.instancesByActor) {
@@ -524,6 +539,14 @@ export class SubagentManager {
 function makeActorId(type: SubagentTypeID): string {
     const short = randomUUID().replace(/-/g, "").slice(0, 6);
     return `${type}-${short}`;
+}
+
+function normalizeTimeoutMs(timeoutMs: number | undefined): number {
+    if (timeoutMs === undefined) return DEFAULT_TIMEOUT_MS;
+    if (!Number.isFinite(timeoutMs) || timeoutMs < MIN_TIMEOUT_MS || timeoutMs > MAX_TIMEOUT_MS) {
+        throw new Error(`timeoutMs must be between ${MIN_TIMEOUT_MS} and ${MAX_TIMEOUT_MS} milliseconds`);
+    }
+    return timeoutMs;
 }
 
 function snapshotToInstance(snapshot: SubagentSessionSnapshot): SubagentInstance {

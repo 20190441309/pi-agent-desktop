@@ -464,19 +464,24 @@ export const workbenchSetActiveFileSchema = z.tuple([
 // 6 个 plan IPC handler 入参校验. workspaceId 必填且非空, slug / filename 非空,
 // status 必须是 PlanStatus 枚举. content / title 允许空串 (UI 兜底为默认文案).
 
+const MAX_PLAN_SLUG_LENGTH = 200;
+const MAX_PLAN_TITLE_LENGTH = 500;
+const MAX_PLAN_FILENAME_LENGTH = 260;
+const MAX_PLAN_CONTENT_LENGTH = 1024 * 1024;
+
 export const PlanCreateSchema = z.object({
     workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
-    slug: z.string().min(1, "slug must be a non-empty string"),
-    title: z.string(),
-    content: z.string(),
+    slug: z.string().min(1, "slug must be a non-empty string").max(MAX_PLAN_SLUG_LENGTH, "slug is too long"),
+    title: z.string().max(MAX_PLAN_TITLE_LENGTH, "title is too long"),
+    content: z.string().max(MAX_PLAN_CONTENT_LENGTH, "content is too large"),
 }).strict();
 
 export const PlanUpdateSchema = z.object({
     workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
-    filename: z.string().min(1, "filename must be a non-empty string"),
-    content: z.string().optional(),
+    filename: z.string().min(1, "filename must be a non-empty string").max(MAX_PLAN_FILENAME_LENGTH, "filename is too long"),
+    content: z.string().max(MAX_PLAN_CONTENT_LENGTH, "content is too large").optional(),
     status: z.enum(["draft", "executing", "completed", "cancelled"]).optional(),
-    title: z.string().optional(),
+    title: z.string().max(MAX_PLAN_TITLE_LENGTH, "title is too long").optional(),
 }).strict();
 
 export const PlanListOptionsSchema = z.object({
@@ -488,7 +493,7 @@ export const PlanListOptionsSchema = z.object({
 // plan:get / plan:complete / plan:delete — 仅 (workspaceId, filename)
 export const PlanFilenameSchema = z.object({
     workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
-    filename: z.string().min(1, "filename must be a non-empty string"),
+    filename: z.string().min(1, "filename must be a non-empty string").max(MAX_PLAN_FILENAME_LENGTH, "filename is too long"),
 }).strict();
 
 // ── Task IPC schemas (Phase B Task 4) ─────────────────────

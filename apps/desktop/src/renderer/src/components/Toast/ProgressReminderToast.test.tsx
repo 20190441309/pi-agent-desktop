@@ -54,16 +54,20 @@ describe("ProgressReminderToast", () => {
       }));
     });
 
-    usePlanStore.getState().startExecution({
-      activePlanId: "plan_1",
-      title: "执行计划：overlay",
-      filename: "overlay.md",
+    act(() => {
+      usePlanStore.getState().startExecution({
+        activePlanId: "plan_1",
+        title: "执行计划：overlay",
+        filename: "overlay.md",
+      });
     });
 
     await waitFor(() => {
       expect(screen.getByRole("status", { name: "任务运行中提醒" }).textContent).toContain("正在执行计划");
     });
-    fireEvent.click(screen.getByRole("button", { name: "暂停执行" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "暂停执行" }));
+    });
 
     await waitFor(() => {
       expect(stop).toHaveBeenCalledWith("ws1");
@@ -84,7 +88,9 @@ describe("ProgressReminderToast", () => {
       }));
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "停止生成" }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "停止生成" }));
+    });
     expect(stop).toHaveBeenCalledWith("ws1");
 
     act(() => {

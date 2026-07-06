@@ -60,6 +60,9 @@ const subagentTypeEnum = Type.Union(
     { description: "Spawnable subagent type. Hidden types (dream/distill) are excluded — use slash commands." },
 );
 
+const MIN_TIMEOUT_MS = 1;
+const MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
 // ── Operation schemas ───────────────────────────────────────────
 
 const contextEnum = Type.Union(
@@ -77,6 +80,8 @@ const runOperationSchema = Type.Object({
     prompt: Type.String({ description: "The task for the subagent to perform." }),
     timeout_ms: Type.Optional(
         Type.Number({
+            minimum: MIN_TIMEOUT_MS,
+            maximum: MAX_TIMEOUT_MS,
             description: "(optional) Milliseconds to wait before returning status='timeout'. Default 600000 (10 min).",
         }),
     ),
@@ -93,6 +98,8 @@ const waitOperationSchema = Type.Object({
     actor_id: Type.String({ description: "Actor session id returned by a prior `run` call." }),
     timeout_ms: Type.Optional(
         Type.Number({
+            minimum: MIN_TIMEOUT_MS,
+            maximum: MAX_TIMEOUT_MS,
             description: "(optional) Max wait in milliseconds. Default 600000 (10 min). Returns null on timeout.",
         }),
     ),
@@ -191,6 +198,7 @@ async function handleRun(
     // Task 4 wires up `checkpointService.rebuildContext`. The checkpoint
     // summary would be prepended to the prompt here.
     const effectivePrompt = op.prompt;
+    const timeoutMs = assertValidTimeoutMs(op.timeout_ms);
 
     const { actorId, outcome } = await manager.spawn({
         context: {
@@ -201,7 +209,7 @@ async function handleRun(
         subagentType: op.subagent_type,
         description: op.description,
         prompt: effectivePrompt,
-        timeoutMs: op.timeout_ms,
+        timeoutMs,
     });
 
     const result = await outcome;
@@ -234,7 +242,7 @@ async function handleWait(
     agentId: string,
     op: Extract<ActorOperation, { action: "wait" }>,
 ): Promise<AgentToolResult<ActorToolDetails>> {
-    const result = await manager.wait(agentId, op.actor_id, op.timeout_ms);
+    const result = await manager.wait(agentId, op.actor_id, assertValidTimeoutMs(op.timeout_ms));
     if (!result) {
         return {
             content: [{ type: "text", text: formatUnknown(op.actor_id) }],
@@ -263,6 +271,14 @@ async function handleCancel(
         content: [{ type: "text", text: formatSnapshot(snapshot) }],
         details: { snapshot },
     };
+}
+
+function assertValidTimeoutMs(timeoutMs: number | undefined): number | undefined {
+    if (timeoutMs === undefined) return undefined;
+    if (!Number.isFinite(timeoutMs) || timeoutMs < MIN_TIMEOUT_MS || timeoutMs > MAX_TIMEOUT_MS) {
+        throw new Error(`timeout_ms must be between ${MIN_TIMEOUT_MS} and ${MAX_TIMEOUT_MS} milliseconds`);
+    }
+    return timeoutMs;
 }
 
 // ── Formatters ──────────────────────────────────────────────────

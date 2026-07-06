@@ -502,12 +502,13 @@ function AppShell(): React.ReactElement {
         const onDeferred = window.piAPI?.onApprovalDeferred;
         const onReview = window.piAPI?.onApprovalReview;
         if (!onDeferred || !onReview) return;
+        const deferredApprovals = deferredApprovalRef.current;
 
         const unsubDeferred = onDeferred((payload) => {
-            deferredApprovalRef.current.set(payload.changeId, payload);
+            deferredApprovals.set(payload.changeId, payload);
         });
         const unsubReview = onReview((payload) => {
-            const deferred = deferredApprovalRef.current.get(payload.changeId);
+            const deferred = deferredApprovals.get(payload.changeId);
             useApprovalStore.getState().addChange({
                 toolCallId: payload.toolCallId,
                 toolName: deferred?.op === "edit" ? "edit" : "write",
@@ -515,11 +516,11 @@ function AppShell(): React.ReactElement {
                 diff: payload.diff,
                 newContent: payload.newContent,
             });
-            deferredApprovalRef.current.delete(payload.changeId);
+            deferredApprovals.delete(payload.changeId);
         });
 
         return () => {
-            deferredApprovalRef.current.clear();
+            deferredApprovals.clear();
             if (typeof unsubDeferred === "function") unsubDeferred();
             if (typeof unsubReview === "function") unsubReview();
         };
