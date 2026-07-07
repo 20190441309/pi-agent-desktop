@@ -58,6 +58,14 @@ export class ConfigManager {
             }
 
             const providers: PiAgentConfig["providers"] = [];
+            let authData: PiAuthFile = {};
+            const authJsonPath = join(this.configDir, "auth.json");
+            if (existsSync(authJsonPath)) {
+                const parsedAuth = JSON.parse(readFileSync(authJsonPath, "utf-8")) as unknown;
+                if (this.isPlainObject(parsedAuth)) {
+                    authData = parsedAuth as PiAuthFile;
+                }
+            }
 
             const modelsJsonPath = join(this.configDir, "models.json");
             if (existsSync(modelsJsonPath)) {
@@ -89,7 +97,7 @@ export class ConfigManager {
                             id: providerId,
                             name: pd.name || providerId,
                             baseUrl: pd.baseUrl,
-                            apiKey: pd.apiKey,
+                            apiKey: this.getAuthValue(authData[providerId]) ?? pd.apiKey,
                             apiType: pd.apiType,
                             api: this.apiFromApiType(pd.api ?? pd.apiType),
                             _piDesktopDeletedModels: Array.isArray(pd._piDesktopDeletedModels) ? pd._piDesktopDeletedModels : undefined,

@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ChildAgentRunInput, ChildAgentRunResult } from "./types.ts";
+
+type JsonObject = Record<string, unknown>;
 
 function piCommand(): string {
     return process.platform === "win32" ? "pi.cmd" : "pi";
@@ -44,6 +46,74 @@ function resolveWindowsPiCliJs(piShim?: string): string | undefined {
         "cli.js",
     );
     return existsSync(globalCandidate) ? globalCandidate : undefined;
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readJsonObject(path: string): JsonObject | undefined {
+    if (!existsSync(path)) return undefined;
+    try {
+        const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+        return isJsonObject(parsed) ? parsed : undefined;
+    } catch (error) {
+        if (error instanceof Error) return undefined;
+        throw error;
+    }
+}
+
+function resolveSourceAgentDir(): string {
+    const configured = process.env.PI_CODING_AGENT_DIR?.trim();
+    return configured || join(homedir(), ".pi", "agent");
+}
+
+function readProviderApiKey(auth: JsonObject, provider: string): string | undefined {
+    const value = auth[provider];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (!isJsonObject(value)) return undefined;
+    const apiKey = value.apiKey;
+    if (typeof apiKey === "string" && apiKey.trim()) return apiKey.trim();
+    const key = value.key;
+    return typeof key === "string" && key.trim() ? key.trim() : undefined;
+}
+
+function createChildAgentDir(provider?: string): string | undefined {
+    const providerId = provider?.trim();
+    if (!providerId) return undefined;
+
+    const sourceAgentDir = resolveSourceAgentDir();
+    const models = readJsonObject(join(sourceAgentDir, "models.json"));
+    const auth = readJsonObject(join(sourceAgentDir, "auth.json"));
+    if (!models || !auth) return undefined;
+
+    const providers = models.providers;
+    if (!isJsonObject(providers)) return undefined;
+    const providerConfig = providers[providerId];
+    if (!isJsonObject(providerConfig)) return undefined;
+    if (typeof providerConfig.apiKey === "string" && providerConfig.apiKey.trim()) return undefined;
+
+    const apiKey = readProviderApiKey(auth, providerId);
+    if (!apiKey) return undefined;
+
+    const childAgentDir = mkdtempSync(join(tmpdir(), "pi-desktop-compose-child-agent-"));
+    const childModels: JsonObject = {
+        ...models,
+        providers: {
+            ...providers,
+            [providerId]: {
+                ...providerConfig,
+                apiKey,
+            },
+        },
+    };
+    writeFileSync(join(childAgentDir, "models.json"), JSON.stringify(childModels, null, 2), "utf8");
+    writeFileSync(join(childAgentDir, "auth.json"), JSON.stringify(auth, null, 2), "utf8");
+    const settingsPath = join(sourceAgentDir, "settings.json");
+    if (existsSync(settingsPath)) {
+        writeFileSync(join(childAgentDir, "settings.json"), readFileSync(settingsPath, "utf8"), "utf8");
+    }
+    return childAgentDir;
 }
 
 function childAgentCommand(input: ChildAgentRunInput): {
@@ -101,6 +171,7 @@ export async function runChildAgent(input: ChildAgentRunInput): Promise<ChildAge
         };
     }
 
+    const childAgentDir = createChildAgentDir(input.provider);
     const { command, args, windowsVerbatimArguments, stdinText } = childAgentCommand(input);
 
     return new Promise<ChildAgentRunResult>((resolve) => {
@@ -131,6 +202,9 @@ export async function runChildAgent(input: ChildAgentRunInput): Promise<ChildAge
                 input.signal.removeEventListener("abort", abort);
             }
             if (timeoutId) clearTimeout(timeoutId);
+            if (childAgentDir) {
+                rmSync(childAgentDir, { recursive: true, force: true });
+            }
             const text = stdout.trim() || stderr.trim();
             resolve({
                 ok: exitCode === 0,
@@ -148,7 +222,10 @@ export async function runChildAgent(input: ChildAgentRunInput): Promise<ChildAge
             child = spawn(command, args, {
                 cwd: input.cwd,
                 shell: false,
-                env: process.env,
+                env: {
+                    ...process.env,
+                    ...(childAgentDir ? { PI_CODING_AGENT_DIR: childAgentDir } : {}),
+                },
                 windowsVerbatimArguments,
             });
         } catch (error) {

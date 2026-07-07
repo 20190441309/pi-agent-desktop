@@ -331,6 +331,15 @@ export class AgentRuntimeRegistry {
             runtime.isStreaming = false;
             this.disarmWatchdog(runtime);
         }
+        if (
+            runtime.isStreaming
+            && event.type !== "agent_start"
+            && event.type !== "agent_end"
+            && event.type !== "turn_end"
+            && event.type !== "extension_error"
+        ) {
+            this.armWatchdog(runtime);
+        }
         if (event.type === "turn_end") {
             this.notifyTurnEnd(runtime);
         }
@@ -345,7 +354,9 @@ export class AgentRuntimeRegistry {
     }
 
     private armWatchdog(runtime: AgentRuntime): void {
-        if (runtime.watchdog) return;
+        if (runtime.watchdog) {
+            clearTimeout(runtime.watchdog);
+        }
         runtime.watchdog = setTimeout(() => {
             runtime.watchdog = undefined;
             log.error("[agent-runtime] watchdog fired (stuck running):", runtime.tab.id);

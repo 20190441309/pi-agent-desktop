@@ -359,8 +359,12 @@ function MessageBubbleImpl({
                     status={planStatus}
                     steps={planSteps}
                     lastError={planLastError}
-                    onExecute={() => void onPlanAction?.(effectiveMessage, "execute")}
-                    onRefine={() => void onPlanAction?.(effectiveMessage, "refine")}
+                    onExecute={(selectedOption) => void (
+                      selectedOption
+                        ? onPlanAction?.(effectiveMessage, "execute", selectedOption)
+                        : onPlanAction?.(effectiveMessage, "execute")
+                    )}
+                    onRefine={(text) => void onPlanAction?.(effectiveMessage, "refine", text)}
                     onCancel={() => void onPlanAction?.(effectiveMessage, "cancel")}
                     onPause={() => void onPlanAction?.(effectiveMessage, "pause")}
                     onResume={() => void onPlanAction?.(effectiveMessage, "resume")}

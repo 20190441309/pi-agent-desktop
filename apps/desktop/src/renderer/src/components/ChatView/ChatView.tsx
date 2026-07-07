@@ -107,6 +107,7 @@ function visibleText(message: Message): string {
 function buildPlanExecutionPrompt(input: {
   title: string;
   filename?: string;
+  selectedOption?: string;
   content: string;
 }): string {
   const planContent = stripPlanFrontmatter(input.content).trim();
@@ -114,6 +115,7 @@ function buildPlanExecutionPrompt(input: {
     "请直接执行下面这份计划，不要重新生成计划。",
     `计划标题：${input.title}`,
     input.filename ? `计划文件：${input.filename}` : undefined,
+    input.selectedOption ? `已选择执行方案：${input.selectedOption}` : undefined,
     "",
     "执行要求：",
     "1. 严格按顺序实施并验证每个步骤。",
@@ -599,7 +601,7 @@ export function ChatView({
     }
   }, [activePlanExecution?.phase, activePlanExecution?.sourceMessageId, messages, updatePlanActionStatus]);
 
-  const executePlanMessage = async (message: Message): Promise<void> => {
+  const executePlanMessage = async (message: Message, selectedOption?: string): Promise<void> => {
     if (!message.planAction) return;
     if (!currentWorkspace) return;
     const planContent = contentWithGeneratedUiText(message.content, message.generatedUi).trim();
@@ -621,6 +623,7 @@ export function ChatView({
     const executionPrompt = buildPlanExecutionPrompt({
       title: message.planAction.title,
       filename,
+      selectedOption,
       content: planContent,
     });
     const visibleContent = name ? t("chatView.plan.executeNamed", { name }) : t("chatView.plan.execute");
@@ -674,7 +677,7 @@ export function ChatView({
       await executePlanMessage(message);
       return;
     }
-    await executePlanMessage(message);
+    await executePlanMessage(message, text?.trim() || undefined);
   };
 
   // 外部预填文本，光标停在末尾方便用户继续。

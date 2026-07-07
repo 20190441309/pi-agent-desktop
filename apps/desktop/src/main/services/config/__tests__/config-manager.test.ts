@@ -160,6 +160,28 @@ describe("ConfigManager", () => {
         });
     });
 
+    it("removes a json-only provider and auth when deleting its final model", async () => {
+        await manager.saveModelsConfig({
+            providers: {
+                temp: {
+                    name: "Temp Provider",
+                    baseUrl: "https://temp.example.com/v1",
+                    api: "openai-completions",
+                    models: [{ id: "only", name: "Only" }],
+                },
+            },
+        });
+        await manager.saveAuthConfig({ temp: { type: "api_key", key: "sk-temp" } });
+
+        const result = await manager.deleteManagedModel({ providerId: "temp", modelId: "only" });
+
+        expect(result.valid).toBe(true);
+        await expect(manager.getModelsConfig()).resolves.toMatchObject({
+            parsed: { providers: {} },
+        });
+        await expect(manager.getAuthConfig()).resolves.toMatchObject({ parsed: {} });
+    });
+
     it("migrates yaml-sourced models on edit and marks yaml deletions so they do not reappear", async () => {
         await writeFile(
             join(dir, "models.yml"),
@@ -367,6 +389,35 @@ describe("ConfigManager", () => {
             expect(config!.providers[0].apiKey).toBe("OPENAI_API_KEY");
             expect(config!.providers[0].models[0].id).toBe("gpt-4o");
             expect(config!.providers[0].models[0].contextWindow).toBe(128000);
+        });
+
+        it("hydrates provider api keys from auth.json for runtime config summaries", async () => {
+            await writeFile(
+                join(dir, "models.json"),
+                JSON.stringify({
+                    providers: {
+                        openai_ispure: {
+                            name: "OpenAI (ispure)",
+                            baseUrl: "https://example.test/v1",
+                            api: "openai-completions",
+                            models: [{ id: "gpt-5.5", name: "GPT-5.5" }],
+                        },
+                    },
+                }),
+                "utf8",
+            );
+            await writeFile(
+                join(dir, "auth.json"),
+                JSON.stringify({ openai_ispure: { key: "sk-local-real" } }),
+                "utf8",
+            );
+
+            const config = manager.loadPiAgentConfig();
+
+            expect(config?.providers[0]).toMatchObject({
+                id: "openai_ispure",
+                apiKey: "sk-local-real",
+            });
         });
 
         it("falls back to models.yml via js-yaml", async () => {

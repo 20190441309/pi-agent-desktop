@@ -104,15 +104,15 @@ describe("PlanCard", () => {
     expect(screen.getByRole("button", { name: "执行计划" })).toBeTruthy();
   });
 
-  it("calls onRefine with selected option when execute clicked after selection", () => {
-    const onRefine = vi.fn();
+  it("calls onExecute with selected option when confirm-and-execute is clicked", () => {
+    const onExecute = vi.fn();
     render(
       <I18nProvider>
         <PlanCard
           title="选择题计划"
           content={"A) 方案一\nB) 方案二"}
           status="pending"
-          onRefine={onRefine}
+          onExecute={onExecute}
         />
       </I18nProvider>,
     );
@@ -121,7 +121,7 @@ describe("PlanCard", () => {
     fireEvent.click(options[0]);
     fireEvent.click(screen.getByRole("button", { name: "确认并执行" }));
 
-    expect(onRefine).toHaveBeenCalledWith("方案一");
+    expect(onExecute).toHaveBeenCalledWith("方案一");
   });
 
   it("renders executing state with progress", () => {

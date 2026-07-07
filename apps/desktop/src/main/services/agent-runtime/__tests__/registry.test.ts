@@ -419,6 +419,41 @@ describe("AgentRuntimeRegistry", () => {
         });
     });
 
+    it("keeps long-running workflow turns alive when progress events continue before the watchdog deadline", async () => {
+        vi.useFakeTimers();
+        try {
+            const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+            const subscribed = sessions[0].subscribe.mock.calls[0][0];
+
+            await subscribed({ type: "agent_start" });
+            await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+            await subscribed({ type: "tool_update", toolCallId: "workflow-1", status: "running" });
+            await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
+
+            expect(registry.getRuntimeState(agent.id)).toMatchObject({
+                status: "running",
+                isStreaming: true,
+            });
+            expect(registry.getMessages(agent.id)).not.toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        role: "error",
+                        content: expect.stringContaining("会话运行超时"),
+                    }),
+                ]),
+            );
+
+            await vi.advanceTimersByTimeAsync((3 * 60 * 1000) + 1);
+
+            expect(registry.getRuntimeState(agent.id)).toMatchObject({
+                status: "error",
+                isStreaming: false,
+            });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("calls onTurnEnd with workspace and agent ids when a default runtime emits turn_end", async () => {
         const onTurnEnd = vi.fn();
         registry = new AgentRuntimeRegistry({

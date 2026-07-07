@@ -34,7 +34,7 @@ export interface PlanCardProps {
   steps?: PlanStepItem[];
   /** Plan-store 的 lastError; 仅当与当前 plan 关联时透传. */
   lastError?: string | null;
-  onExecute?: () => void;
+  onExecute?: (selectedOption?: string) => void;
   onRefine?: (text: string) => void;
   onCancel?: () => void;
   onPause?: () => void;
@@ -177,12 +177,8 @@ export function PlanCard({
   }, [status, t]);
 
   const handleExecute = useCallback(() => {
-    if (selectedOption && onRefine) {
-      onRefine(selectedOption);
-    } else {
-      onExecute?.();
-    }
-  }, [selectedOption, onRefine, onExecute]);
+    onExecute?.(selectedOption ?? undefined);
+  }, [selectedOption, onExecute]);
 
   const handleRefine = useCallback(() => {
     if (feedback.trim()) {

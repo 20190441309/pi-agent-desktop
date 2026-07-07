@@ -463,6 +463,70 @@ describe("MessageBubble", () => {
     await waitFor(() => expect(onPlanAction).toHaveBeenCalledWith(message, "execute"));
   });
 
+  it("passes selected plan option through confirm-and-execute", async () => {
+    const onPlanAction = vi.fn(async () => undefined);
+    const message: Message = {
+      id: "m-plan-choice",
+      role: "assistant",
+      content: "A) 按计划执行：只修改 src/discount.js\nB) 重新规划：增加更多验证",
+      timestamp: new Date(0),
+      planAction: {
+        id: "plan_action_choice",
+        title: "折扣修复计划",
+        filename: "discount-plan.md",
+        status: "pending",
+      },
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} onPlanAction={onPlanAction} />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /选项 A\)/ }));
+    fireEvent.click(screen.getByRole("button", { name: "确认并执行" }));
+
+    await waitFor(() => expect(onPlanAction).toHaveBeenCalledWith(
+      message,
+      "execute",
+      "按计划执行：只修改 src/discount.js",
+    ));
+  });
+
+  it("passes supplement text through refine action", async () => {
+    const onPlanAction = vi.fn(async () => undefined);
+    const message: Message = {
+      id: "m-plan-refine",
+      role: "assistant",
+      content: "- 检查\n- 修改",
+      timestamp: new Date(0),
+      planAction: {
+        id: "plan_action_refine",
+        title: "补充计划",
+        filename: "refine-plan.md",
+        status: "pending",
+      },
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} onPlanAction={onPlanAction} />
+      </I18nProvider>,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("有补充就写在这里"), {
+      target: { value: "先运行 npm test 再修改" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送补充" }));
+
+    await waitFor(() => expect(onPlanAction).toHaveBeenCalledWith(
+      message,
+      "refine",
+      "先运行 npm test 再修改",
+    ));
+  });
+
   it("infers an executable inline plan action from plan-like assistant markdown", async () => {
     const onPlanAction = vi.fn(async () => undefined);
     const message: Message = {
