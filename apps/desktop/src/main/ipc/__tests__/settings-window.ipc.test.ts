@@ -1,0 +1,101 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  handlers,
+  windowListeners,
+  webContentsListeners,
+  sendMock,
+  webContents,
+  BrowserWindowMock,
+} = vi.hoisted(() => {
+  const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const windowListeners = new Map<string, (...args: unknown[]) => void>();
+  const webContentsListeners = new Map<string, (...args: unknown[]) => void>();
+  const sendMock = vi.fn();
+  const webContents = {
+    setZoomFactor: vi.fn(),
+    setWindowOpenHandler: vi.fn(),
+    getURL: vi.fn(() => "file:///C:/app/settings.html"),
+    on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+      webContentsListeners.set(event, listener);
+    }),
+    once: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+      webContentsListeners.set(event, listener);
+    }),
+    send: sendMock,
+  };
+  const mockWindow = {
+    webContents,
+    isDestroyed: vi.fn(() => false),
+    focus: vi.fn(),
+    setBounds: vi.fn(),
+    show: vi.fn(),
+    close: vi.fn(),
+    loadFile: vi.fn(async () => undefined),
+    loadURL: vi.fn(async () => undefined),
+    on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+      windowListeners.set(event, listener);
+    }),
+  };
+  const BrowserWindowMock = vi.fn(function BrowserWindowMock() {
+    return mockWindow;
+  });
+  return {
+    handlers,
+    windowListeners,
+    webContentsListeners,
+    sendMock,
+    webContents,
+    BrowserWindowMock,
+  };
+});
+
+vi.mock("electron", () => ({
+  BrowserWindow: BrowserWindowMock,
+  ipcMain: {
+    handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
+      handlers.set(channel, handler);
+    }),
+  },
+  screen: {
+    getDisplayMatching: vi.fn(() => ({
+      workArea: { x: 0, y: 0, width: 1920, height: 1080 },
+    })),
+  },
+}));
+
+vi.mock("@electron-toolkit/utils", () => ({
+  is: { dev: false },
+}));
+
+vi.mock("electron-log/main", () => ({
+  default: { info: vi.fn(), warn: vi.fn() },
+}));
+
+vi.mock("../../services/web-security", () => ({
+  attachWebSecurityHandlers: vi.fn(),
+}));
+
+import { setupSettingsWindowIpc } from "../settings-window.ipc";
+
+describe("setupSettingsWindowIpc", () => {
+  beforeEach(() => {
+    handlers.clear();
+    windowListeners.clear();
+    webContentsListeners.clear();
+    sendMock.mockReset();
+    BrowserWindowMock.mockClear();
+    setupSettingsWindowIpc();
+  });
+
+  it("buffers the initial tab until the settings renderer reports ready", async () => {
+    const openWindow = handlers.get("settings:open-window");
+    expect(openWindow).toBeTruthy();
+    await openWindow?.({}, "model");
+
+    expect(sendMock).not.toHaveBeenCalled();
+    const rendererReady = handlers.get("settings:renderer-ready");
+    expect(rendererReady).toBeTruthy();
+    expect(rendererReady?.({ sender: webContents })).toBe("model");
+  });
+});

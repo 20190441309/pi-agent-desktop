@@ -71,7 +71,7 @@ function stepIcon(status: PlanStepItem["status"]): React.ReactNode {
       );
     case "running":
       return (
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#1a1a1a]" aria-hidden />
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--mm-bg-active)] animate-pulse" aria-hidden />
       );
     case "failed":
       return (
@@ -120,13 +120,44 @@ function extractChoiceOptions(content: string): PlanChoiceOption[] | null {
   return null;
 }
 
-/** 生成计划摘要（前3行非空内容） */
-function planSummary(content: string): string {
+function cleanHeading(line: string): string {
+  return line.replace(/^\s*#{1,6}\s+/, "").trim();
+}
+
+function isDecisionHeading(line: string): boolean {
+  return /(?:用户需选择方向|请选择.*方向|审查方向|执行方案|方案选择)/.test(cleanHeading(line));
+}
+
+function isChoiceLine(line: string): boolean {
+  return /^[A-Z][).]\s+\S+/.test(line.trim());
+}
+
+/** 生成计划摘要：优先展示用户真正要确认的计划/选择区，而不是前置背景说明。 */
+function planSummaryLines(content: string): string[] {
   const lines = content
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("---"));
-  return lines.slice(0, 3).join("\n");
+
+  const rawLines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const decisionHeadingIndex = rawLines.findIndex(isDecisionHeading);
+  if (decisionHeadingIndex >= 0) {
+    const summary = [cleanHeading(rawLines[decisionHeadingIndex])];
+    for (const line of rawLines.slice(decisionHeadingIndex + 1)) {
+      if (/^\s*#{1,6}\s+/.test(line) && summary.length > 1) break;
+      if (!line.startsWith("---")) summary.push(line);
+      if (summary.length >= 4) break;
+    }
+    return summary;
+  }
+
+  const choiceLines = rawLines.filter(isChoiceLine);
+  if (choiceLines.length >= 2) return choiceLines.slice(0, 3);
+
+  return lines.slice(0, 3);
 }
 
 export function PlanCard({
@@ -205,13 +236,11 @@ export function PlanCard({
 
   return (
     <div
-      className={`mt-3 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
-        isExecuting ? "animate-pulse-subtle" : ""
-      }`}
+      className="mt-2 rounded-lg border border-[var(--mm-border-subtle)] bg-[var(--mm-bg-panel)] shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
       data-testid="plan-card"
     >
       {/* 标题栏 */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#f0f0ee]">
+      <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
         <div className="flex min-w-0 items-center gap-2">
           <span
             data-testid="plan-status"
@@ -240,14 +269,18 @@ export function PlanCard({
       </div>
 
       {/* 正文区 */}
-      <div className="px-4 py-3">
+      <div className="px-4 py-2">
         {expanded ? (
           <div className="text-sm leading-relaxed">
             <MarkdownRenderer content={content} />
           </div>
         ) : (
           <div className="text-sm leading-relaxed text-[var(--mm-text-secondary)]">
-            <div className="whitespace-pre-wrap">{planSummary(content)}</div>
+            <div className="space-y-1">
+              {planSummaryLines(content).map((line) => (
+                <div key={line} className="whitespace-pre-wrap">{line}</div>
+              ))}
+            </div>
             {content.split(/\r?\n/).filter((l) => l.trim()).length > 3 && (
               <button
                 type="button"
@@ -272,12 +305,12 @@ export function PlanCard({
 
       {/* 步骤列表 */}
       {steps && steps.length > 0 && (
-        <div className="px-4 pb-2">
-          <div className="rounded-lg border border-[#f0f0ee] bg-[var(--mm-bg-panel)] p-2.5">
+        <div className="px-4 pb-2" data-testid="plan-steps">
+          <div className="border-t border-[var(--mm-border-subtle)] pt-2">
             <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-[#aaa]">{t("planCard.stepsLabel")}</span>
+              <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--mm-text-tertiary)]">{t("planCard.stepsLabel")}</span>
               {totalCount > 0 && (
-                <span className="text-[10px] text-[#aaa]">
+                <span className="text-[10px] text-[var(--mm-text-tertiary)]">
                   {completedCount}/{totalCount}
                 </span>
               )}
@@ -318,8 +351,8 @@ export function PlanCard({
                 onClick={() => setSelectedOption(opt.value)}
                 className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
                   selectedOption === opt.value
-                    ? "border-[#1a1a1a] bg-[#1a1a1a] text-white"
-                    : "border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
+                    ? "border-[var(--mm-bg-active)] bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)]"
+                    : "border-[var(--mm-border-subtle)] bg-transparent text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
                 }`}
               >
                 <span className="font-medium">{opt.label}</span>
@@ -331,7 +364,7 @@ export function PlanCard({
       )}
 
       {/* 操作区 */}
-      <div className="px-4 py-3 border-t border-[#f0f0ee] bg-[var(--mm-bg-panel)]">
+      <div className="border-t border-[var(--mm-border-subtle)] px-4 pt-3 pb-3" data-testid="plan-actions">
         {isPending && (
           <div className="flex flex-col gap-2">
             {/* 补充文本区 */}
@@ -341,7 +374,7 @@ export function PlanCard({
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 placeholder={hasOptions ? t("planCard.feedbackPlaceholderWithOptions") : t("planCard.feedbackPlaceholder")}
-                className="flex-1 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-1.5 text-xs focus:border-[#d6d6d1] focus:outline-none focus:ring-0"
+                className="flex-1 rounded-lg border border-[var(--mm-border-subtle)] bg-[var(--mm-bg-control)] px-3 py-1.5 text-xs focus:border-[var(--mm-border-strong)] focus:outline-none focus:ring-0"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -357,7 +390,7 @@ export function PlanCard({
                 type="button"
                 onClick={handleExecute}
                 data-testid="plan-execute-button"
-                className="h-8 rounded-full bg-[#242423] px-3 text-xs font-medium text-white hover:bg-[#111] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-8 rounded-full bg-[var(--mm-bg-active)] px-3 text-xs font-medium text-[var(--mm-text-on-active)] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isWriteFailure || Boolean(hasOptions && !selectedOption)}
               >
                 {hasOptions ? (selectedOption ? t("planCard.confirmAndExecute") : t("planCard.selectOptionPrompt")) : t("planCard.executePlan")}
@@ -366,7 +399,7 @@ export function PlanCard({
                 type="button"
                 onClick={handleRefine}
                 disabled={!feedback.trim()}
-                className="h-8 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-8 rounded-full border border-[var(--mm-border-subtle)] bg-transparent px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t("planCard.sendSupplement")}
               </button>
@@ -409,7 +442,7 @@ export function PlanCard({
               type="button"
               onClick={onPause}
               disabled={status === "pausing"}
-              className="h-8 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-60"
+              className="h-8 rounded-full border border-[var(--mm-border-subtle)] bg-transparent px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:opacity-60"
             >
               {status === "pausing" ? t("planCard.pausing") : t("planCard.pauseExecution")}
             </button>
@@ -426,7 +459,7 @@ export function PlanCard({
             <button
               type="button"
               onClick={onResume}
-              className="h-8 rounded-full bg-[#242423] px-3 text-xs font-medium text-white hover:bg-[#111]"
+              className="h-8 rounded-full bg-[var(--mm-bg-active)] px-3 text-xs font-medium text-[var(--mm-text-on-active)] hover:opacity-90"
             >
               {t("planCard.resumeExecution")}
             </button>

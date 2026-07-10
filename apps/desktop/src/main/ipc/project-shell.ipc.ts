@@ -4,6 +4,7 @@ import { ipcError } from "@shared";
 import { buildFileTree } from "../file-tree";
 import { detectProject } from "../project-detector";
 import { getProtectedPathReason } from "../services/protected-paths";
+import { projectDetectSchema, projectFileTreeSchema } from "./schemas";
 
 function protectedPathError(path: string, reason: string) {
     return ipcError("ipcErrors.files.protectedPath", reason, { path });
@@ -33,12 +34,33 @@ function isUrlSchemeButNotHttp(target: string): boolean {
 
 export function setupProjectShellIpc(): void {
     ipcMain.handle("project:detect", async (_event, workspacePath: string) => {
+        try {
+            projectDetectSchema.parse([workspacePath]);
+        } catch (err) {
+            log.warn("[project-shell.ipc] project:detect invalid args:", err);
+            return ipcError(
+                "ipcErrors.project.detectInvalid",
+                `project detect 参数无效: ${err instanceof Error ? err.message : String(err)}`,
+                { path: String(workspacePath ?? "") },
+            );
+        }
         const reason = getProtectedPathReason(workspacePath);
         if (reason) return protectedPathError(workspacePath, reason);
         return detectProject(workspacePath);
     });
 
     ipcMain.handle("project:file-tree", async (_event, workspacePath: string, maxDepth?: number) => {
+        try {
+            const args = maxDepth === undefined ? [workspacePath] : [workspacePath, maxDepth];
+            projectFileTreeSchema.parse(args);
+        } catch (err) {
+            log.warn("[project-shell.ipc] project:file-tree invalid args:", err);
+            return ipcError(
+                "ipcErrors.project.fileTreeInvalid",
+                `project file-tree 参数无效: ${err instanceof Error ? err.message : String(err)}`,
+                { path: String(workspacePath ?? "") },
+            );
+        }
         const reason = getProtectedPathReason(workspacePath);
         if (reason) return protectedPathError(workspacePath, reason);
         return buildFileTree(workspacePath, { maxDepth: maxDepth || 4 });

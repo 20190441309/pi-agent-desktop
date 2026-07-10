@@ -122,11 +122,11 @@ export function MiniMaxCodeTitleBar({
                 data-mmcode-region="titlebar-center"
             >
                 {navigationSlot ?? (showCenterMeta && (
-                    <div className="flex min-w-0 items-center gap-2 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-1 text-[11px] text-[var(--mm-text-secondary)]">
+                    <div className="pi-motion-status-pill flex min-w-0 items-center gap-2 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-1 text-[11px] text-[var(--mm-text-secondary)]" data-motion-state={statusTone}>
                         {statusLabel && (
                             <span className="flex shrink-0 items-center gap-1.5">
-                                <span className={`h-1.5 w-1.5 rounded-full ${statusColor}`} aria-hidden="true" />
-                                <span>{statusLabel}</span>
+                                <span className={`h-1.5 w-1.5 rounded-full ${statusTone === "busy" ? "pi-motion-running-dot" : ""} ${statusColor}`} aria-hidden="true" />
+                                <span key={statusLabel} className="pi-motion-status-text">{statusLabel}</span>
                             </span>
                         )}
                         {subtitle && (

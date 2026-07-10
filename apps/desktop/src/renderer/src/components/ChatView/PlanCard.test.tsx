@@ -48,6 +48,28 @@ describe("PlanCard", () => {
     expect(screen.getByText("步骤三")).toBeTruthy();
   });
 
+  it("renders as one flat generated surface instead of nested cards", () => {
+    render(
+      <I18nProvider>
+        <PlanCard
+          title="扁平计划"
+          content="A) 方案一\nB) 方案二"
+          status="pending"
+          steps={[
+            { id: "s1", text: "步骤一", status: "completed" },
+            { id: "s2", text: "步骤二", status: "running" },
+          ]}
+          onExecute={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("plan-card").className).toContain("rounded-lg");
+    expect(screen.getByTestId("plan-card").className).not.toContain("rounded-xl");
+    expect(screen.getByTestId("plan-steps").className).not.toContain("rounded-lg");
+    expect(screen.getByTestId("plan-actions").className).not.toContain("bg-[var(--mm-bg-panel)]");
+  });
+
   it("renders choice options when A/B/C detected in content", () => {
     render(
       <I18nProvider>
@@ -381,5 +403,34 @@ describe("PlanCard", () => {
     expect(screen.getByText(/行1/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /展开计划详情/ }));
     expect(screen.getByText(/行5/)).toBeTruthy();
+  });
+
+  it("prioritizes the decision section over preamble in collapsed plan summaries", () => {
+    render(
+      <I18nProvider>
+        <PlanCard
+          title="全面审查项目计划"
+          content={[
+            "背景说明：这些是生成计划时的上下文，不应该抢占计划卡主视觉。",
+            "项目事实：前端页面较多，需要先确认范围。",
+            "",
+            "## 用户需选择方向",
+            "A) 全量发布审查：覆盖代码、数据、安全、UI、测试。",
+            "B) 上线阻断审查：只找 P0/P1。",
+            "C) 专项深挖审查：选择一个方向深挖。",
+          ].join("\n")}
+          status="pending"
+          onExecute={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("用户需选择方向")).toBeTruthy();
+    expect(screen.getByText(/A\) 全量发布审查/)).toBeTruthy();
+    expect(screen.queryByText(/背景说明/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /展开计划详情/ }));
+
+    expect(screen.getByText(/背景说明/)).toBeTruthy();
   });
 });

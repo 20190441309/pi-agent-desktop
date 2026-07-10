@@ -337,7 +337,7 @@ export function ChatView({
   // SubTask 7.2: plan card → conversation sync extracted into usePlanSyncEffect.
   usePlanSyncEffect(currentSession?.id ?? null, isStreaming);
 
-  const handleSend = async (message: string, options?: { visibleContent?: string; waitForAgentIdle?: boolean }) => {
+  const handleSend = useEventCallback(async (message: string, options?: { visibleContent?: string; waitForAgentIdle?: boolean }) => {
     if (!currentWorkspace) return;
     try {
       if (getCurrentSession()?.readOnly) {
@@ -373,7 +373,7 @@ export function ChatView({
     } catch (err) {
       setSendError(err instanceof Error ? err.message : String(err));
     }
-  };
+  });
   // SubTask 7.1: useEventCallback keeps identity stable (so ChatInput's onStop
   // prop doesn't churn) while always reading the latest `messages` via the ref,
   // avoiding the stale-closure bug where stop operated on an outdated array.
@@ -601,7 +601,9 @@ export function ChatView({
     }
   }, [activePlanExecution?.phase, activePlanExecution?.sourceMessageId, messages, updatePlanActionStatus]);
 
-  const executePlanMessage = async (message: Message, selectedOption?: string): Promise<void> => {
+  // useEventCallback keeps identity stable so MessageBubble's React.memo can
+  // short-circuit during streaming (onPlanAction prop identity doesn't churn).
+  const executePlanMessage = useEventCallback(async (message: Message, selectedOption?: string): Promise<void> => {
     if (!message.planAction) return;
     if (!currentWorkspace) return;
     const planContent = contentWithGeneratedUiText(message.content, message.generatedUi).trim();
@@ -648,9 +650,9 @@ export function ChatView({
       useAgentModeStore.getState().setMode(currentWorkspace.id, "build");
     }
     await handleSend(executionPrompt, { visibleContent, waitForAgentIdle: true });
-  };
+  });
 
-  const handlePlanAction = async (message: Message, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string): Promise<void> => {
+  const handlePlanAction = useEventCallback(async (message: Message, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string): Promise<void> => {
     if (!message.planAction) return;
     if (action === "cancel") {
       updatePlanActionStatus(message, "cancelled");
@@ -678,7 +680,7 @@ export function ChatView({
       return;
     }
     await executePlanMessage(message, text?.trim() || undefined);
-  };
+  });
 
   // 外部预填文本，光标停在末尾方便用户继续。
   const [prefill, setPrefill] = useState<{ text: string; nonce: number }>({ text: '', nonce: 0 });
@@ -722,9 +724,9 @@ export function ChatView({
           </span>
           <span className={`inline-flex h-7 shrink-0 items-center font-mono tabular-nums leading-none text-[var(--mm-text-primary)] ${isStreaming ? "animate-pulse" : ""}`}>{usageSummary}</span>
         </div>
-        <div className="flex h-7 shrink-0 items-center justify-end gap-2 text-[var(--mm-text-secondary)]">
-          <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />
-          <span className="inline-flex h-7 items-center leading-none" role="status" aria-label={connectionLabel}>{connectionLabel}</span>
+        <div className="pi-motion-status-pill flex h-7 shrink-0 items-center justify-end gap-2 text-[var(--mm-text-secondary)]" data-motion-state={isStreaming ? "running" : isConnected ? "connected" : "disconnected"}>
+          <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "pi-motion-running-dot bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />
+          <span key={connectionLabel} className="pi-motion-status-text inline-flex h-7 items-center leading-none" role="status" aria-label={connectionLabel}>{connectionLabel}</span>
           {onToggleRightRail ? (
             <span className="inline-flex translate-y-[0.5px]">
               <button
@@ -868,19 +870,20 @@ export function ChatView({
             )}
 
             {/* 流式处理中指示器（仅在没有 assistant 消息占位符时显示） */}
-            {isStreaming && !streamingMessageId && (
+            {isStreaming && !streamingMessageId && !shouldUseGlobalComposer && (
               <div
-                className="flex justify-center"
+                className="pi-motion-running-card flex justify-center"
                 role="status"
                 aria-label={t('chatView.streamIndicator')}
                 aria-busy="true"
+                data-motion="stream-placeholder"
               >
                 <div className="w-full max-w-[42rem]">
                   <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
                     <div className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
                       <span className="relative inline-flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
                         <span className="absolute inset-0 rounded-full bg-[var(--mm-bg-active)] opacity-25 animate-ping" />
-                        <span className="relative h-2.5 w-2.5 rounded-full bg-[var(--mm-bg-active)]" />
+                        <span className="pi-motion-running-dot relative h-2.5 w-2.5 rounded-full bg-[var(--mm-bg-active)]" />
                       </span>
                       <span>
                         {activePlanExecution?.phase === "executing"

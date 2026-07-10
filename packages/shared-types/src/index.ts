@@ -1151,6 +1151,25 @@ export interface InlinePlanMaterializeResult {
 
 export type Unsubscribe = () => void;
 
+export const SETTINGS_WINDOW_TABS = [
+    "model",
+    "piagent",
+    "permissions",
+    "usage",
+    "longHorizon",
+    "appearance",
+    "general",
+    "shortcuts",
+    "config",
+    "about",
+] as const;
+
+export type SettingsWindowTab = (typeof SETTINGS_WINDOW_TABS)[number];
+
+export function isSettingsWindowTab(value: unknown): value is SettingsWindowTab {
+    return SETTINGS_WINDOW_TABS.some((tab) => tab === value);
+}
+
 export interface PiAPI {
     // Pi Driver
     sendPrompt(workspaceId: string, message: string, options?: SendPromptOptions): Promise<unknown>;
@@ -1368,8 +1387,12 @@ export interface PiAPI {
     // File search (M2)
     filesList(workspacePath: string, query?: string): Promise<FileEntry[] | IpcError>;
     filesGetTree(workspacePath: string, options?: { maxDepth?: number; maxEntries?: number }): Promise<FileTreeNode | IpcError>;
-    filesReadTextFile(path: string, workspacePath?: string): Promise<TextFileContent | IpcError>;
-    filesWriteTextFile(path: string, content: string, workspacePath?: string, options?: WriteTextFileOptions): Promise<WriteTextFileResult | IpcError>;
+    // audit round 3, Task 1.3: workspacePath is now REQUIRED on both file IPC
+    // channels so the main-process handler can enforce workspace-boundary checks
+    // (see readTextFileSchema / writeTextFileSchema). This is a BREAKING internal
+    // API change — all renderer callers must pass workspacePath explicitly.
+    filesReadTextFile(path: string, workspacePath: string): Promise<TextFileContent | IpcError>;
+    filesWriteTextFile(path: string, content: string, workspacePath: string, options?: WriteTextFileOptions): Promise<WriteTextFileResult | IpcError>;
     filesSearch(workspacePath: string, query: string, options?: { limit?: number }): Promise<FileEntry[] | IpcError>;
 
     // Skills panel (M3 / SkillHub)
@@ -1423,8 +1446,10 @@ export interface PiAPI {
     setWorkbenchContext(workspaceId: string, filePath: string | null): void;
 
     // Settings independent window
-    openSettingsWindow(): Promise<void>;
+    openSettingsWindow(tab?: SettingsWindowTab): Promise<void>;
     closeSettingsWindow(): Promise<void>;
+    settingsWindowReady(): Promise<SettingsWindowTab | undefined>;
+    onSettingsTabSelected(cb: (tab: SettingsWindowTab) => void): Unsubscribe;
 
     // v1.1.0: 识图功能 (vision)
     describeImages?(images: Array<{

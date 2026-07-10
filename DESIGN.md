@@ -107,11 +107,19 @@ Pi Desktop 的主界面是一个安静、克制的桌面控制台。信息密度
 
 ### Message Bubble
 - Structure: `timestamp -> bubble card -> optional thinking/tool/generated-ui/footer`
-- Variants: `assistant`, `user`, `search-target`
-- Spacing: 气泡内边距 `16px 16px 12px`; 助手气泡最大宽 `42rem`
+- Variants: `assistant`, `user`, `user-plan-execution`, `search-target`
+- Spacing: 用户气泡内边距 `12px 16px`，上下等距；助手常规回复只保留中心列和文本内边距，不使用整块背景
 - States: default, streaming, highlighted, copy-success, copy-error
 - Accessibility: 外层 `article`；复制失败用 `role="alert"`
 - Motion: 搜索命中仅 ring 强调，不做位移动画
+
+### Generated Plan Surface
+- Structure: `header/status -> summary/details -> optional steps/options -> action row`
+- Variants: pending, executing, paused, terminal, write-error
+- Spacing: 单层面板 `8px` radius，内部用细分割线和留白分区，不再在消息气泡里叠卡片
+- States: pending choice selection, executing progress, paused resume, terminal summary
+- Accessibility: 主执行按钮保持明确 `aria` 文案；文件名可点击时保留完整路径 tooltip
+- Motion: 只让运行点 pulse，面板容器本身不做整体呼吸动画
 
 ### Thinking Block
 - Structure: `toggle row -> optional expanded content`
@@ -143,6 +151,13 @@ Pi Desktop 的主界面是一个安静、克制的桌面控制台。信息密度
 - 只动画 `opacity`、`transform`、`box-shadow`。
 - 运行中动画只用来表达“仍在执行”，不能变成装饰。
 - `prefers-reduced-motion` 下允许静态降级为实心点。
+
+### Motion primitives
+- `pi-motion-rail`: 左侧结构轨道折叠/展开，外层只承担轨道尺寸过渡，内容用 `opacity + translateX` 软化进出。
+- `pi-motion-floating-rail`: 右侧上下文浮层从右侧轻微滑入/滑出，保留阴影渐变，避免直接挂载跳出。
+- `pi-motion-message-enter`: 新消息挂载时使用 220ms 的 `opacity + translateY` 进入；旧消息不做循环动画。
+- `pi-motion-thinking-shell`: 思考状态出现和展开内容使用短进入动画；streaming 只让状态点 pulse。
+- `pi-motion-running-strip`: 发送后进入运行态的提醒条从输入区上方淡入上移，停止时淡出，不改动输入布局。
 
 ## 7. Depth & Surface
 

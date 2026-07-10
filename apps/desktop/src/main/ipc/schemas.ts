@@ -356,12 +356,30 @@ export const getFileTreeSchema = z.union([
     ]),
 ]);
 
-export const readTextFileSchema = z.union([
-    z.tuple([z.string().min(1, "targetPath must be a non-empty string")]),
+// project:detect — (workspacePath: string)
+// audit round 3, Task 11.1: explicit Zod gate before any project-detector work.
+export const projectDetectSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+]);
+
+// project:file-tree — (workspacePath: string, maxDepth?: number 0-20, default 4)
+// audit round 3, Task 11.1: cap maxDepth to 20 (mirrors getFileTreeSchema) so a
+// renderer-supplied huge maxDepth can't force an unbounded filesystem walk.
+export const projectFileTreeSchema = z.union([
+    z.tuple([z.string().min(1, "workspacePath must be a non-empty string")]),
     z.tuple([
-        z.string().min(1, "targetPath must be a non-empty string"),
         z.string().min(1, "workspacePath must be a non-empty string"),
+        z.number().int().min(0).max(20),
     ]),
+]);
+
+// readTextFileSchema — (targetPath, workspacePath) workspacePath is REQUIRED
+// (audit round 3, Task 1.1): removing the single-element tuple form closes the
+// workspace-boundary bypass where renderer could omit workspacePath and skip
+// the isPathInside check inside getProtectedPathReason.
+export const readTextFileSchema = z.tuple([
+    z.string().min(1, "targetPath must be a non-empty string"),
+    z.string().min(1, "workspacePath must be a non-empty string"),
 ]);
 
 export const searchFilesSchema = z.union([
@@ -384,11 +402,11 @@ export const listFilesSchema = z.union([
     ]),
 ]);
 
+// writeTextFileSchema — (targetPath, content, workspacePath, options?)
+// workspacePath is REQUIRED (audit round 3, Task 1.1): the two legacy forms
+// without workspacePath are removed so the workspace-boundary check in
+// getProtectedPathReason can never be skipped.
 export const writeTextFileSchema = z.union([
-    z.tuple([
-        z.string().min(1, "targetPath must be a non-empty string"),
-        z.string().max(1024 * 1024, "content is too large"),
-    ]),
     z.tuple([
         z.string().min(1, "targetPath must be a non-empty string"),
         z.string().max(1024 * 1024, "content is too large"),

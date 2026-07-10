@@ -393,6 +393,287 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         await expectChatLayoutStable(page);
     });
 
+    test('已有计划文本收到 plan card 后升级原消息并突出选择区', async () => {
+        const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        const workspacePath = test.info().outputPath('plan-card-upgrade-workspace');
+        const evidenceDir = test.info().outputPath('plan-card-upgrade-evidence');
+        await mkdir(evidenceDir, { recursive: true });
+        const planContent = [
+            '背景说明：这些是生成计划时的上下文，不应该抢占计划卡主视觉。',
+            '项目事实：前端页面较多，需要先确认范围。',
+            '',
+            '## 用户需选择方向',
+            'A) 全量发布审查：覆盖代码、数据、安全、UI、测试。',
+            'B) 上线阻断审查：只找 P0/P1。',
+            'C) 专项深挖审查：选择一个方向深挖。',
+        ].join('\n');
+
+        app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
+            args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
+            env: { ...process.env, CI: '1' },
+        });
+        page = await app.firstWindow();
+        await page.waitForLoadState('domcontentloaded');
+        await page.evaluate(
+            async ({ workspacePath, planContent }) => {
+                window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
+                window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
+                const ws = await window.piAPI.createWorkspace("plan-card-upgrade-e2e", workspacePath);
+                await window.piAPI.selectWorkspace(ws.path);
+                const session = await window.piAPI.createSession(ws.id, "计划升级回归", "plan-card-upgrade-session");
+                await window.piAPI.appendMessage(session.id, {
+                    id: "plan-card-upgrade-user",
+                    role: "user",
+                    content: "请制定一个全面审查项目的计划",
+                    timestamp: new Date(Date.now() - 3_000).toISOString(),
+                });
+                await window.piAPI.appendMessage(session.id, {
+                    id: "plan-card-upgrade-assistant",
+                    role: "assistant",
+                    content: planContent,
+                    timestamp: new Date(Date.now() - 2_000).toISOString(),
+                });
+            },
+            { workspacePath, planContent },
+        );
+        await app.close();
+
+        app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
+            args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
+            env: { ...process.env, CI: '1' },
+        });
+        page = await app.firstWindow();
+        await page.waitForLoadState('domcontentloaded');
+        await skipOnboarding(page);
+        const seededSessionButton = page.locator('button, [role="button"]').filter({ hasText: '计划升级回归' }).first();
+        await expect(seededSessionButton).toBeVisible({ timeout: 15_000 });
+        await seededSessionButton.click();
+        const initialUserArticle = page.getByRole('article', { name: /你 ·/ }).filter({ hasText: '请制定一个全面审查项目的计划' });
+        await expect(initialUserArticle).toBeVisible({ timeout: 15_000 });
+        await expect(initialUserArticle.getByTestId('message-surface')).toHaveClass(/py-3/);
+        const initialAssistantArticle = page.getByRole('article', { name: /Pi ·/ }).filter({ hasText: '背景说明' });
+        await expect(initialAssistantArticle).toBeVisible();
+        await expect(initialAssistantArticle.getByTestId('message-surface')).not.toHaveClass(/bg-\[var\(--mm-bg-panel\)\]/);
+        await page.screenshot({ path: join(evidenceDir, '00-assistant-no-background.png'), fullPage: true });
+
+        await app.evaluate(({ ipcMain }) => {
+            const target = globalThis as typeof globalThis & {
+                __planCardUpgradePromptCalls?: Array<
+                    | { kind: 'legacy'; workspaceId: string; message: string }
+                    | { kind: 'agent'; input: { agentId: string; message: string; mode?: 'build' | 'plan' | 'compose' } }
+                >;
+            };
+            target.__planCardUpgradePromptCalls = [];
+            ipcMain.removeHandler('pi:send');
+            ipcMain.handle('pi:send', async (_event, workspaceId: string, message: string) => {
+                target.__planCardUpgradePromptCalls?.push({ kind: 'legacy', workspaceId, message });
+                return undefined;
+            });
+            ipcMain.removeHandler('agents:prompt');
+            ipcMain.handle('agents:prompt', async (_event, input: { agentId: string; message: string; mode?: 'build' | 'plan' | 'compose' }) => {
+                target.__planCardUpgradePromptCalls?.push({ kind: 'agent', input });
+                return undefined;
+            });
+        });
+
+        await app.evaluate(({ BrowserWindow }, content) => {
+            for (const win of BrowserWindow.getAllWindows()) {
+                win.webContents.send('plan:card', {
+                    id: 'plan-card-upgrade-card',
+                    title: '全面审查项目计划',
+                    filename: 'comprehensive-project-review.md',
+                    content,
+                    createdAt: Date.now(),
+                });
+            }
+        }, planContent);
+
+        const planArticle = page.getByRole('article', { name: /Pi ·/ }).filter({ hasText: '全面审查项目计划' });
+        await expect(planArticle).toHaveCount(1);
+        await expect(planArticle.getByTestId('message-surface')).not.toHaveClass(/bg-\[var\(--mm-bg-panel\)\]/);
+        await expect(planArticle.getByTestId('plan-card')).toHaveClass(/rounded-lg/);
+        await expect(planArticle).toContainText('用户需选择方向');
+        await expect(planArticle).toContainText('A) 全量发布审查');
+        await expect(planArticle).toContainText('B) 上线阻断审查');
+        await expect(planArticle).toContainText('C) 专项深挖审查');
+        await expect(planArticle).not.toContainText('背景说明');
+        await expect(page.getByText('计划已保存')).toHaveCount(0);
+        await page.screenshot({ path: join(evidenceDir, '01-collapsed-choice-first.png'), fullPage: true });
+
+        await planArticle.getByRole('button', { name: '展开计划详情' }).click();
+        await expect(planArticle).toContainText('背景说明：这些是生成计划时的上下文');
+        await page.screenshot({ path: join(evidenceDir, '02-expanded-details.png'), fullPage: true });
+
+        await planArticle.getByTestId('plan-option').first().click();
+        await expect(planArticle.getByRole('button', { name: '确认并执行' })).toBeEnabled();
+        await planArticle.getByRole('button', { name: '确认并执行' }).click();
+        await expect.poll(async () => app.evaluate(() => {
+            const target = globalThis as typeof globalThis & { __planCardUpgradePromptCalls?: unknown[] };
+            return target.__planCardUpgradePromptCalls?.length ?? 0;
+        })).toBe(1);
+        const executionArticle = page.getByRole('article', { name: /你 ·/ }).filter({ hasText: '执行计划：comprehensive-project-review.md' });
+        await expect(executionArticle.getByTestId('plan-execution-user-state')).toBeVisible();
+        await expect(executionArticle.getByTestId('message-surface')).toHaveClass(/bg-\[var\(--mm-bg-control\)\]/);
+        await expect(planArticle.getByText('执行中')).toBeVisible();
+        await page.screenshot({ path: join(evidenceDir, '03-executing-after-confirm.png'), fullPage: true });
+    });
+
+    test('左右栏、发送运行态和思考块使用真实 UI 动效过渡', async () => {
+        const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        const workspacePath = test.info().outputPath('motion-transition-workspace');
+        const evidenceDir = test.info().outputPath('motion-transition-evidence');
+        await mkdir(evidenceDir, { recursive: true });
+        await mkdir(workspacePath, { recursive: true });
+
+        app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
+            args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
+            env: { ...process.env, CI: '1' },
+        });
+        page = await app.firstWindow();
+        await page.waitForLoadState('domcontentloaded');
+        await page.evaluate(async ({ workspacePath }) => {
+            window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
+            window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
+            const ws = await window.piAPI.createWorkspace("motion-transition-e2e", workspacePath);
+            await window.piAPI.selectWorkspace(ws.path);
+            const session = await window.piAPI.createSession(ws.id, "动效验收会话", "motion-transition-session");
+            await window.piAPI.appendMessage(session.id, {
+                id: "motion-user",
+                role: "user",
+                content: "请观察左右栏、思考块和运行态的动效。",
+                timestamp: new Date(Date.now() - 3_000).toISOString(),
+            });
+            await window.piAPI.appendMessage(session.id, {
+                id: "motion-assistant",
+                role: "assistant",
+                content: "<think>这里是应该折叠但可以平滑展开的思考内容。\n第二行用于观察展开动画。</think>\n\n这是用于动效验收的助手回复。",
+                timestamp: new Date(Date.now() - 2_000).toISOString(),
+            });
+        }, { workspacePath });
+        await expect.poll(async () => page.evaluate(async () => {
+            const sessions = await window.piAPI.listSessions();
+            return sessions.some((session) => session.id === "motion-transition-session");
+        })).toBe(true);
+        await app.close();
+        app = await _electron.launch({
+            executablePath: resolveElectronExecutablePath(),
+            args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
+            env: { ...process.env, CI: '1' },
+        });
+        page = await app.firstWindow();
+        await page.waitForLoadState('domcontentloaded');
+        await skipOnboarding(page);
+        await app.evaluate(({ ipcMain }) => {
+            ipcMain.removeHandler('pi:send');
+            ipcMain.handle('pi:send', async () => new Promise<void>(() => undefined));
+            ipcMain.removeHandler('agents:prompt');
+            ipcMain.handle('agents:prompt', async () => new Promise<void>(() => undefined));
+        });
+
+        const seededSessionButton = page.locator('button, [role="button"]').filter({ hasText: '动效验收会话' }).first();
+        await expect(seededSessionButton).toBeVisible({ timeout: 15_000 });
+        await seededSessionButton.click();
+        await expect(page.getByRole('article', { name: /Pi ·/ }).filter({ hasText: '这是用于动效验收的助手回复' })).toBeVisible({ timeout: 15_000 });
+
+        const screenshots: string[] = [];
+        const capture = async (name: string): Promise<void> => {
+            const file = join(evidenceDir, `${String(screenshots.length).padStart(2, '0')}-${name}.png`);
+            await page.screenshot({ path: file, fullPage: true });
+            screenshots.push(file);
+        };
+
+        await capture('initial-with-left-sidebar');
+
+        await page.getByRole('button', { name: '展开右侧栏' }).click();
+        await page.waitForTimeout(120);
+        await capture('right-rail-opening');
+        const rightRail = page.locator('[data-mmcode-region="right-floating"]');
+        await expect(rightRail).toHaveAttribute('data-motion-state', 'enter', { timeout: 5_000 });
+        await expect(rightRail).toHaveClass(/pi-motion-floating-rail/);
+        await page.waitForTimeout(260);
+        await capture('right-rail-settled');
+
+        await page.getByRole('button', { name: '收起右侧栏' }).click();
+        await page.waitForTimeout(120);
+        await expect(rightRail).toHaveAttribute('data-motion-state', 'exit');
+        await capture('right-rail-closing');
+
+        await page.getByRole('button', { name: '折叠左侧栏' }).click();
+        await page.waitForTimeout(120);
+        await capture('left-sidebar-collapsing');
+        const leftRail = page.locator('[data-mmcode-region="left"]');
+        await expect(leftRail).toHaveClass(/pi-motion-rail/);
+        await expect(leftRail).toHaveAttribute('data-collapsed', 'true');
+        await page.waitForTimeout(260);
+        await capture('left-sidebar-collapsed');
+
+        await page.getByRole('button', { name: '展开左侧栏' }).click();
+        await page.waitForTimeout(120);
+        await capture('left-sidebar-opening');
+        await expect(leftRail).toHaveAttribute('data-collapsed', 'false');
+
+        await page.getByRole('button', { name: /展开思考/ }).click();
+        await expect(page.getByText('这里是应该折叠但可以平滑展开的思考内容。')).toBeVisible();
+        await capture('thinking-expanded');
+
+        const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="输入消息" i], textarea[placeholder*="在此审查" i], textarea[placeholder*="描述" i]').first();
+        await textarea.fill('触发运行态动效');
+        await textarea.press('Enter');
+        await expect(page.getByRole('article', { name: /你 ·/ }).filter({ hasText: '触发运行态动效' })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByRole('status', { name: '任务运行中提醒' })).toBeVisible({ timeout: 10_000 });
+        await page.waitForTimeout(120);
+        await capture('running-state-after-send');
+
+        const motionMetrics = await page.evaluate(() => {
+            const rail = document.querySelector('[data-mmcode-region="left"]');
+            const floating = document.querySelector('[data-mmcode-region="right-floating"]');
+            const message = document.querySelector('[data-motion="message-enter"]');
+            const thinking = document.querySelector('[data-motion="thinking-content"]');
+            const running = document.querySelector('[data-motion="running-strip"]');
+            const streamPlaceholderCount = document.querySelectorAll('[data-motion="stream-placeholder"]').length;
+            return {
+                leftRailClass: rail?.className ?? null,
+                leftRailCollapsed: rail?.getAttribute('data-collapsed') ?? null,
+                rightFloatingClass: floating?.className ?? null,
+                rightFloatingState: floating?.getAttribute('data-motion-state') ?? null,
+                messageMotionClass: message?.className ?? null,
+                thinkingMotionClass: thinking?.className ?? null,
+                runningMotionClass: running?.className ?? null,
+                streamPlaceholderCount,
+            };
+        });
+
+        expect(motionMetrics.leftRailClass).toContain('pi-motion-rail');
+        expect(motionMetrics.messageMotionClass).toContain('pi-motion-message-enter');
+        expect(motionMetrics.thinkingMotionClass).toContain('pi-motion-thinking-content');
+        expect(motionMetrics.runningMotionClass).toContain('pi-motion-running');
+        expect(motionMetrics.streamPlaceholderCount).toBe(0);
+
+        const analysis = screenshots.map((file) => {
+            const name = file.split(/[\\/]/).pop() ?? file;
+            return {
+                file,
+                observation: name.includes('right-rail')
+                    ? '右侧上下文栏使用 pi-motion-floating-rail，打开/关闭有滑入滑出状态。'
+                    : name.includes('left-sidebar')
+                        ? '左侧栏轨道使用 pi-motion-rail，内容使用 pi-motion-rail-content 淡入淡出。'
+                        : name.includes('thinking')
+                            ? '思考内容展开后可见，展开区域使用 pi-motion-thinking-content。'
+                            : name.includes('running')
+                                ? '发送后进入真实运行态，仅保留输入区上方的运行提醒，没有中间重复运行占位。'
+                                : '初始会话含左侧栏、中心消息和折叠思考入口。',
+            };
+        });
+        await writeFile(
+            join(evidenceDir, 'screenshot-analysis.json'),
+            JSON.stringify({ screenshots, motionMetrics, analysis }, null, 2),
+            'utf8',
+        );
+    });
+
     test('计划模式真实 UI 路径只提交一次 /plan prompt', async () => {
         const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         app = await _electron.launch({

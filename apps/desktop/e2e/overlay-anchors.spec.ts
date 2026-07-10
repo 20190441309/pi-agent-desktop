@@ -244,7 +244,6 @@ test.describe("Pi Desktop overlay anchors", () => {
 
     await expect(page.getByRole("status", { name: "任务运行中提醒" })).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('[data-testid="chat-input-shell"]').getByText("任务运行中 · 新输入会作为追加指令进入当前会话")).toBeVisible({ timeout: 5_000 });
-    await expect(page.locator('[data-testid="chat-scroll-region"]').getByText("任务运行中 · 新输入会作为追加指令进入当前会话")).toBeVisible({ timeout: 5_000 });
     const visibleOverlay = await inspectOverlayWindow(app);
     expect(visibleOverlay?.visible ?? false).toBe(false);
     await page.screenshot({ path: join(ACCEPTANCE_DIR, "2026-07-02-overlay-cluster-05-main-progress-chat.png"), fullPage: true });

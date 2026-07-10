@@ -306,6 +306,7 @@
     "placeholder": {
       "ready": "输入消息...（输入 / 唤起命令）",
       "noConnection": "Pi CLI 未连接，请确认 pi 已安装并添加到系统路径",
+      "modelRequired": "请先配置模型后再开始对话",
       "reference": "输入消息，使用 / 调用命令、@ 引用文件...",
       "planRunning": "正在执行计划，输入内容会作为补充指令发送",
       "taskRunning": "任务运行中，输入内容会作为追加指令发送"
@@ -375,7 +376,9 @@
       "notConfigured": "未配置模型",
       "notSelected": "未选择模型",
       "select": "选择模型",
-      "empty": "暂无可用模型 (Pi CLI 未配置)"
+      "empty": "暂无可用模型 (Pi CLI 未配置)",
+      "unavailable": "尚未配置可用模型",
+      "configure": "去配置"
     },
     "workspace": {
       "current": "当前工作目录: {{name}}",
@@ -741,6 +744,46 @@
     "modelBreakdown": "按模型分布",
     "footer": "{{count}} 个会话 · 数据来自当前工作区"
   },
+  "memoryPanel": {
+    "title": "记忆",
+    "searchLabel": "搜索记忆",
+    "searchPlaceholder": "搜索记忆...",
+    "subtitle": {
+      "selectWorkspace": "请选择 workspace 后查看记忆索引。",
+      "searchQuery": "搜索 “{{query}}”",
+      "recent": "最近记忆 · {{name}}"
+    },
+    "disabled": "当前未启用 memory system，打开设置里的长程记忆能力后会在这里展示 session / project / global / history 检索结果。",
+    "loading": "正在读取记忆索引...",
+    "empty": {
+      "noMatch": "没有找到匹配的记忆条目。",
+      "noEntries": "当前还没有可展示的记忆条目。"
+    }
+  },
+  "taskOverview": {
+    "title": "任务总览",
+    "subtitle": {
+      "currentWorkspace": "当前 workspace：{{name}}",
+      "selectWorkspace": "请选择 workspace 后查看任务 registry。"
+    },
+    "status": {
+      "running": "运行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "pending": "待处理"
+    },
+    "disabled": "当前未启用 task registry，打开设置里的长程任务能力后会在这里显示真实任务状态。",
+    "taskList": {
+      "heading": "任务列表",
+      "countSuffix": "{{count}} 项",
+      "empty": "本轮还没有任务写入 registry。"
+    },
+    "goal": {
+      "heading": "当前目标",
+      "status": "状态：{{status}}",
+      "empty": "当前没有激活的 goal judge 条件。"
+    }
+  },
   "settings": {
     "title": "设置",
     "tabsAria": "设置分类",
@@ -1068,6 +1111,9 @@
     },
     "files": {
       "scanFailed": "{{path}} 文件扫描失败: {{message}}"
+    },
+    "config": {
+      "invalidImages": "无效的图片输入"
     }
   },
     "topbar": {

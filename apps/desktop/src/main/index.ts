@@ -59,6 +59,7 @@ import { getMostRecentlyActiveWorkspace } from './services/workspace-selection';
 import { DesktopOverlayWindowManager } from './services/desktop-overlay-window';
 import { createMainWindowLifecycleController, type MainWindowLifecycleController } from './services/window-lifecycle';
 import { resolveTrayIconPath } from './services/tray-icon';
+import { attachWebSecurityHandlers } from './services/web-security';
 import type { PiAgentConfig } from './types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -456,6 +457,10 @@ function createWindow(): void {
     mainWindow?.show();
   });
 
+  // audit round 3, Task 2.2: attach window-open / will-navigate guards BEFORE
+  // any renderer content loads so an early XSS payload can't race past them.
+  attachWebSecurityHandlers(mainWindow);
+
   // Load the renderer
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
@@ -791,7 +796,15 @@ function cleanupAllServices(): void {
 
 // App lifecycle
 app.whenReady().then(() => {
-  registerLocalFileProtocol();
+  // audit round 3, Task 3.3: localfile:// now needs the active workspace path
+  // so it can enforce a workspace boundary. We resolve it lazily on every
+  // request (not captured at startup) so workspace switches take effect
+  // immediately without re-registering the protocol. Mirrors the
+  // getMostRecentlyActiveWorkspace lookup used by skills.ipc / chat.ipc.
+  registerLocalFileProtocol({
+    getCurrentWorkspacePath: () =>
+      getMostRecentlyActiveWorkspace(store.get('workspaces'))?.path ?? null,
+  });
 
   // 先加载 Pi 配置，再初始化
   refreshPiAgentConfig(configManager);

@@ -20,6 +20,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { Check } from "typebox/value";
 import { MarkdownMemoryService } from "../../../memory/markdown-memory-service";
 import { createMemoryTools } from "../memory-tools";
 import type { MemoryService } from "../../../long-horizon/memory-service";
@@ -123,7 +124,7 @@ describe("memory_write — markdown architecture", () => {
         const result = await callExecute(writeTool, {
             text: "Decided to use Electron 41 + React 19 for the desktop shell.",
             kind: "note",
-            tags: ["architecture"],
+            tags: ["architecture", "dream"],
         });
 
         // Verify the synthesized record.
@@ -142,7 +143,7 @@ describe("memory_write — markdown architecture", () => {
         expect(fileContent).toContain(`scope_id: ${projectId}`);
         expect(fileContent).toContain("type: note");
         expect(fileContent).toContain("origin: dream");
-        expect(fileContent).toContain("tags: [architecture, dream:");
+        expect(fileContent).toContain("tags: [architecture, dream, dream:");
         // Body.
         expect(fileContent).toContain("Electron 41 + React 19");
 
@@ -303,5 +304,67 @@ describe("memory_write — markdown architecture", () => {
         expect(result.content[0].text).toContain("Wrote memory legacy-");
         // Record reflects what the legacy service returned.
         expect(result.details.record.id).toMatch(/^legacy-/);
+    });
+
+    it("rejects text exceeding 8000 characters (schema maxLength)", async () => {
+        const { service: legacy } = createLegacyMock();
+        const tools = createMemoryTools(
+            legacy,
+            {
+                workspaceId: "ws1",
+                workspacePath: WORKSPACE_PATH,
+                sessionId: SESSION_ID,
+                subagentType: "dream",
+            },
+            undefined,
+            markdownService,
+        );
+
+        const writeTool = tools.find((t) => t.name === "memory_write")!;
+        const schema = writeTool.parameters;
+
+        // 8001 chars → schema validation fails (maxLength: 8000).
+        expect(Check(schema, { text: "x".repeat(8001), tags: ["dream"] })).toBe(false);
+        // 8000 chars → passes.
+        expect(Check(schema, { text: "x".repeat(8000), tags: ["dream"] })).toBe(true);
+    });
+
+    it("rejects tags missing an origin tag (dream/distill)", async () => {
+        const { service: legacy } = createLegacyMock();
+        const tools = createMemoryTools(
+            legacy,
+            {
+                workspaceId: "ws1",
+                workspacePath: WORKSPACE_PATH,
+                sessionId: SESSION_ID,
+                subagentType: "dream",
+            },
+            undefined,
+            markdownService,
+        );
+
+        const writeTool = tools.find((t) => t.name === "memory_write")!;
+
+        // tags provided without an origin tag → execute throws before writing.
+        await expect(
+            callExecute(writeTool, {
+                text: "Note without origin tag should be rejected.",
+                kind: "note",
+                tags: ["random"],
+            }),
+        ).rejects.toThrow(/origin tag/);
+
+        // No file was written.
+        const projectId = markdownService.resolveProjectId(WORKSPACE_PATH);
+        const expectedPath = join(memoryRoot, "projects", projectId, "MEMORY.md");
+        expect(existsSync(expectedPath)).toBe(false);
+
+        // tags containing an origin tag → succeeds.
+        const result = await callExecute(writeTool, {
+            text: "Note with origin tag is accepted.",
+            kind: "note",
+            tags: ["random", "dream"],
+        });
+        expect(result.details.record.text).toContain("origin tag is accepted");
     });
 });

@@ -307,8 +307,9 @@ export function buildUsageOverview(sessions: Session[], options: UsageOverviewOp
   const totalOutputTokens = sessionRows.reduce((sum, row) => sum + row.outputTokens, 0);
   const totalTokens = sessionRows.reduce((sum, row) => sum + row.totalTokens, 0);
   const totalCost = sessionRows.reduce((sum, row) => sum + row.estimatedCostUsd, 0);
+  const sessionMap = new Map(sessions.map((s) => [s.id, s]));
   const messageCount = sessionRows.reduce((sum, row) => {
-    const source = sessions.find((session) => session.id === row.id);
+    const source = sessionMap.get(row.id);
     return sum + (source?.messages.length ?? 0);
   }, 0);
 

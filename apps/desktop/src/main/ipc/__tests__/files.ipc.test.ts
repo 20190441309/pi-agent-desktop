@@ -81,6 +81,29 @@ describe("files IPC", () => {
         rmSync(outside, { force: true });
     });
 
+    // audit round 3, Task 1.5: workspacePath is now REQUIRED on both file IPC
+    // channels. A renderer that omits it must be rejected at the Zod gate before
+    // any filesystem access happens (closes the workspace-boundary bypass).
+    it("rejects read requests that omit workspacePath", async () => {
+        const readHandler = handlers.get("files:readTextFile")!;
+        const result = await readHandler({}, "C:/repo/file.txt");
+
+        expect(isIpcError(result)).toBe(true);
+        if (isIpcError(result)) {
+            expect(result.code).toBe("ipcErrors.files.readInvalid");
+        }
+    });
+
+    it("rejects write requests that omit workspacePath", async () => {
+        const writeHandler = handlers.get("files:writeTextFile")!;
+        const result = await writeHandler({}, "C:/repo/file.txt", "content");
+
+        expect(isIpcError(result)).toBe(true);
+        if (isIpcError(result)) {
+            expect(result.code).toBe("ipcErrors.files.writeInvalid");
+        }
+    });
+
     it("blocks legacy file listing for protected workspaces", async () => {
         const workspace = makeWorkspace();
         writeFileSync(join(workspace, ".env"), "SECRET=value", "utf-8");

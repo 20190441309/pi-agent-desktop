@@ -308,10 +308,13 @@ describe("packageSourceSchema", () => {
 });
 
 describe("writeTextFileSchema", () => {
-    it("accepts target path, text content and optional workspace path", () => {
+    it("accepts target path, text content and required workspace path", () => {
         expect(() => writeTextFileSchema.parse(["C:/repo/a.ts", "hello", "C:/repo"])).not.toThrow();
-        expect(() => writeTextFileSchema.parse(["C:/repo/a.ts", "hello"])).not.toThrow();
         expect(() => writeTextFileSchema.parse(["C:/repo/a.ts", "hello", "C:/repo", { expectedMtimeMs: 123 }])).not.toThrow();
+    });
+
+    it("rejects missing workspace path (workspacePath is required)", () => {
+        expect(() => writeTextFileSchema.parse(["C:/repo/a.ts", "hello"])).toThrow(ZodError);
     });
 
     it("rejects blank paths and overly large content", () => {

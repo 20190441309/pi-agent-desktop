@@ -399,4 +399,78 @@ describe("session-store: mutex 串行化并发写", () => {
             expect(s.messages).toHaveLength(1);
         }
     });
+
+    it("create + append 并发:新会话与新消息都不丢失", async () => {
+        // 验证 SubTask 4.1 修复:appendMessage 与 createSession 持同一全局锁,
+        // 不会因 __global__ vs sessionId 锁键不同导致 append 落盘时把 create 的新 session 覆盖掉
+        const store = makeStore();
+        // createSession 与 appendMessage 同时发起 — appendMessage 的 sessionId
+        // 与 createSession 即将创建的 id 相同,模拟"会话刚建好第一条消息就到了"
+        const targetId = "s_concurrent";
+        const createP = createSession(store, "ws1", "t", targetId);
+        // 即便 create 尚未完成也发起 append(都会进全局锁队列,串行执行)
+        const appendP = createP.then(() =>
+            appendMessage(store, targetId, userMsg("m1", "first")),
+        );
+        await Promise.all([createP, appendP]);
+        const all = await listSessions(store);
+        // 新会话不丢失
+        expect(all).toHaveLength(1);
+        expect(all[0].id).toBe(targetId);
+        // 新消息不丢失
+        expect(all[0].messages).toHaveLength(1);
+        expect(all[0].messages[0].id).toBe("m1");
+
+        // 再批量并发:5 个 create + 各自 append 全部并行
+        const mix = Array.from({ length: 5 }, async (_, i) => {
+            const sid = `s_mix_${i}`;
+            await createSession(store, "ws1", `t${i}`, sid);
+            await appendMessage(store, sid, userMsg(`m${i}`, `c-${i}`));
+        });
+        await Promise.all(mix);
+        const final = await listSessions(store);
+        expect(final).toHaveLength(6);
+        for (const s of final) {
+            // targetId 那条已有 1 条消息,mix 的 5 条各 1 条
+            expect(s.messages).toHaveLength(1);
+        }
+    });
+
+    it("delete + update 并发:已删会话不被复活,update 不丢失", async () => {
+        // 验证 SubTask 4.1 修复:deleteSession 与 updateMessage 持同一全局锁,
+        // 不会因锁键不同导致 update 在 delete 之后又把已删 session 写回
+        const store = makeStore();
+        await createSession(store, "ws1", "t", "s_keep");
+        await createSession(store, "ws1", "t", "s_del");
+        await appendMessage(store, "s_del", asstMsg("m_del", "init"));
+        await appendMessage(store, "s_keep", asstMsg("m_keep", "init"));
+
+        // 并发:delete s_del + update s_keep 的消息
+        const delP = deleteSession(store, "s_del");
+        const updP = updateMessage(store, "s_keep", "m_keep", {
+            content: "updated",
+        });
+        await Promise.all([delP, updP]);
+
+        const all = await listSessions(store);
+        // s_del 已删,不被复活
+        expect(all.map((s) => s.id)).toEqual(["s_keep"]);
+        // s_keep 的 update 落盘成功,不丢失
+        expect(all[0].messages[0].content).toBe("updated");
+
+        // 反向并发:update s_del(已存在) + delete s_del
+        // 注:update 会先获取锁,可能先于 delete 执行(此时 session 还在,update 成功)
+        // 也可能后于 delete 执行(此时 session 已删,update 抛 Session not found)
+        // 两种情况都接受,关键是最终 s_del 不复活
+        await createSession(store, "ws1", "t", "s_del2");
+        await appendMessage(store, "s_del2", asstMsg("m_del2", "init"));
+        const updP2 = updateMessage(store, "s_del2", "m_del2", {
+            content: "concurrent-update",
+        }).catch(() => "not-found" as const);
+        const delP2 = deleteSession(store, "s_del2");
+        await Promise.all([updP2, delP2]);
+        const final = await listSessions(store);
+        // s_del2 不复活
+        expect(final.map((s) => s.id)).toEqual(["s_keep"]);
+    });
 });

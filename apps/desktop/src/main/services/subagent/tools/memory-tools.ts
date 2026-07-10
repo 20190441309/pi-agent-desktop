@@ -52,7 +52,7 @@ const searchSchema = Type.Object({
 });
 
 const writeSchema = Type.Object({
-    text: Type.String({ description: "The note body. Keep it dense and high-signal." }),
+    text: Type.String({ description: "The note body. Keep it dense and high-signal.", maxLength: 8000 }),
     kind: Type.Optional(Type.String({
         description: "(optional) Memory kind. Default 'note'. One of: note | checkpoint | task-progress | summary.",
     })),
@@ -170,6 +170,7 @@ export function createMemoryTools(
             "searchable via memory_search.",
         parameters: writeSchema,
         async execute(_id, params): Promise<AgentToolResult<WriteDetails>> {
+            validateOriginTag(params.tags);
             const tags = appendScopeTag(params.tags ?? [], ctx.subagentType);
             const kind = kindOrDefault(params.kind);
             const createdAt = new Date();
@@ -328,6 +329,30 @@ function deriveLayer(scope: MemoryScope, kind: string): LongHorizonMemoryLayer {
 }
 
 // ── helpers ──────────────────────────────────────────────────────
+
+/**
+ * Origin tags that identify which subagent subsystem produced a memory.
+ * Every `memory_write` call that supplies `tags` MUST include one of these
+ * so memories stay traceable to their origin (defense-in-depth alongside
+ * the `origin:` frontmatter field).
+ */
+const ORIGIN_TAGS = ["dream", "distill"] as const;
+
+/**
+ * Validate that `tags`, when provided, contains at least one origin tag
+ * ("dream" or "distill"). Throws when the requirement is not met — per
+ * the Pi CLI SDK convention ("Throw on failure instead of encoding errors
+ * in content"). `tags` is Optional; omitted/empty arrays skip validation.
+ */
+function validateOriginTag(tags: string[] | undefined): void {
+    if (!tags || tags.length === 0) return;
+    if (!tags.some((t) => (ORIGIN_TAGS as readonly string[]).includes(t))) {
+        throw new Error(
+            `memory_write: tags must contain an origin tag ("dream" or "distill"). ` +
+            `Received tags: [${tags.join(", ")}]`,
+        );
+    }
+}
 
 function appendScopeTag(tags: string[], subagentType: SubagentTypeID): string[] {
     const stamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD

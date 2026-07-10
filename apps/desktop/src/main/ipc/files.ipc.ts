@@ -5,7 +5,7 @@
 import { ipcMain, dialog, type BrowserWindow } from "electron";
 import log from "electron-log/main";
 import { ipcError } from "@shared";
-import { basename, dirname } from "path";
+import { basename } from "path";
 import { open, stat, writeFile } from "fs/promises";
 import { scanFiles } from "../services/search/file-scanner";
 import { buildFileTree } from "../file-tree";
@@ -66,9 +66,9 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
         }
     });
 
-    ipcMain.handle("files:readTextFile", async (_event, targetPath: string, workspacePath?: string) => {
+    ipcMain.handle("files:readTextFile", async (_event, targetPath: string, workspacePath: string) => {
         try {
-            readTextFileSchema.parse(workspacePath === undefined ? [targetPath] : [targetPath, workspacePath]);
+            readTextFileSchema.parse([targetPath, workspacePath]);
         } catch (err) {
             log.warn("[files.ipc] readTextFile invalid args:", err);
             return ipcError(
@@ -118,9 +118,9 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
         }
     });
 
-    ipcMain.handle("files:writeTextFile", async (_event, targetPath: string, content: string, workspacePath?: string, options?: { expectedMtimeMs?: number }) => {
+    ipcMain.handle("files:writeTextFile", async (_event, targetPath: string, content: string, workspacePath: string, options?: { expectedMtimeMs?: number }) => {
         try {
-            const args = options ? [targetPath, content, workspacePath, options] : workspacePath ? [targetPath, content, workspacePath] : [targetPath, content];
+            const args = options ? [targetPath, content, workspacePath, options] : [targetPath, content, workspacePath];
             writeTextFileSchema.parse(args);
         } catch (err) {
             log.warn("[files.ipc] writeTextFile invalid args:", err);
@@ -151,7 +151,7 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
             // next files:search / files:list sees the updated file mtime.
             // Without this, a write immediately followed by a CommandPalette
             // search would return a stale entry until the TTL elapsed.
-            scanCache.delete(workspacePath ?? dirname(targetPath));
+            scanCache.delete(workspacePath);
             return {
                 path: targetPath,
                 size: stats.size,

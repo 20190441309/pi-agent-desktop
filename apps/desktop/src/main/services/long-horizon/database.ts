@@ -382,9 +382,26 @@ export class LongHorizonDatabase {
 
     async getActiveTask(input: LongHorizonTaskListInput): Promise<LongHorizonTaskRecord | null> {
         await this.yieldToEventLoop();
-        const tasks = await this.listTasks(input);
-        const active = tasks.find((task) => task.status === "running" || task.status === "waiting" || task.status === "pending");
-        return active ?? null;
+        // Direct LIMIT 1 query instead of loading all tasks and filtering in JS.
+        // DB statuses are normalized via mapStatusLegacyToDb on write; the
+        // legacy "running"/"pending" map to "in_progress"/"open". "waiting"
+        // and the raw legacy values are included defensively in case any
+        // caller bypassed the normalizer. Ordering matches listTasks so the
+        // "first" active task is the same one find() would have returned.
+        const row = this.db.prepare(`
+            SELECT *
+            FROM task
+            WHERE workspace_id = ?1
+              AND (agent_key = ?2 OR (?3 = 1 AND agent_key = '__default__'))
+              AND status IN ('in_progress', 'open', 'running', 'pending', 'waiting')
+            ORDER BY CASE source WHEN 'goal' THEN 0 ELSE 1 END, ordinal ASC, last_event_at DESC
+            LIMIT 1
+        `).get(
+            input.workspaceId,
+            agentKey(input.agentId),
+            input.agentId ? 0 : 1,
+        ) as Record<string, unknown> | undefined;
+        return row ? rowToTask(row) : null;
     }
 
     async upsertGoal(goal: GoalState): Promise<GoalState> {
@@ -492,14 +509,63 @@ export class LongHorizonDatabase {
         const maxDepth = 16;
         if (visited.has(record.id) || depth > maxDepth) return null;
         visited.add(record.id);
-        const rows = this.db.prepare("SELECT * FROM memories WHERE parent_id = ? ORDER BY created_at ASC").all(record.id) as Array<Record<string, unknown>>;
-        const children = rows
-            .map((row) => this.buildTree(rowToMemory(row), depth + 1, visited))
-            .filter((child): child is { record: LongHorizonMemoryRecord; children: Array<{ record: LongHorizonMemoryRecord; children: unknown[] }> } => child !== null);
-        return {
-            record,
-            children,
+
+        // Single recursive CTE fetches the entire subtree in one query (was
+        // N+1: one query per node). The tree_depth column limits recursion to
+        // maxDepth levels, preventing infinite loops on cyclic parent_id
+        // references. The visited set (populated above and during assembly
+        // below) prunes back-edges so each node appears at most once in the
+        // assembled tree — matching the previous recursive behavior.
+        const rows = this.db.prepare(`
+            WITH RECURSIVE tree AS (
+                SELECT *, 0 AS tree_depth FROM memories WHERE id = ?
+                UNION ALL
+                SELECT m.*, t.tree_depth + 1 FROM memories m
+                JOIN tree t ON m.parent_id = t.id
+                WHERE t.tree_depth < ?
+            )
+            SELECT * FROM tree ORDER BY tree_depth ASC, created_at ASC
+        `).all(record.id, maxDepth) as Array<Record<string, unknown>>;
+
+        if (rows.length === 0) {
+            return { record, children: [] };
+        }
+
+        // Build parentId → children[] map from the flat CTE result. Dedupe
+        // children by id since UNION ALL can emit duplicates when cycles
+        // exist (the depth cap stops recursion, but duplicate parent→child
+        // edges may still appear in the flat set).
+        const childrenByParent = new Map<string, LongHorizonMemoryRecord[]>();
+        for (const row of rows) {
+            const rec = rowToMemory(row);
+            if (!rec.parentId) continue;
+            const siblings = childrenByParent.get(rec.parentId);
+            if (siblings) {
+                if (!siblings.some((s) => s.id === rec.id)) {
+                    siblings.push(rec);
+                }
+            } else {
+                childrenByParent.set(rec.parentId, [rec]);
+            }
+        }
+
+        // Assemble the tree in JS from the flat map, using visited to guard
+        // against cycles (a node already seen under another branch is pruned).
+        const assemble = (
+            node: LongHorizonMemoryRecord,
+        ): { record: LongHorizonMemoryRecord; children: Array<{ record: LongHorizonMemoryRecord; children: unknown[] }> } => {
+            const childRecords = childrenByParent.get(node.id) ?? [];
+            const children = childRecords
+                .filter((child) => {
+                    if (visited.has(child.id)) return false;
+                    visited.add(child.id);
+                    return true;
+                })
+                .map((child) => assemble(child));
+            return { record: node, children };
         };
+
+        return assemble(record);
     }
 
     private searchLayered(query: string, options: MemorySearchOptions, historyOnly: boolean): LongHorizonMemoryRecord[] {

@@ -415,6 +415,18 @@ describe("App sidebar session navigation", () => {
         expect(window.piAPI.openSettingsWindow).toHaveBeenCalledTimes(1);
     });
 
+    it("Slash 模型命令会让独立设置窗口定位到模型页", async () => {
+        render(<App />);
+
+        window.dispatchEvent(new CustomEvent("slash-command:open-settings-tab", {
+            detail: { tab: "model" },
+        }));
+
+        await waitFor(() => {
+            expect(window.piAPI.openSettingsWindow).toHaveBeenCalledWith("model");
+        });
+    });
+
     it("点击任务和记忆标签时进入对应主区而不是历史搜索回退", async () => {
         render(<App />);
 

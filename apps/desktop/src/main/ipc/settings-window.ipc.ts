@@ -2,21 +2,43 @@ import { BrowserWindow, ipcMain, screen } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
 import log from 'electron-log/main';
+import { isSettingsWindowTab, type SettingsWindowTab } from '@shared';
+import { attachWebSecurityHandlers } from '../services/web-security';
 
 let settingsWindow: BrowserWindow | null = null;
+let pendingSettingsTab: SettingsWindowTab | undefined;
+let settingsRendererReady = false;
 
 const SETTINGS_WINDOW_WIDTH = 1067;
 const SETTINGS_WINDOW_HEIGHT = 800;
 const SETTINGS_WINDOW_MIN_WIDTH = 960;
 const SETTINGS_WINDOW_MIN_HEIGHT = 694;
 
+function sendSettingsTab(tab: SettingsWindowTab | undefined): void {
+  if (!tab || !settingsWindow || settingsWindow.isDestroyed()) return;
+  settingsWindow.webContents.send('settings:select-tab', tab);
+}
+
+function selectSettingsTab(tab: SettingsWindowTab | undefined): void {
+  if (!tab) return;
+  if (settingsRendererReady) {
+    sendSettingsTab(tab);
+  } else {
+    pendingSettingsTab = tab;
+  }
+}
+
 export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | null): void {
-  ipcMain.handle('settings:open-window', () => {
+  ipcMain.handle('settings:open-window', (_event, requestedTab?: unknown) => {
+    const tab = isSettingsWindowTab(requestedTab) ? requestedTab : undefined;
     if (settingsWindow && !settingsWindow.isDestroyed()) {
       settingsWindow.focus();
+      selectSettingsTab(tab);
       return;
     }
 
+    pendingSettingsTab = tab;
+    settingsRendererReady = false;
     settingsWindow = new BrowserWindow({
       width: SETTINGS_WINDOW_WIDTH,
       height: SETTINGS_WINDOW_HEIGHT,
@@ -55,6 +77,14 @@ export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | nul
       });
     }
     settingsWindow.webContents.setZoomFactor(1.5);
+    settingsWindow.webContents.on('did-start-loading', () => {
+      settingsRendererReady = false;
+    });
+
+    // audit round 3, Task 2.3: settings window is a full renderer surface with
+    // access to window.piAPI, so it needs the same open/navigate guards as the
+    // main window. Attached before loadURL so no page can race past it.
+    attachWebSecurityHandlers(settingsWindow);
 
     settingsWindow.on('ready-to-show', () => {
       settingsWindow?.show();
@@ -62,6 +92,8 @@ export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | nul
 
     settingsWindow.on('closed', () => {
       settingsWindow = null;
+      pendingSettingsTab = undefined;
+      settingsRendererReady = false;
     });
 
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -71,6 +103,16 @@ export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | nul
     }
 
     log.info('[SettingsWindow] Opened settings window');
+  });
+
+  ipcMain.handle('settings:renderer-ready', (event) => {
+    if (!settingsWindow || settingsWindow.isDestroyed() || event.sender !== settingsWindow.webContents) {
+      return undefined;
+    }
+    settingsRendererReady = true;
+    const tab = pendingSettingsTab;
+    pendingSettingsTab = undefined;
+    return tab;
   });
 
   ipcMain.handle('settings:close-window', () => {

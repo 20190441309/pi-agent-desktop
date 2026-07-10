@@ -1,6 +1,7 @@
 import { BrowserWindow, screen } from "electron";
 import { join } from "path";
 import { is } from "@electron-toolkit/utils";
+import { attachWebSecurityHandlers } from "./web-security";
 
 const OVERLAY_MARGIN = 14;
 const DEFAULT_WIDTH = 336;
@@ -83,6 +84,11 @@ export class DesktopOverlayWindowManager {
         overlayWindow.on("closed", () => {
             this.overlayWindow = null;
         });
+
+        // audit round 3, Task 2.4: overlay is a renderer surface (permission /
+        // extension UI) — attach open/navigate guards before loadURL so a
+        // compromised overlay page can't pop a second window or navigate away.
+        attachWebSecurityHandlers(overlayWindow);
 
         if (is.dev && process.env.ELECTRON_RENDERER_URL) {
             void overlayWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}/overlay.html`);

@@ -18,6 +18,7 @@ import { MiniMaxCodeTitleBar } from "./MiniMaxCodeTitleBar";
 const DEFAULT_LEFT_WIDTH = 190;
 const MIN_LEFT_WIDTH = 160;
 const MAX_LEFT_WIDTH = 320;
+const RIGHT_FLOATING_MOTION_MS = 300;
 
 function clampLeftWidth(width: number): number {
     return Math.max(MIN_LEFT_WIDTH, Math.min(MAX_LEFT_WIDTH, Math.round(width)));
@@ -124,6 +125,8 @@ export function MiniMaxCodeLayout({
     const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
     const resolvedLeftWidth = clampLeftWidth(leftWidth);
     const showRightFloating = Boolean(rightSlot && rightFloatingOpen && !rightCollapsed);
+    const [renderRightFloating, setRenderRightFloating] = useState(showRightFloating);
+    const [rightFloatingMotionState, setRightFloatingMotionState] = useState<"enter" | "exit">("exit");
 
     useEffect(() => {
         if (typeof window === "undefined" || !window.piAPI) return;
@@ -159,6 +162,29 @@ export function MiniMaxCodeLayout({
             window.removeEventListener("mouseup", handleEnd);
         };
     }, [onLeftWidthChange]);
+
+    useEffect(() => {
+        let frameId: number | null = null;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+        if (showRightFloating) {
+            setRenderRightFloating(true);
+            setRightFloatingMotionState("exit");
+            frameId = window.requestAnimationFrame(() => {
+                setRightFloatingMotionState("enter");
+            });
+        } else {
+            setRightFloatingMotionState("exit");
+            timeoutId = setTimeout(() => {
+                setRenderRightFloating(false);
+            }, RIGHT_FLOATING_MOTION_MS);
+        }
+
+        return () => {
+            if (frameId !== null) window.cancelAnimationFrame(frameId);
+            if (timeoutId !== null) clearTimeout(timeoutId);
+        };
+    }, [showRightFloating]);
 
     const startLeftResize = (clientX: number): void => {
         if (!onLeftWidthChange) return;
@@ -222,12 +248,14 @@ export function MiniMaxCodeLayout({
 
                     {/* 左侧栏 */}
                     <aside
-                        className={`flex shrink-0 flex-col overflow-hidden border-r border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] ${isResizingLeft ? "" : "animate-layout"}`}
+                        className={`pi-motion-rail flex shrink-0 flex-col overflow-hidden border-r border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] ${isResizingLeft ? "" : "animate-layout"}`}
                         style={{ width: leftCollapsed ? 0 : resolvedLeftWidth, opacity: leftCollapsed ? 0 : 1 }}
                         data-mmcode-region="left"
+                        data-collapsed={leftCollapsed ? "true" : "false"}
+                        aria-hidden={leftCollapsed}
                         aria-label="primary navigation"
                     >
-                        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ minWidth: leftCollapsed ? 0 : undefined }}>
+                        <div className="pi-motion-rail-content min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ minWidth: leftCollapsed ? 0 : undefined }}>
                             {leftSlot}
                         </div>
                     </aside>
@@ -259,15 +287,17 @@ export function MiniMaxCodeLayout({
                         />
                     </main>
 
-                    {showRightFloating ? (
+                    {renderRightFloating ? (
                         <aside
-                            className={`absolute right-3 z-[60] flex w-[var(--mm-width-sidebar-right)] flex-col ${
+                            className={`pi-motion-floating-rail absolute right-3 z-[60] flex w-[var(--mm-width-sidebar-right)] flex-col ${
                                 rightFloatingChrome
                                     ? "overflow-hidden rounded-[8px] border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_18px_48px_rgba(15,23,42,0.13)]"
                                     : "pointer-events-none overflow-visible"
                             }`}
                             style={{ top: rightFloatingTopOffset, bottom: rightFloatingBottomOffset }}
                             data-mmcode-region="right-floating"
+                            data-motion-state={rightFloatingMotionState}
+                            aria-hidden={rightFloatingMotionState === "exit"}
                             aria-label="context panel"
                         >
                             <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto ${rightFloatingChrome ? "" : "pointer-events-auto"}`}>

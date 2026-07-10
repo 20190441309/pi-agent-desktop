@@ -940,6 +940,168 @@ code {
   transition: opacity 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.pi-motion-rail {
+  transition:
+    width 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 220ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pi-motion-rail-content {
+  transition:
+    opacity 220ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.pi-motion-rail[data-collapsed="true"] .pi-motion-rail-content {
+  opacity: 0;
+  transform: translateX(-10px);
+}
+
+.pi-motion-rail[data-collapsed="false"] .pi-motion-rail-content {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.pi-motion-floating-rail {
+  transition:
+    opacity 260ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.pi-motion-floating-rail[data-motion-state="enter"] {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+}
+
+.pi-motion-floating-rail[data-motion-state="exit"] {
+  opacity: 0;
+  transform: translateX(14px) scale(0.985);
+  pointer-events: none;
+}
+
+.pi-motion-message-enter {
+  animation: pi-message-enter 220ms cubic-bezier(0.2, 0, 0, 1);
+  will-change: opacity, transform;
+}
+
+.pi-motion-thinking-shell {
+  animation: pi-thinking-shell-in 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.pi-motion-thinking-content {
+  animation: pi-thinking-content-in 180ms cubic-bezier(0.2, 0, 0, 1);
+  will-change: opacity, transform;
+}
+
+.pi-motion-running-strip {
+  animation: pi-running-strip-in 360ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: bottom center;
+  will-change: opacity, transform, filter;
+}
+
+.pi-motion-running-card {
+  animation: pi-running-card-in 260ms cubic-bezier(0.2, 0, 0, 1);
+  will-change: opacity, transform;
+}
+
+.pi-motion-status-pill {
+  transition:
+    opacity 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pi-motion-status-text {
+  animation: pi-status-text-in 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.pi-motion-running-dot {
+  animation: pi-running-dot 1050ms ease-in-out infinite;
+}
+
+@keyframes pi-message-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pi-thinking-shell-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pi-thinking-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pi-running-strip-in {
+  from {
+    opacity: 0;
+    filter: blur(1px);
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pi-running-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pi-status-text-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pi-running-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.82);
+  }
+}
+
 /* 设置面板内容切换淡入淡出 */
 .settings-content-enter {
   animation: settings-fade-in 150ms ease-out;
@@ -1020,6 +1182,32 @@ code {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .pi-motion-message-enter,
+  .pi-motion-thinking-shell,
+  .pi-motion-thinking-content,
+  .pi-motion-running-strip,
+  .pi-motion-running-card,
+  .pi-motion-status-text,
+  .pi-motion-running-dot {
+    animation: none;
+    will-change: auto;
+  }
+
+  .pi-motion-rail,
+  .pi-motion-rail-content,
+  .pi-motion-floating-rail,
+  .pi-motion-status-pill {
+    transition-duration: 1ms;
+    will-change: auto;
+  }
+
+  .pi-motion-rail[data-collapsed="true"] .pi-motion-rail-content,
+  .pi-motion-rail[data-collapsed="false"] .pi-motion-rail-content,
+  .pi-motion-floating-rail[data-motion-state="enter"],
+  .pi-motion-floating-rail[data-motion-state="exit"] {
+    transform: none;
+  }
+
   .settings-backdrop-enter,
   .settings-shell-enter,
   .settings-tab-panel,

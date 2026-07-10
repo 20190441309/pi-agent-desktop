@@ -268,12 +268,14 @@ describe("MessageBubble", () => {
 
     const toggle = screen.getByRole("button", { name: /展开思考/ });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.closest('[data-motion="thinking-shell"]')?.className).toContain("pi-motion-thinking-shell");
     expect(screen.queryByText("可展开的思考内容")).toBeNull();
 
     fireEvent.click(toggle);
 
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("可展开的思考内容")).toBeTruthy();
+    expect(screen.getByText("可展开的思考内容").closest('[data-motion="thinking-content"]')?.className).toContain("pi-motion-thinking-content");
   });
 
   it("hides assistant thinking when thinking display is disabled", () => {
@@ -342,6 +344,8 @@ describe("MessageBubble", () => {
 
     const article = container.querySelector("article");
     expect(article?.className).toContain("justify-center");
+    expect(article?.className).toContain("pi-motion-message-enter");
+    expect(article?.getAttribute("data-motion")).toBe("message-enter");
     expect(article?.firstElementChild?.className).toContain("max-w-[42rem]");
   });
 
@@ -380,7 +384,63 @@ describe("MessageBubble", () => {
 
     expect(screen.getByText("执行计划：docs/pi-agent-evaluation-plan.md")).toBeTruthy();
     expect(screen.getByText("执行计划")).toBeTruthy();
+    expect(screen.getByTestId("plan-execution-user-state")).toBeTruthy();
+    expect(screen.getByTestId("message-surface").className).toContain("bg-[var(--mm-bg-control)]");
+    expect(screen.getByTestId("message-surface").className).not.toContain("bg-[var(--mm-bg-sidebar)]");
     expect(screen.queryByText(/\/execute_plan/)).toBeNull();
+  });
+
+  it("renders persisted visible execute-plan user summaries as execution state", () => {
+    const message: Message = {
+      id: "m-visible-execute-plan",
+      role: "user",
+      content: "执行计划：comprehensive-project-review.md",
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("plan-execution-user-state")).toBeTruthy();
+    expect(screen.getByText("执行计划：comprehensive-project-review.md")).toBeTruthy();
+    expect(screen.getByTestId("message-surface").className).toContain("bg-[var(--mm-bg-control)]");
+  });
+
+  it("keeps normal user message vertical padding balanced while keeping the assistant surface transparent", () => {
+    const userMessage: Message = {
+      id: "m-user-padding",
+      role: "user",
+      content: "普通用户消息",
+      timestamp: new Date(0),
+    };
+    const assistantMessage: Message = {
+      id: "m-assistant-transparent",
+      role: "assistant",
+      content: "普通助手回复",
+      timestamp: new Date(0),
+    };
+
+    const { rerender } = render(
+      <I18nProvider>
+        <MessageBubble message={userMessage} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("message-surface").className).toContain("py-3");
+    expect(screen.getByTestId("message-surface").className).not.toContain("pt-3 pb-4");
+    expect(screen.getByTestId("message-surface").className).toContain("bg-[var(--mm-bg-sidebar)]");
+
+    rerender(
+      <I18nProvider>
+        <MessageBubble message={assistantMessage} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("message-surface").className).not.toContain("bg-[var(--mm-bg-panel)]");
+    expect(screen.getByTestId("message-surface").className).not.toContain("border-[var(--mm-border)]");
   });
 
   it("shows custom card open-file string failures from Electron shell", async () => {

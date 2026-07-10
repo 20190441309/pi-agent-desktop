@@ -158,11 +158,11 @@ export async function gitCheckout(workspacePath: string, branch: string): Promis
     // previous over-strict regex (which rejected valid names like "feature/x@y")
     // and surfaces a clear error when the ref is missing.
     try {
-        await execGit(["rev-parse", "--verify", branch], workspacePath);
+        await execGit(["rev-parse", "--verify", "--", branch], workspacePath);
     } catch {
         return ipcError("ipcErrors.git.invalidArgs", `分支不存在: ${branch}`, { branch });
     }
-    await execGit(["checkout", branch], workspacePath);
+    await execGit(["checkout", "--", branch], workspacePath);
 }
 
 export async function gitCreateBranch(workspacePath: string, branchName: string): Promise<void | IpcError> {

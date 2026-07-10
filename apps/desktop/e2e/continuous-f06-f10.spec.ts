@@ -32,7 +32,8 @@ interface StateFile {
 const RUN_ID = process.env.CONTINUOUS_ACCEPTANCE_RUN_ID ?? "2026-07-05T02-41-37-acceptance";
 const ACCEPTANCE_DIR = process.env.CONTINUOUS_ACCEPTANCE_DIR
   ?? join(__dirname, "..", "e2e-output", "continuous-acceptance", RUN_ID);
-const STATE_PATH = join(__dirname, "..", "e2e-output", "continuous-acceptance", "_state.json");
+const STATE_DIR = join(__dirname, "..", "e2e-output", "continuous-acceptance");
+const STATE_PATH = join(STATE_DIR, "_state.json");
 const USER_DATA_DIR = join(__dirname, "..", "e2e-output", `continuous-f06-f10-user-data-${RUN_ID}`);
 const WORKSPACE_PATH = join(__dirname, "..", "e2e-output", `continuous-f06-f10-workspace-${RUN_ID}`);
 const SCREENSHOT_OFFSET = 50;
@@ -50,8 +51,40 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
+/**
+ * 默认 state: 当前 spec 覆盖 F06-F10, 每功能 10 个用例.
+ * 用于前序 spec (continuous-acceptance.generated.spec.ts) 未落盘 _state.json 时自包含初始化,
+ * 消除跨 spec 状态文件依赖.
+ */
+function defaultState(): StateFile {
+  return {
+    runId: RUN_ID,
+    fullFunctionList: Object.entries(functionNames).map(([id, name]) => ({
+      id,
+      name,
+      totalCases: 10,
+      executedCases: 0,
+      status: "PENDING",
+    })),
+    casesByFunction: {},
+    blockedItems: [],
+    failedItems: [],
+    verification: [],
+    reports: {},
+  };
+}
+
 async function loadState(): Promise<StateFile> {
-  return JSON.parse(await readFile(STATE_PATH, "utf8")) as StateFile;
+  try {
+    return JSON.parse(await readFile(STATE_PATH, "utf8")) as StateFile;
+  } catch {
+    // 前序 spec 未落盘 _state.json (ENOENT) 或内容损坏时, 自包含创建默认 state,
+    // 避免跨 spec 状态依赖导致本 spec 无法独立运行.
+    const state = defaultState();
+    await mkdir(STATE_DIR, { recursive: true });
+    await writeFile(STATE_PATH, JSON.stringify(state, null, 2), "utf8");
+    return state;
+  }
 }
 
 async function launchApp(): Promise<{ readonly app: ElectronApplication; readonly page: Page }> {

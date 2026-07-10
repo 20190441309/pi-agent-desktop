@@ -445,7 +445,13 @@ test.describe("Compose workflow runtime acceptance", () => {
 
         const settingsWindow = await openSettingsWindow(app, page);
         await settingsWindow.getByRole("tab", { name: "长程能力" }).click();
-        await expect(settingsWindow.getByRole("switch", { name: "Dynamic Workflow" })).toHaveAttribute("aria-checked", "true");
+        const dynamicWorkflowSwitch = settingsWindow.getByRole("switch", { name: "Dynamic Workflow" });
+        await expect(dynamicWorkflowSwitch).toBeVisible({ timeout: 10_000 });
+        // Dynamic Workflow defaults to off; ensure it is enabled before asserting state.
+        if (await dynamicWorkflowSwitch.getAttribute("aria-checked") !== "true") {
+            await dynamicWorkflowSwitch.click();
+        }
+        await expect(dynamicWorkflowSwitch).toHaveAttribute("aria-checked", "true");
         await expect(settingsWindow.getByRole("switch", { name: "Compose Workflow" })).toHaveAttribute("aria-checked", "true");
         await settingsWindow.screenshot({ path: join(ACCEPTANCE_DIR, "compose-runtime-01-settings-enabled.png") });
         await closeSettingsWindow(settingsWindow);

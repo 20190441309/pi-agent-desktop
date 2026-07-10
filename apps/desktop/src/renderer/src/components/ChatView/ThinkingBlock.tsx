@@ -17,7 +17,7 @@ function StreamingIndicator(): React.JSX.Element {
   return (
     <span className="relative inline-flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
       <span className="absolute inset-0 rounded-full bg-[var(--mm-bg-active)] opacity-25 animate-ping" />
-      <span className="relative h-2.5 w-2.5 rounded-full bg-[var(--mm-bg-active)]" />
+      <span className="pi-motion-running-dot relative h-2.5 w-2.5 rounded-full bg-[var(--mm-bg-active)]" />
     </span>
   );
 }
@@ -34,7 +34,7 @@ export function ThinkingBlock({
   const label = isExpanded ? '收起思考' : '展开思考';
 
   return (
-    <div className="my-1">
+    <div className="pi-motion-thinking-shell my-1" data-motion="thinking-shell">
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
@@ -71,7 +71,7 @@ export function ThinkingBlock({
 
       {/* 展开内容 */}
       {isExpanded && (
-        <div className="border-l border-[var(--mm-border)] py-2 pl-3">
+        <div className="pi-motion-thinking-content border-l border-[var(--mm-border)] py-2 pl-3" data-motion="thinking-content">
           <div className="whitespace-pre-wrap text-xs leading-relaxed text-[var(--mm-text-tertiary)]">
             {content}
             {isStreaming && (

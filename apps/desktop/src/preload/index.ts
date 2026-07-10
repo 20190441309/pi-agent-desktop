@@ -70,6 +70,7 @@ import type {
     // GoalEvaluationEvent 用于 onGoalEvaluation subscribe 泛型.
     GoalVerdict,
     GoalEvaluationEvent,
+    SettingsWindowTab,
 } from "@shared";
 
 // 内部 helper: 把 ipcRenderer.on 的 (_event, payload) 签名转成 (payload)
@@ -395,8 +396,10 @@ const piAPI: PiAPI = {
     },
 
     // Settings independent window
-    openSettingsWindow: () => ipcRenderer.invoke("settings:open-window") as Promise<void>,
+    openSettingsWindow: (tab) => ipcRenderer.invoke("settings:open-window", tab) as Promise<void>,
     closeSettingsWindow: () => ipcRenderer.invoke("settings:close-window") as Promise<void>,
+    settingsWindowReady: () => ipcRenderer.invoke("settings:renderer-ready") as Promise<SettingsWindowTab | undefined>,
+    onSettingsTabSelected: (cb) => subscribe<SettingsWindowTab>("settings:select-tab", cb),
 
     // v1.1.0: 识图功能 (vision). 通道当前未注册 ipcMain.handle, invoke 会 reject,
     // 由渲染层 try/catch 走 visionFailed 错误文案 — 待主进程补 handler 后自动生效.

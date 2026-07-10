@@ -16,8 +16,39 @@ import {
   stripPlanFrontmatter,
 } from "../plan-utils";
 import { useRenderedPlanCardIds } from "./useRenderedPlanCardIds";
+import { contentWithGeneratedUiText } from "../../../utils/generated-ui";
 
 const EMPTY_AGENT_MESSAGES: AgentMessage[] = [];
+
+type PlanSourceMessageLike = {
+  id: string;
+  role: string;
+  content: string;
+  generatedUi?: AgentMessage["generatedUi"];
+  planAction?: AgentMessage["planAction"];
+};
+
+function normalizePlanText(content: string): string {
+  return stripPlanFrontmatter(content)
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think>[\s\S]*$/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function findReusablePlanSourceMessage<T extends PlanSourceMessageLike>(
+  messages: T[],
+  targetContent: string,
+): T | undefined {
+  const normalizedTarget = normalizePlanText(targetContent);
+  if (!normalizedTarget) return undefined;
+  return [...messages].reverse().find((message) => (
+    message.role === "assistant"
+    && !message.planAction
+    && normalizePlanText(contentWithGeneratedUiText(message.content, message.generatedUi)) === normalizedTarget
+  ));
+}
 
 export function usePlanSyncEffect(
   currentSessionId: string | null,
@@ -90,7 +121,7 @@ export function usePlanSyncEffect(
         agentMessages,
         activePlanCard,
         activePlanExecution?.sourceMessageId,
-      );
+      ) ?? findReusablePlanSourceMessage(agentMessages, cleanContent);
       const messageId = reusableAgentMessage?.id ?? `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       if (reusableAgentMessage) {
         useAgentStore.getState().updateStreamMessage(currentAgent.id, messageId, {
@@ -129,7 +160,7 @@ export function usePlanSyncEffect(
         currentSession.messages,
         activePlanCard,
         activePlanExecution?.sourceMessageId,
-      );
+      ) ?? findReusablePlanSourceMessage(currentSession.messages, cleanContent);
       const messageId = reusableSessionMessage?.id ?? `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       if (reusableSessionMessage) {
         useSessionStore.getState().updateMessage(currentSession.id, messageId, {

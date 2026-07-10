@@ -255,7 +255,7 @@ describe("ChatView", () => {
     expect(screen.queryByTestId("plan-card")).toBeNull();
   });
 
-  it("shows a centered narrow running placeholder without the legacy inline stop button", () => {
+  it("does not duplicate the composer running strip with a centered running placeholder", () => {
     mockedStreamError = null;
     mockedIsStreaming = true;
 
@@ -265,11 +265,9 @@ describe("ChatView", () => {
       </I18nProvider>,
     );
 
-    const status = screen.getByRole("status", { name: "Pi 正在思考..." });
-    expect(status.className).toContain("justify-center");
-    expect(status.textContent).toContain("任务运行中 · 新输入会作为追加指令进入当前会话");
-    expect(screen.queryByRole("button", { name: "停止生成" })).toBeNull();
-    expect((status.firstElementChild as HTMLElement | null)?.className).toContain("max-w-[42rem]");
+    expect(screen.queryByRole("status", { name: "Pi 正在思考..." })).toBeNull();
+    expect(screen.queryByText("任务运行中 · 新输入会作为追加指令进入当前会话")).toBeNull();
+    expect(screen.getByRole("status", { name: "运行中" })).toBeTruthy();
   });
 
   it("waits for the current stream to finish before surfacing a pending execute-plan card", async () => {
@@ -492,6 +490,71 @@ describe("ChatView", () => {
         }),
       });
       expect(usePlanStore.getState().activeExecution?.sourceMessageId).toBe("plan-message-existing");
+    });
+  });
+
+  it("upgrades the existing assistant plan text instead of appending a saved-plan message", async () => {
+    mockedStreamError = null;
+    const planContent = [
+      "背景说明：这些是生成计划时的上下文，不应该抢占计划卡主视觉。",
+      "",
+      "## 用户需选择方向",
+      "A) 全量发布审查：覆盖代码、数据、安全、UI、测试。",
+      "B) 上线阻断审查：只找 P0/P1。",
+      "C) 专项深挖审查：选择一个方向深挖。",
+    ].join("\n");
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                ...session.messages,
+                {
+                  id: "assistant-plan-source",
+                  role: "assistant",
+                  content: planContent,
+                  timestamp: new Date(1),
+                },
+              ],
+            }
+          : session
+      )),
+    }));
+    usePlanStore.setState({
+      activeCard: {
+        id: "card_existing_source",
+        title: "全面审查项目计划",
+        filename: "comprehensive-project-review.md",
+        content: planContent,
+        createdAt: Date.now(),
+      },
+      renderedPlanCardIds: [],
+      decisionRequest: null,
+      activeExecution: null,
+      steps: [],
+      status: "idle",
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => {
+      const session = useSessionStore.getState().sessions.find((item) => item.id === "s1");
+      expect(session?.messages).toHaveLength(2);
+      expect(session?.messages[1]).toMatchObject({
+        id: "assistant-plan-source",
+        content: planContent,
+        planAction: expect.objectContaining({
+          title: "全面审查项目计划",
+          filename: "comprehensive-project-review.md",
+          status: "pending",
+        }),
+      });
+      expect(usePlanStore.getState().activeExecution?.sourceMessageId).toBe("assistant-plan-source");
     });
   });
 

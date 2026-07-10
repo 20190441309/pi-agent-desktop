@@ -58,7 +58,9 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
     test('1. 顶部导航主路由 + 可见 Files/Git 入口 (对话/任务/记忆/工具/设置)', async () => {
         ({ app, page } = await launchApp());
 
-        await expect(page.getByRole('tablist', { name: '顶部标签栏' })).toBeVisible();
+        // 冷启动: 等 networkidle 让初始资源加载稳定后再断言 tablist, 避免 5s 默认超时不够
+        await page.waitForLoadState('networkidle');
+        await expect(page.getByRole('tablist', { name: '顶部标签栏' })).toBeVisible({ timeout: 15_000 });
         await expect(page.getByRole('tab', { name: '对话' })).toBeVisible();
         await expect(page.getByRole('tab', { name: '任务' })).toBeVisible();
         await expect(page.getByRole('tab', { name: '记忆' })).toBeVisible();

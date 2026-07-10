@@ -77,7 +77,7 @@ export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedMo
     ipcMain.handle("pi:describe-images", async (_event, rawImages: unknown) => {
         const parsed = describeImagesInputSchema.safeParse(rawImages);
         if (!parsed.success) {
-            throw new Error("无效的图片输入");
+            return ipcError("ipcErrors.config.invalidImages", "无效的图片输入", { issues: JSON.stringify(parsed.error.issues) });
         }
         return configManager.describeImages(parsed.data);
     });

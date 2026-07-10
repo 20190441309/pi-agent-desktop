@@ -29,7 +29,7 @@ Adding a new alias? It must be defined in **all** files where it's used or thing
 | Alias | tsconfig.base.json | electron.vite.config.ts | vitest.config.ts |
 |-------|:---:|:---:|:---:|
 | `@shared` | ✅ | ✅ (3 sections: main, preload, renderer) | ✅ |
-| `@` (→ renderer/src) | ❌ not in tsconfig | ✅ (renderer section only) | ✅ |
+| `@` (→ renderer/src) | ✅ | ✅ (renderer section only) | ✅ |
 | `@pi-desktop/*` | ✅ | ❌ not in vite config | ❌ not in vitest |
 
 **Gotcha**: Vite doesn't read tsconfig paths. Each alias must be manually duplicated into `electron.vite.config.ts` (all 3 process sections where used) and `vitest.config.ts`.
@@ -112,7 +112,7 @@ CI runs the same sequence on `windows-latest` (see `.github/workflows/ci.yml`). 
 4. Expose in preload: `apps/desktop/src/preload/index.ts`
 5. Use in renderer via `window.piAPI`
 
-There are 17 IPC handler files. Each exports a `setup*()` function taking dependencies via typed opts object.
+There are 23 IPC handler files. Each exports a `setup*()` function taking dependencies via typed opts object.
 
 ### Multi-workspace Session Architecture
 
@@ -140,8 +140,8 @@ The SQLite schema supports tree-structured conversations (Pi JSONL v3) via `pare
 │ 240px    │                           │ default: collapsed   │
 │          │                           │                      │
 │ 新对话    │ ChatView / SkillsPanel /  │ Usage, Permissions,  │
-│ 分组切换  │ GitPanel / (tasks/memory  │ Thinking, Env,       │
-│ 会话列表  │  are stubs → chat/search) │ Progress, Tools      │
+│ 分组切换  │ GitPanel / MemoryPanel /  │ Thinking, Env,       │
+│ 会话列表  │ TaskOverviewPanel         │ Progress, Tools      │
 │ (date/ws)│                           │                      │
 └──────────┴───────────────────────────┴──────────────────────┘
 ```
@@ -153,6 +153,8 @@ The SQLite schema supports tree-structured conversations (Pi JSONL v3) via `pare
 - **Right rail** (`RightRail.tsx`): default collapsed (`settings-store.rightRailCollapsed: true`). Auto-expands only on 0→1 message transition. Manual toggle via floating button.
 - **Settings window**: independent `BrowserWindow` (800×600), NOT a modal. IPC: `settings:open-window` / `settings:close-window` in `settings-window.ipc.ts`. Renderer entry: `settings.html` → `SettingsWindow.tsx` → `SettingsContent.tsx` (shared with legacy `SettingsPanel` modal).
 - **Layout shell**: `MiniMaxCodeLayout` accepts `topBarSlot`, `leftSlot`, `centerSlot`, `rightSlot` — all collapsible via `leftCollapsed`/`rightCollapsed` props.
+- **MemoryPanel** (`components/LongHorizon/MemoryPanel.tsx`): complete implementation backed by `window.piAPI.memorySearch` / `memoryListRecent` — not a stub.
+- **TaskOverviewPanel** (`components/LongHorizon/TaskOverviewPanel.tsx`): complete implementation reading `useTaskProgress` / `usePlanStore` — not a stub.
 
 ## Key Files
 

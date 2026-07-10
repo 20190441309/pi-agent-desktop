@@ -75,8 +75,12 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
             // Pi reuses toolCallIds across turns, so without this a plan_write
             // in turn N+1 with the same toolCallId as turn N would be silently
             // suppressed by `emittedPlanCards.has(toolCallId)`.
+            // Also clear announcedToolArgs to prevent unbounded Map growth
+            // (entries are normally cleaned per-tool_execution_end, but a
+            // missing end event would leak; this is the safety net).
             if (event.type === "turn_end" || event.type === "agent_end") {
                 emittedPlanCards.clear();
+                announcedToolArgs.clear();
             }
 
             const announced = asToolCallArgs(event);

@@ -54,7 +54,12 @@ async function closeActiveApp(): Promise<void> {
     const app = activeApp;
     const process = app?.process();
     try {
-        await app?.close();
+        // Bound the close so a hanging Electron shutdown can't stall the test body
+        // or the afterEach teardown (waitForExit still force-kills the process).
+        await Promise.race([
+            app?.close() ?? Promise.resolve(),
+            new Promise<void>((resolve) => setTimeout(resolve, 15_000)),
+        ]);
     } catch {
         // Electron can already be gone after restart-heavy tests; cleanup should stay best-effort.
     } finally {
@@ -200,6 +205,8 @@ test.describe('Pi Desktop — Core Workflow', () => {
 
     // ===== Test 4: 设置持久化 =====
     test('settings persist across restarts', async () => {
+        // Two cold Electron launches make this a legitimately long flow.
+        test.setTimeout(120_000);
         const userDataDir = test.info().outputPath(`settings-test-${Date.now()}`);
 
         let { app, page } = await launchApp(userDataDir);

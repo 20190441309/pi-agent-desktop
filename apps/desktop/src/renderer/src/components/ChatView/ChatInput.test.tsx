@@ -43,6 +43,7 @@ describe("ChatInput", () => {
         configSetDefaultModel: vi.fn(async () => ({ ok: true })),
         agentsSetThinking: vi.fn(async () => undefined),
         permissionSetMode: vi.fn(async () => undefined),
+        openSettingsWindow: vi.fn(async () => undefined),
       },
       configurable: true,
     });
@@ -65,8 +66,8 @@ describe("ChatInput", () => {
       settings: {
         theme: "light",
         fontSize: 14,
-        model: "",
-        provider: "",
+        model: "mimo-v2.5",
+        provider: "mimo",
         temperature: 0.7,
         maxTokens: 4096,
         autoSave: true,
@@ -76,7 +77,15 @@ describe("ChatInput", () => {
         permissionLevel: "smart",
         thinkingLevel: "medium",
       },
-      piModels: null,
+      piModels: [
+        {
+          id: "mimo-v2.5",
+          name: "MiMo v2.5",
+          description: "Default test model",
+          provider: "mimo",
+          providerName: "MiMo",
+        },
+      ],
     });
     useRuntimeFeatureStore.setState({
       featureState: {
@@ -121,6 +130,11 @@ describe("ChatInput", () => {
   });
 
   it("keeps attachment and slash buttons before the mode selector in the reference composer", () => {
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, provider: "", model: "" },
+      piModels: null,
+    }));
+
     render(
       <I18nProvider>
         <ChatInput
@@ -167,6 +181,105 @@ describe("ChatInput", () => {
     expect(controls.className).toContain("items-center");
     expect(sendButton.className).not.toContain("mt-[-6px]");
     expect(sendButton.className).not.toContain("translate-x");
+  });
+
+  it("blocks ordinary sends and links to model settings when no valid model is configured", () => {
+    const onSend = vi.fn(async () => undefined);
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, provider: "stale", model: "missing-model" },
+      piModels: [],
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(textbox.disabled).toBe(false);
+    textbox.focus();
+    expect(document.activeElement).toBe(textbox);
+    expect(textbox.placeholder).toBe("请先配置模型后再开始对话");
+    expect(screen.getByText("尚未配置可用模型")).toBeTruthy();
+
+    fireEvent.change(textbox, { target: { value: "这条消息不能发出" } });
+    const sendButton = within(screen.getByTestId("chat-input-reference-controls"))
+      .getByRole("button", { name: "发送" }) as HTMLButtonElement;
+    expect(sendButton.disabled).toBe(true);
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "去配置" }));
+    expect(window.piAPI.openSettingsWindow).toHaveBeenCalledWith("model");
+  });
+
+  it("allows a configured model while the model list is still loading", async () => {
+    const onSend = vi.fn(async () => undefined);
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, provider: "mimo", model: "mimo-v2.5" },
+      piModels: null,
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "send while models load" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByText("\u5c1a\u672a\u914d\u7f6e\u53ef\u7528\u6a21\u578b")).toBeNull();
+  });
+
+  it("blocks Enter sends without a valid model while processing but keeps stop available", () => {
+    const onSend = vi.fn(async () => undefined);
+    const onStop = vi.fn();
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, provider: "stale", model: "missing-model" },
+      piModels: [],
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={onStop}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "must not bypass the model gate" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    expect(onSend).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "\u505c\u6b62\u751f\u6210" }));
+    expect(onStop).toHaveBeenCalledTimes(1);
   });
 
   it("selects plan mode from the reference composer mode menu without enabling the old plan store", () => {
@@ -516,6 +629,8 @@ describe("ChatInput", () => {
     const runningStatus = screen.getByText(/任务运行中 ·/).parentElement?.parentElement;
     expect(runningStatus?.className).toContain("absolute");
     expect(runningStatus?.className).toContain("bottom-full");
+    expect(runningStatus?.className).toContain("pi-motion-running-strip");
+    expect(runningStatus?.getAttribute("data-motion")).toBe("running-strip");
     expect(screen.getByTestId("chat-input-reference-body").className).toContain("flex-1");
     expect(screen.getByTestId("chat-input-reference-controls").className).toContain("shrink-0");
   });
@@ -1259,6 +1374,10 @@ describe("ChatInput", () => {
   it("runs mapped desktop slash commands without sending them as prompts", async () => {
     const onSend = vi.fn(async () => undefined);
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, provider: "", model: "" },
+      piModels: null,
+    }));
     Object.defineProperty(window, "piAPI", {
       value: {
         listSlashCommands: vi.fn(async () => [

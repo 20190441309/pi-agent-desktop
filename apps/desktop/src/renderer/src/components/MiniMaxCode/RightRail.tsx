@@ -132,7 +132,7 @@ function ProgressStatusIcon({ status }: { status: string }): React.JSX.Element {
       {status === "completed" ? (
         <CheckIcon />
       ) : status === "running" ? (
-        <span className="h-1.5 w-1.5 rounded-full bg-current" />
+        <span className="pi-motion-running-dot h-1.5 w-1.5 rounded-full bg-current" />
       ) : status === "failed" || status === "error" || status === "blocked" ? (
         <span className="text-[12px] leading-none">!</span>
       ) : null}

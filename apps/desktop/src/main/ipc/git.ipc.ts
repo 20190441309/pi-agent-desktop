@@ -4,10 +4,20 @@ import log from 'electron-log/main';
 import { ipcError } from '@shared';
 import { gitAdd, gitCommit, gitDiff, gitDiffStaged, getGitStatus, gitUnstage, gitCheckout, gitCreateBranch, gitOriginalContent, gitChangedFiles } from '../services/git-service';
 import { getProtectedPathReason } from '../services/protected-paths';
-import { gitAddSchema, gitCommitSchema, gitDiffSchema, gitDiffStagedSchema, gitCheckoutSchema, gitCreateBranchSchema, gitOriginalContentSchema, gitChangedFilesSchema } from './schemas';
+import { gitAddSchema, gitCommitSchema, gitDiffSchema, gitDiffStagedSchema, gitCheckoutSchema, gitCreateBranchSchema, gitOriginalContentSchema, gitChangedFilesSchema, gitStatusSchema } from './schemas';
 
 export function setupGitIpc(): void {
   ipcMain.handle('git:status', async (_, workspacePath: string) => {
+    try {
+      gitStatusSchema.parse([workspacePath]);
+    } catch (err) {
+      log.warn("[git.ipc] git:status invalid args:", err);
+      return ipcError(
+        "ipcErrors.git.invalidArgs",
+        `git status 参数无效: ${err instanceof Error ? err.message : String(err)}`,
+        { path: String(workspacePath ?? "") },
+      );
+    }
     try {
       return await getGitStatus(workspacePath);
     } catch (err) {

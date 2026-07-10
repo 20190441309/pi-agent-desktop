@@ -1,6 +1,7 @@
 // 独立设置窗口 — 不含模态 chrome, 自带 I18nProvider 和主题初始化.
 
 import React, { useEffect } from 'react';
+import type { SettingsWindowTab } from '@shared';
 import { useSettingsStore } from './stores/settings-store';
 import { I18nProvider, useI18n } from './i18n';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
@@ -29,6 +30,31 @@ function SettingsShell(): React.JSX.Element {
     useEffect(() => {
         void loadPiConfig();
     }, [loadPiConfig]);
+
+    useEffect(() => {
+        let active = true;
+        const selectTab = (tab: SettingsWindowTab): void => {
+            window.dispatchEvent(new CustomEvent("settings:select-tab", { detail: { tab } }));
+        };
+        const unsubscribe = window.piAPI?.onSettingsTabSelected?.(selectTab);
+        const ready = window.piAPI?.settingsWindowReady?.();
+        if (ready) {
+            void ready.then((tab) => {
+                if (active && tab) selectTab(tab);
+            }).catch(() => undefined);
+        }
+        return () => {
+            active = false;
+            if (typeof unsubscribe === "function") unsubscribe();
+        };
+    }, []);
+
+    // 设置窗口是独立 renderer 进程, store 默认态是 defaultSettings; 不调 init() 会导致
+    // longHorizon 等无 localStorage 缓存的字段始终显示默认值 (Goal 开关跨重启回退 bug).
+    useEffect(() => {
+        useSettingsStore.getState().init();
+        return () => useSettingsStore.getState().dispose();
+    }, []);
 
     useEffect(() => {
         if (typeof window === 'undefined' || !window.piAPI) return;

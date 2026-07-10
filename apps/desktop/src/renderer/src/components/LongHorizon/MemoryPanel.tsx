@@ -4,6 +4,7 @@ import { useRuntimeFeatureStore, isRuntimeFeatureEnabled } from "../../stores/ru
 import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
+import { useI18n } from "../../i18n";
 
 function recordMeta(record: LongHorizonMemoryRecord): string {
   const parts: string[] = [record.layer, record.kind];
@@ -16,6 +17,7 @@ export function MemoryPanel(): React.JSX.Element {
   const longHorizon = useSettingsStore((state) => state.settings.longHorizon);
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
   const currentSessionId = useSessionStore((state) => state.currentSessionId);
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [records, setRecords] = useState<LongHorizonMemoryRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -83,23 +85,25 @@ export function MemoryPanel(): React.JSX.Element {
   }, [currentSessionId, currentWorkspace?.id, enabled, trimmedQuery]);
 
   const subtitle = useMemo(() => {
-    if (!currentWorkspace) return "请选择 workspace 后查看记忆索引。";
-    return trimmedQuery ? `搜索 “${trimmedQuery}”` : `最近记忆 · ${currentWorkspace.name}`;
-  }, [currentWorkspace, trimmedQuery]);
+    if (!currentWorkspace) return t("memoryPanel.subtitle.selectWorkspace");
+    return trimmedQuery
+      ? t("memoryPanel.subtitle.searchQuery", { query: trimmedQuery })
+      : t("memoryPanel.subtitle.recent", { name: currentWorkspace.name });
+  }, [currentWorkspace, trimmedQuery, t]);
 
   return (
     <section className="flex h-full flex-col overflow-hidden bg-[var(--mm-bg-body)] px-6 py-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="m-0 text-xl font-semibold text-[var(--mm-text-primary)]">记忆</h1>
+          <h1 className="m-0 text-xl font-semibold text-[var(--mm-text-primary)]">{t("memoryPanel.title")}</h1>
           <p className="mt-1 text-sm text-[var(--mm-text-secondary)]">{subtitle}</p>
         </div>
         <label className="w-full max-w-[340px]">
-          <span className="sr-only">搜索记忆</span>
+          <span className="sr-only">{t("memoryPanel.searchLabel")}</span>
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索记忆..."
+            placeholder={t("memoryPanel.searchPlaceholder")}
             className="w-full rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-accent-blue)]"
           />
         </label>
@@ -107,11 +111,11 @@ export function MemoryPanel(): React.JSX.Element {
 
       {!enabled ? (
         <div className="rounded-2xl border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-5 text-sm text-[var(--mm-text-secondary)]">
-          当前未启用 memory system，打开设置里的长程记忆能力后会在这里展示 session / project / global / history 检索结果。
+          {t("memoryPanel.disabled")}
         </div>
       ) : loading ? (
         <div className="rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-5 text-sm text-[var(--mm-text-secondary)]">
-          正在读取记忆索引...
+          {t("memoryPanel.loading")}
         </div>
       ) : error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-5 text-sm text-red-700" role="alert">
@@ -119,7 +123,7 @@ export function MemoryPanel(): React.JSX.Element {
         </div>
       ) : records.length === 0 ? (
         <div className="rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-5 text-sm text-[var(--mm-text-secondary)]">
-          {trimmedQuery ? "没有找到匹配的记忆条目。" : "当前还没有可展示的记忆条目。"}
+          {trimmedQuery ? t("memoryPanel.empty.noMatch") : t("memoryPanel.empty.noEntries")}
         </div>
       ) : (
         <ul className="m-0 grid list-none gap-3 p-0 lg:grid-cols-2">

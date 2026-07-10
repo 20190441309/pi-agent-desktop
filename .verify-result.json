@@ -1,0 +1,17 @@
+{
+  "verdict": "true-positive",
+  "confidence": "high",
+  "summary": "发现真实：getProtectedPathReason 在 workspacePath 未传入时只做敏感名/敏感目录过滤，工作区外非敏感路径放行",
+  "evidence": [
+    "apps/desktop/src/main/services/protected-paths.ts:39 — `if (workspacePath && !isPathInside(...))` 短路条件，workspacePath 为 undefined 时边界检查被完全跳过",
+    "apps/desktop/src/main/services/protected-paths.ts:4-16 — SENSITIVE_FILE_PATTERNS 仅覆盖 .env*/.npmrc/.netrc/.pypirc/id_*/known_hosts/config/credentials*/secrets*/*(token|secret|credential)s?.{json,yaml,toml,txt,env}，不含 *.db/*.sqlite/*.key/*.pem",
+    "apps/desktop/src/main/ipc/files.ipc.ts:69 — files:readTextFile 签名 `workspacePath?: string` 可选",
+    "apps/desktop/src/main/ipc/files.ipc.ts:121 — files:writeTextFile 签名 `workspacePath?: string` 可选",
+    "apps/desktop/src/main/ipc/files.ipc.ts:71/123 — Zod 校验同时接受无 workspacePath 的参数形式"
+  ],
+  "corrections": [
+    "描述 '任何 workspacePath 之外的非敏感路径都放行' 仅在 workspacePath 未提供时成立；当 workspacePath 被传入时，isPathInside=false 会在 protected-paths.ts:40 返回 '路径不在当前工作区内' 拦截。发现已用 '当 workspacePath 未提供' 限定，措辞基本准确",
+    "标题 '未强制收纳到 workspace' 略带夸大，准确表述应为：IPC 层未强制要求调用方传入 workspacePath，工作区约束为 opt-in"
+  ],
+  "severity_assessment": "medium 合理。利用需受陷/越权渲染端发起无 workspacePath 的 IPC 调用，属边界校验防御缺失而非直接 RCE"
+}

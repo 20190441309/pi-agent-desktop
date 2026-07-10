@@ -68,7 +68,17 @@ async function installModeAuditIpc(app: ElectronApplication): Promise<void> {
 async function openSession(page: Page, title: string): Promise<void> {
     const sidebar = page.getByRole("navigation", { name: "会话列表" });
     const button = sidebar.getByRole("button", { name: title, exact: true });
-    await expect(button).toBeVisible({ timeout: 15_000 });
+    // After close+relaunch the session may land in a collapsed date/workspace
+    // group in the sidebar. Wait for the row, expanding collapsed group headers
+    // if needed so the session button becomes visible.
+    try {
+        await expect(button).toBeVisible({ timeout: 15_000 });
+    } catch {
+        for (const group of await sidebar.getByRole("button", { expanded: false }).all()) {
+            await group.click();
+        }
+        await expect(button).toBeVisible({ timeout: 5_000 });
+    }
     await button.click();
 }
 

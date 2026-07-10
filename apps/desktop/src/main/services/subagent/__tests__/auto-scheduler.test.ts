@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { LongHorizonSettings, Workspace } from "@shared";
+
+vi.mock("electron-log/main", () => ({
+    default: {
+        error: vi.fn(),
+        warn: vi.fn(),
+        info: vi.fn(),
+    },
+}));
+
 import { AutoScheduler, MIN_SPAWN_GAP_MS } from "../auto-scheduler";
 import type { SubagentManager, SubagentSpawnResult } from "../manager";
 

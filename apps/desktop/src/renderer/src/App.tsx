@@ -59,7 +59,7 @@ import { ensurePlanSubscriptions } from "./stores/plan-store";
 import { ensureQueueSubscription } from "./stores/queue-store";
 import { useRuntimeFeatureStore } from "./stores/runtime-feature-store";
 import type { TerminalCommandMode } from "./utils/terminal-command";
-import { isIpcError, type DeferredEdit } from "@shared";
+import { isIpcError, type DeferredEdit, type SettingsWindowTab } from "@shared";
 import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 import { addToast } from "./stores/toast-store";
 
@@ -749,11 +749,8 @@ function AppShell(): React.ReactElement {
 
     useEffect(() => {
         const onOpenSettingsTab = (event: Event): void => {
-            const detail = (event as CustomEvent<{ tab?: string }>).detail;
-            window.piAPI?.openSettingsWindow();
-            window.setTimeout(() => {
-                window.dispatchEvent(new CustomEvent("settings:select-tab", { detail }));
-            }, 0);
+            const detail = (event as CustomEvent<{ tab?: SettingsWindowTab }>).detail;
+            void window.piAPI?.openSettingsWindow(detail?.tab);
         };
         const onOpenHotkeys = (): void => setShowCheatsheet(true);
         const onOpenSessions = (): void => routeSection("history");

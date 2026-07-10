@@ -112,6 +112,25 @@ async function checkBasicA11y(
     return violations;
 }
 
+/**
+ * 跳过首次引导 modal.
+ * v1.0.16: 不能用 .remove() 删 DOM (破坏 React ownership 导致 portal 卸载时
+ *   removeChild error 把 App crash 到 error boundary). 必须点 "跳过引导" 按钮.
+ *   路径 A: localStorage 未设 firstLaunchDone → onboarding 渲染 → 点 "跳过引导"
+ *   路径 B: 已点过 → onboarding 不渲染 → 跳过
+ * 注: 必须在 tablist 可见 (React 已挂载) 后调用, 否则 modal 可能尚未渲染导致 count=0 竞态.
+ */
+async function dismissOnboarding(page: Page): Promise<void> {
+    const modalCount = await page.locator('[data-testid="onboarding-modal"]').count();
+    if (modalCount > 0) {
+        await page.getByRole('button', { name: '跳过引导' }).click({ timeout: 5_000 });
+        await page.waitForFunction(
+            () => document.querySelector('[data-testid="onboarding-modal"]') === null,
+            { timeout: 5_000 }
+        );
+    }
+}
+
 test.describe('Pi Desktop a11y', () => {
     let app: ElectronApplication;
 
@@ -136,10 +155,15 @@ test.describe('Pi Desktop a11y', () => {
 
         const window: Page = await app.firstWindow();
         await window.waitForLoadState('domcontentloaded');
+        // 冷启动: 先等 networkidle 让初始资源加载稳定, 再定位 tablist (避免 15s 内未渲染超时)
+        await window.waitForLoadState('networkidle');
 
         // 等待 React 挂载。导航已分为顶部标签栏 + 左侧会话列表。
         await window.waitForSelector('[role="tablist"][aria-label="顶部标签栏"]', { timeout: 15_000 });
         await window.waitForSelector('nav[aria-label="会话列表"]', { timeout: 15_000 });
+
+        // 跳过首次引导 (onboarding modal 会捕获焦点, 阻止 Ctrl+K 打开命令面板)
+        await dismissOnboarding(window);
 
         // 触发 Ctrl+K 打开命令面板
         await window.keyboard.press('Control+k');
@@ -183,8 +207,10 @@ test.describe('Pi Desktop a11y', () => {
 
         const window: Page = await app.firstWindow();
         await window.waitForLoadState('domcontentloaded');
+        await window.waitForLoadState('networkidle');
         await window.waitForSelector('[role="tablist"][aria-label="顶部标签栏"]', { timeout: 15_000 });
         await window.waitForSelector('nav[aria-label="会话列表"]', { timeout: 15_000 });
+        await dismissOnboarding(window);
 
         // 不打开命令面板, 扫主聊天界面
         const violations = await checkBasicA11y(window, [

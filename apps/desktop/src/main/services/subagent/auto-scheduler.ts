@@ -1,5 +1,6 @@
 import type { AgentTab, LongHorizonSettings, SubagentResult, Workspace } from "@shared";
 import type { SubagentManager, SubagentSpawnResult } from "./manager";
+import log from "electron-log/main";
 
 /**
  * AutoScheduler — Phase E Task 5 SubTask 5.4-5.7.
@@ -42,6 +43,33 @@ const DEFAULT_IDLE_THRESHOLD_MS = 30 * 1000;
 /** Interval-day defaults per spec.md "Auto-Dream / Auto-Distill Scheduler". */
 const DEFAULT_DREAM_INTERVAL_DAYS = 7;
 const DEFAULT_DISTILL_INTERVAL_DAYS = 30;
+
+/**
+ * Max time an in-flight scheduled subagent may run before the scheduler
+ * gives up tracking it and cleans up the `inFlight` entry. Prevents a
+ * hung subagent from permanently blocking scheduling for its workspace.
+ * The subagent itself is not killed — `hasRunningSubagent` still gates
+ * re-spawn until it actually terminates.
+ */
+const INFLIGHT_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Returns a Promise that rejects after `ms` with `new Error("timeout")`,
+ * plus a `cancel()` to clear the timer when the raced outcome settles first
+ * (avoids leaking a 5-minute timer per spawn).
+ */
+function createTimeout(ms: number): { promise: Promise<never>; cancel: () => void } {
+    let id: ReturnType<typeof setTimeout> | undefined;
+    const promise = new Promise<never>((_, reject) => {
+        id = setTimeout(() => reject(new Error("timeout")), ms);
+    });
+    return {
+        promise,
+        cancel: () => {
+            if (id !== undefined) clearTimeout(id);
+        },
+    };
+}
 
 /**
  * The scheduler only ever spawns `dream` or `distill` (per spec.md
@@ -126,8 +154,8 @@ export class AutoScheduler {
     start(): void {
         if (this.handle) return;
         this.handle = setInterval(() => {
-            void this.tick().catch(() => {
-                // Errors are swallowed — the next tick will retry.
+            void this.tick().catch((err) => {
+                log.error("[auto-scheduler] tick failed", err);
             });
         }, this.opts.tickIntervalMs);
         if (this.handle.unref) this.handle.unref();
@@ -239,16 +267,33 @@ export class AutoScheduler {
                 outcome: result.outcome,
             };
             this.inFlight.set(key, actor);
-            void result.outcome.then(() => {
-                this.inFlight.delete(key);
-                this.opts.setLastRunAt(workspaceId, type, this.opts.now());
-            }).catch(() => {
-                this.inFlight.delete(key);
-                // On failure we still advance lastRunAt to avoid retry storms;
-                // callers can manually re-trigger via /dream if needed.
-                this.opts.setLastRunAt(workspaceId, type, this.opts.now());
-            });
-        } catch {
+            // Race the outcome against a 5-minute timeout so a hung subagent
+            // doesn't permanently block scheduling for this workspace. The
+            // subagent itself is not killed — `hasRunningSubagent` still
+            // gates re-spawn until it actually terminates.
+            const raced = createTimeout(INFLIGHT_TIMEOUT_MS);
+            void Promise.race([result.outcome, raced.promise])
+                .then(() => {
+                    raced.cancel();
+                    this.inFlight.delete(key);
+                    this.opts.setLastRunAt(workspaceId, type, this.opts.now());
+                })
+                .catch((err: unknown) => {
+                    raced.cancel();
+                    this.inFlight.delete(key);
+                    if (err instanceof Error && err.message === "timeout") {
+                        // Timeout: clean up inFlight so scheduling can resume,
+                        // but do NOT advance lastRunAt (the subagent didn't
+                        // complete — don't mark it as "ran").
+                        log.warn("[auto-scheduler] inFlight timeout, cleaning up", { type, workspaceId });
+                    } else {
+                        // On failure we still advance lastRunAt to avoid retry storms;
+                        // callers can manually re-trigger via /dream if needed.
+                        this.opts.setLastRunAt(workspaceId, type, this.opts.now());
+                    }
+                });
+        } catch (err) {
+            log.error("[auto-scheduler] spawn failed", err);
             // spawn failed — leave lastRunAt alone so next tick can retry.
         }
     }

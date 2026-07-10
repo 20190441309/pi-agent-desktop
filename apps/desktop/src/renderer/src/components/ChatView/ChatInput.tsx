@@ -255,6 +255,13 @@ export function ChatInput({
   } = slash;
 
   const attachments = workspaceId ? listAttachments(workspaceId) : [];
+  const selectedProvider = settings.provider.trim();
+  const selectedModel = settings.model.trim();
+  const hasValidModel = Boolean(
+    selectedProvider &&
+    selectedModel &&
+    (piModels === null || piModels.some((model) => model.provider === selectedProvider && model.id === selectedModel)),
+  );
 
   useEffect(() => {
     if (!runtimeFeatureState) {
@@ -369,6 +376,11 @@ export function ChatInput({
         setIsSending(false);
         return;
       }
+    }
+    if (!hasValidModel) {
+      sendingRef.current = false;
+      setIsSending(false);
+      return;
     }
     const imageAttachments = attachments.filter((attachment) => attachment.kind === "image");
     let imagePrefix = "";
@@ -532,6 +544,13 @@ export function ChatInput({
     },
     [updateSettings],
   );
+  const handleOpenModelSettings = useCallback(() => {
+    if (window.piAPI?.openSettingsWindow) {
+      void window.piAPI.openSettingsWindow("model");
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("slash-command:open-settings-tab", { detail: { tab: "model" } }));
+  }, []);
   const handleThinkingSelect = useCallback(
     (level: ThinkingLevel) => {
       updateSettings({ thinkingLevel: level });
@@ -674,16 +693,20 @@ export function ChatInput({
     }
   }, [addWorkspace, createWorkspace, handleSwitchWorkspace, setCurrentWorkspace, t, workspaces]);
 
-  const canSend = inputValue.trim().length > 0 && isConnected && !isSending;
+  const isSlashCommandDraft = parseSlashCommandDraft(inputValue) !== null;
+  const needsModelConfiguration = !isProcessing && !hasValidModel;
+  const canSend = inputValue.trim().length > 0 && isConnected && !isSending && (hasValidModel || isSlashCommandDraft);
   const currentPermissionLabel = permissionOptions.find((p) => p.value === currentPermission)?.label ?? t("chatInput.permissions.smart.label");
   const currentModelLabel = [settings.provider, currentModel].filter(Boolean).join(" / ") || t("chatInput.model.notConfigured");
   const currentThinking = thinkingOptions.some((option) => option.value === settings.thinkingLevel)
     ? settings.thinkingLevel as ThinkingLevel
     : "medium";
   const currentThinkingLabel = thinkingOptions.find((option) => option.value === currentThinking)?.label ?? t("chatInput.thinking.medium");
-  const inputPlaceholder = !isConnected
-    ? t("chatInput.placeholder.noConnection")
-    : referenceFrame
+  const inputPlaceholder = needsModelConfiguration
+    ? t("chatInput.placeholder.modelRequired")
+    : !isConnected
+      ? t("chatInput.placeholder.noConnection")
+      : referenceFrame
       ? t("chatInput.placeholder.reference")
     : isProcessing
       ? runContext === "plan_execution"
@@ -826,12 +849,13 @@ export function ChatInput({
             role="status"
             aria-label="任务运行中提醒"
             aria-live="polite"
-            className="absolute bottom-full left-0 right-0 z-20 mb-1 flex items-center gap-2 rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-3 py-1.5 text-[11px] shadow-[0_8px_24px_rgba(15,23,42,0.12)]"
+            className="pi-motion-running-strip absolute bottom-full left-0 right-0 z-20 mb-1 flex items-center gap-2 rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-3 py-1.5 text-[11px] shadow-[0_8px_24px_rgba(15,23,42,0.12)]"
+            data-motion="running-strip"
           >
             <div className="flex min-w-0 items-center gap-2 text-[var(--mm-text-secondary)]">
               <span className="relative inline-flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
                 <span className="absolute inset-0 rounded-full bg-[var(--mm-bg-active)] opacity-25 animate-ping" />
-                <span className="relative h-2.5 w-2.5 rounded-full bg-[var(--mm-bg-active)]" />
+                <span className="pi-motion-running-dot relative h-2.5 w-2.5 rounded-full bg-[var(--mm-bg-active)]" />
               </span>
               <span className="truncate">{runningLabel}</span>
             </div>
@@ -1032,6 +1056,19 @@ export function ChatInput({
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
               {sendError}
             </div>
+          </div>
+        )}
+
+        {needsModelConfiguration && (
+          <div className="flex items-center gap-2 px-3 pb-2 text-[11px] leading-4 text-[var(--mm-text-secondary)]" role="status">
+            <span>{t("chatInput.model.unavailable")}</span>
+            <button
+              type="button"
+              onClick={handleOpenModelSettings}
+              className="shrink-0 font-medium text-[var(--mm-accent-blue)] hover:underline focus-visible:outline-none focus-visible:underline"
+            >
+              {t("chatInput.model.configure")}
+            </button>
           </div>
         )}
 

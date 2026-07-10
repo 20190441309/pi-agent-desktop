@@ -152,6 +152,9 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
     });
 
     ipcMain.handle("skills:toggle", async (_event, slug: string, enabled: boolean) => {
+        if (!SKILL_SLUG_PATTERN.test(slug)) {
+            return invalidSlugError(slug);
+        }
         try {
             return await withSkillsLock(() => {
                 const state = loadState(deps.getStateFile());

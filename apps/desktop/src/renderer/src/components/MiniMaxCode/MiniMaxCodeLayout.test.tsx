@@ -91,6 +91,9 @@ describe("MiniMaxCode window chrome interactivity", () => {
 
         expect(screen.getByRole("button", { name: "展开左侧栏" }).className).toContain("left-3");
         expect(screen.queryByRole("button", { name: "展开右侧栏" })).toBeNull();
+        expect(document.querySelector('[data-mmcode-region="left"]')?.className ?? "").toContain("pi-motion-rail");
+        expect(document.querySelector('[data-mmcode-region="left"]')?.getAttribute("data-collapsed")).toBe("true");
+        expect(document.querySelector('[data-mmcode-region="left"]')?.firstElementChild?.className ?? "").toContain("pi-motion-rail-content");
         expect(document.querySelector('[data-mmcode-region="center"]')?.className ?? "").toContain("pl-10");
     });
 
@@ -159,6 +162,33 @@ describe("MiniMaxCode window chrome interactivity", () => {
 
         expect(composerClass).toContain("z-30");
         expect(rightFloatingClass).toContain("z-[60]");
+    });
+
+    it("keeps the floating right rail mounted for exit motion when it closes", () => {
+        const { rerender } = render(
+            <MiniMaxCodeLayout
+                leftSlot={<div>对话</div>}
+                centerSlot={<div>主内容</div>}
+                rightSlot={<div>环境信息</div>}
+                rightFloatingOpen
+            />,
+        );
+
+        expect(document.querySelector('[data-mmcode-region="right-floating"]')?.className ?? "").toContain("pi-motion-floating-rail");
+
+        rerender(
+            <MiniMaxCodeLayout
+                leftSlot={<div>对话</div>}
+                centerSlot={<div>主内容</div>}
+                rightSlot={<div>环境信息</div>}
+                rightFloatingOpen={false}
+            />,
+        );
+
+        const rightFloating = document.querySelector('[data-mmcode-region="right-floating"]');
+        expect(rightFloating).toBeTruthy();
+        expect(rightFloating?.getAttribute("data-motion-state")).toBe("exit");
+        expect(rightFloating?.getAttribute("aria-hidden")).toBe("true");
     });
 
     it("can position a chrome-less right floating layer between the top strip and composer", () => {

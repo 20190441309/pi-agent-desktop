@@ -125,12 +125,19 @@ function splitInlineThinking(content: string): { thinking: string; content: stri
   };
 }
 
-function splitUserInternalCommand(content: string): { badge: string | null; content: string } {
+type UserInternalCommand = {
+  badge: string | null;
+  content: string;
+  kind: "plan" | "execute-plan" | null;
+};
+
+function splitUserInternalCommand(content: string): UserInternalCommand {
   const planMatch = content.match(/^\/plan(?:\r?\n|\s+)?([\s\S]*)$/);
   if (planMatch) {
     return {
       badge: "计划模式",
       content: (planMatch[1] ?? "").trim(),
+      kind: "plan",
     };
   }
   const executeMatch = content.match(/^\/execute_plan(?:\s+)?([\s\S]*)$/i);
@@ -139,12 +146,47 @@ function splitUserInternalCommand(content: string): { badge: string | null; cont
     return {
       badge: "执行计划",
       content: target ? `执行计划：${target}` : "执行计划",
+      kind: "execute-plan",
+    };
+  }
+  const visibleExecuteMatch = content.trim().match(/^执行计划(?:[：:]\s*([\s\S]+))?$/);
+  if (visibleExecuteMatch) {
+    const target = (visibleExecuteMatch[1] ?? "").trim();
+    return {
+      badge: "执行计划",
+      content: target ? `执行计划：${target}` : "执行计划",
+      kind: "execute-plan",
     };
   }
   return {
     badge: null,
     content,
+    kind: null,
   };
+}
+
+function PlanExecutionUserState({ content }: { content: string }): React.JSX.Element {
+  const target = content.replace(/^执行计划：?/, "").trim();
+  return (
+    <div
+      className="flex min-w-0 items-start gap-3"
+      data-testid="plan-execution-user-state"
+    >
+      <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)]">
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 12h11m0 0-4-4m4 4-4 4M19 5v14" />
+        </svg>
+      </span>
+      <div className="min-w-0 flex-1 text-left">
+        <div className="text-[12px] font-medium leading-5 text-[var(--mm-text-primary)]">
+          执行计划
+        </div>
+        <div className="mt-0.5 truncate font-mono text-[12px] leading-5 text-[var(--mm-text-secondary)]">
+          {target ? `执行计划：${target}` : "执行计划"}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ToolActivity({
@@ -164,7 +206,7 @@ function ToolActivity({
         className="mt-2 flex w-full items-center justify-between rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-1.5 text-left text-xs text-[var(--mm-text-tertiary)] transition-colors hover:border-[#deded9] hover:text-[var(--mm-text-secondary)]"
       >
         <span className="flex min-w-0 items-center gap-1.5 truncate">
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "bg-[#f59e0b]" : "bg-[var(--color-success)]"}`} aria-hidden />
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "pi-motion-running-dot bg-[#f59e0b]" : "bg-[var(--color-success)]"}`} aria-hidden />
           <span className="truncate">{running ? "处理中" : summary}</span>
         </span>
         <svg
@@ -179,7 +221,7 @@ function ToolActivity({
       </button>
 
       {isExpanded && (
-        <div className="mt-2 space-y-1">
+        <div className="pi-motion-thinking-content mt-2 space-y-1" data-motion="tool-activity-content">
           {toolCalls.map((toolCall) => (
             <CommandCard key={toolCall.id} toolCall={toolCall} />
           ))}
@@ -199,7 +241,9 @@ function MessageBubbleImpl({
   const timeText = formatTime(message.timestamp);
   const timeIso = formatIso(message.timestamp);
   const articleLabel = `${isUser ? '你' : 'Pi'} · ${timeText}`;
-  const userCommand = isUser ? splitUserInternalCommand(message.content) : { badge: null, content: message.content };
+  const userCommand: UserInternalCommand = isUser
+    ? splitUserInternalCommand(message.content)
+    : { badge: null, content: message.content, kind: null };
   const inlineThinking = useMemo(
     () => !isUser ? splitInlineThinking(message.content) : { thinking: "", content: userCommand.content, count: 0 },
     [isUser, message.content, userCommand.content],
@@ -234,8 +278,18 @@ function MessageBubbleImpl({
   );
   const planStatus = planAction?.status ?? "pending";
   const showPlanPanel = Boolean(planAction);
+  const shouldRenderAssistantContent = Boolean(visibleContent && !showPlanPanel);
   const laneAlignmentClassName = isUser ? 'justify-end' : 'justify-center';
   const bubbleWidthClassName = isUser ? 'max-w-[74%]' : 'w-full max-w-[42rem]';
+  const isExecutePlanCommand = userCommand.kind === "execute-plan";
+  const messageSurfaceClassName = [
+    isUser
+      ? isExecutePlanCommand
+        ? "rounded-lg border border-[var(--mm-border-strong)] bg-[var(--mm-bg-control)] px-3 py-3 text-[var(--mm-text-primary)] shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        : "rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-4 py-3 text-[var(--mm-text-primary)]"
+      : "rounded-lg px-1 py-1 text-[var(--mm-text-primary)]",
+    isSearchTarget ? "ring-2 ring-[#f59e0b] ring-offset-2 ring-offset-[var(--mm-bg-main)]" : "",
+  ].filter(Boolean).join(" ");
   // Narrow subscription: only re-render when the steps for THIS message's plan change.
   // The store tracks steps for the single active plan; return undefined when this
   // message's plan isn't the active one so other plans' step updates don't re-render us.
@@ -290,7 +344,8 @@ function MessageBubbleImpl({
     <article
       data-message-id={message.id}
       data-search-target={isSearchTarget ? "true" : "false"}
-      className={`flex ${laneAlignmentClassName}`}
+      data-motion="message-enter"
+      className={`pi-motion-message-enter flex ${laneAlignmentClassName}`}
       role="article"
       aria-label={articleLabel}
       aria-busy={isStreaming}
@@ -299,14 +354,14 @@ function MessageBubbleImpl({
         <div className={`mb-1 flex items-center gap-2 px-1 text-[11px] text-[#9a9a95] ${isUser ? 'justify-end' : 'justify-start'}`}>
           <time dateTime={timeIso}>{timeText}</time>
         </div>
-          <div className={`${
-            isUser
-              ? 'rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-4 py-3 text-[var(--mm-text-primary)]'
-              : 'rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-3 text-[var(--mm-text-primary)] shadow-[0_1px_2px_rgba(0,0,0,0.02)]'
-          } ${isSearchTarget ? 'ring-2 ring-[#f59e0b] ring-offset-2 ring-offset-[var(--mm-bg-main)]' : ''}`}>
+          <div
+            className={messageSurfaceClassName}
+            data-testid="message-surface"
+            data-message-role={message.role}
+          >
             {isUser ? (
               <div className="space-y-2">
-                {userCommand.badge && (
+                {userCommand.badge && !isExecutePlanCommand && (
                   <div className="flex justify-end">
                     <span
                       className="inline-flex items-center gap-1.5 rounded-full border border-[#d8e7d9] bg-[#eef8ef] px-2.5 py-1 text-[11px] font-medium text-[var(--color-success)]"
@@ -319,9 +374,13 @@ function MessageBubbleImpl({
                     </span>
                   </div>
                 )}
-                <div className="whitespace-pre-wrap text-sm leading-relaxed font-normal">
-                  {visibleContent || (userCommand.badge ? userCommand.badge : "")}
-                </div>
+                {isExecutePlanCommand ? (
+                  <PlanExecutionUserState content={visibleContent} />
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm leading-relaxed font-normal">
+                    {visibleContent || (userCommand.badge ? userCommand.badge : "")}
+                  </div>
+                )}
               </div>
             ) : (
               <>
@@ -333,7 +392,7 @@ function MessageBubbleImpl({
                   />
                 )}
 
-                {visibleContent && (
+                {shouldRenderAssistantContent && (
                   <div className="text-sm leading-relaxed font-normal">
                     <MarkdownRenderer content={visibleContent} />
                   </div>
@@ -345,7 +404,7 @@ function MessageBubbleImpl({
                   </div>
                 )}
 
-                {message.generatedUi && (
+                {message.generatedUi && !showPlanPanel && (
                   <div className={message.content ? "mt-3" : ""}>
                     <GeneratedUiCard card={message.generatedUi} />
                   </div>
@@ -373,8 +432,8 @@ function MessageBubbleImpl({
                 )}
 
                 {isStreaming && !visibleContent && !thinkingContent && (
-                  <div className="flex items-center gap-2 py-1" aria-hidden="true">
-                    <span className="inline-block w-0.5 h-4 bg-[#1a1a1a] animate-pulse" />
+                  <div className="pi-motion-running-card flex items-center gap-2 py-1" aria-hidden="true">
+                    <span className="inline-block h-4 w-0.5 animate-pulse bg-[#1a1a1a]" />
                   </div>
                 )}
               </>

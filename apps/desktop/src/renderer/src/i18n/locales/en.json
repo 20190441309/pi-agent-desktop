@@ -306,6 +306,7 @@
     "placeholder": {
       "ready": "Describe what you want to build or change...",
       "noConnection": "Pi CLI not connected. Please make sure `pi` is installed and on PATH.",
+      "modelRequired": "Configure a model before starting a conversation",
       "reference": "Type a message, use / for commands or @ to reference files...",
       "planRunning": "Executing a plan. New input will be sent as follow-up instructions.",
       "taskRunning": "Task running. New input will be sent as additional instructions."
@@ -375,7 +376,9 @@
       "notConfigured": "No model configured",
       "notSelected": "No model selected",
       "select": "Select model",
-      "empty": "No available models (Pi CLI is not configured)"
+      "empty": "No available models (Pi CLI is not configured)",
+      "unavailable": "No usable model configured",
+      "configure": "Configure"
     },
     "workspace": {
       "current": "Current working directory: {{name}}",
@@ -741,6 +744,46 @@
     "modelBreakdown": "By model",
     "footer": "{{count}} sessions · Current workspace data"
   },
+  "memoryPanel": {
+    "title": "Memory",
+    "searchLabel": "Search memory",
+    "searchPlaceholder": "Search memory...",
+    "subtitle": {
+      "selectWorkspace": "Select a workspace to view the memory index.",
+      "searchQuery": "Search “{{query}}”",
+      "recent": "Recent memory · {{name}}"
+    },
+    "disabled": "Memory system is not enabled. Turn on long-horizon memory in settings to see session / project / global / history retrieval results here.",
+    "loading": "Loading memory index...",
+    "empty": {
+      "noMatch": "No matching memory entries found.",
+      "noEntries": "No memory entries to show yet."
+    }
+  },
+  "taskOverview": {
+    "title": "Task Overview",
+    "subtitle": {
+      "currentWorkspace": "Current workspace: {{name}}",
+      "selectWorkspace": "Select a workspace to view the task registry."
+    },
+    "status": {
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "pending": "Pending"
+    },
+    "disabled": "Task registry is not enabled. Turn on long-horizon tasks in settings to see real task status here.",
+    "taskList": {
+      "heading": "Task list",
+      "countSuffix": "{{count}} items",
+      "empty": "No tasks written to the registry this round."
+    },
+    "goal": {
+      "heading": "Current goal",
+      "status": "Status: {{status}}",
+      "empty": "No active goal judge condition."
+    }
+  },
   "settings": {
     "title": "Settings",
     "tabsAria": "Settings categories",
@@ -1068,6 +1111,9 @@
     },
     "files": {
       "scanFailed": "File scan failed at {{path}}: {{message}}"
+    },
+    "config": {
+      "invalidImages": "Invalid image input"
     }
   },
     "topbar": {

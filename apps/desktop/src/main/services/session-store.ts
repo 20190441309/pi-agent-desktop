@@ -101,6 +101,7 @@ export async function createSession(
     title?: string,
     id?: string,
 ): Promise<Session> {
+    // 所有 sessions 数组读-改-写操作必须持全局锁,防交错覆盖
     return withLock("__global__", () => {
         ensureIndexSynced(store);
         const session: Session = {
@@ -147,6 +148,7 @@ export async function deleteSession(
     store: SessionPersistence,
     id: string,
 ): Promise<void> {
+    // 所有 sessions 数组读-改-写操作必须持全局锁,防交错覆盖
     return withLock("__global__", () => {
         ensureIndexSynced(store);
         const all = store.get("sessions").filter((s) => s.id !== id);
@@ -256,7 +258,9 @@ export async function appendMessage(
     sessionId: string,
     message: Message,
 ): Promise<Session> {
-    return withLock(sessionId, () => {
+    // 所有 sessions 数组读-改-写操作必须持全局锁,防交错覆盖
+    // (与 createSession / deleteSession 同一锁键,消除 __global__ vs sessionId 竞态)
+    return withLock("__global__", () => {
         ensureIndexSynced(store);
         const all = store.get("sessions");
         const target = all.find((s) => s.id === sessionId);
@@ -284,7 +288,8 @@ export async function updateMessage(
     messageId: string,
     updates: Partial<Message>,
 ): Promise<Session> {
-    return withLock(sessionId, () => {
+    // 所有 sessions 数组读-改-写操作必须持全局锁,防交错覆盖
+    return withLock("__global__", () => {
         ensureIndexSynced(store);
         const all = store.get("sessions");
         const target = all.find((s) => s.id === sessionId);
@@ -315,7 +320,8 @@ export async function updateToolCall(
     toolCallId: string,
     updates: Partial<ToolCall>,
 ): Promise<Session> {
-    return withLock(sessionId, () => {
+    // 所有 sessions 数组读-改-写操作必须持全局锁,防交错覆盖
+    return withLock("__global__", () => {
         ensureIndexSynced(store);
         const all = store.get("sessions");
         const target = all.find((s) => s.id === sessionId);

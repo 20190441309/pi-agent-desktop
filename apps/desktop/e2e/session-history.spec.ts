@@ -120,6 +120,11 @@ test.describe("Pi Desktop — session history navigation", () => {
 
         ({ app, page } = await launchApp(userDataDir));
 
+        // 等待主 App 挂载完成，确保全局快捷键 keydown 监听已注册
+        // （useShortcuts 在 useEffect 中挂监听，需在 React 首次渲染后才生效），
+        // 否则在 effect 执行前按 Ctrl+Shift+F 不会触发搜索面板。
+        await expect(page.locator('[data-testid="chat-input-shell"]')).toBeVisible({ timeout: 15_000 });
+
         await page.keyboard.press("Control+Shift+F");
         const search = page.getByRole("textbox", { name: "搜索对话历史" });
         await expect(search).toBeVisible({ timeout: 5_000 });

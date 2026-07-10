@@ -6,7 +6,7 @@
 //          启动时由 loadPiConfig 真从 Pi CLI 配置读;读不到时 Pi ChatInput / 设置页走空态
 
 import { create } from 'zustand';
-import { DEFAULT_LONG_HORIZON_SETTINGS, isIpcError, type AppSettings, type IpcError, type ShortcutOverride, type ToolPermissions } from '@shared';
+import { DEFAULT_LONG_HORIZON_SETTINGS, normalizeLongHorizonSettings, isIpcError, type AppSettings, type IpcError, type ShortcutOverride, type ToolPermissions } from '@shared';
 import { logger } from '../utils/logger';
 import { addToast } from './toast-store';
 import { applyFontSize, applyTheme, getInitialFontSize, getInitialTheme, normalizeFontSize, type Theme } from '../utils/theme';
@@ -66,6 +66,9 @@ const CURRENT_SCHEMA_VERSION = 1;
  */
 function migrateSettings(persisted: Partial<AppSettings>): AppSettings {
     const next = { ...defaultSettings, ...persisted };
+    // longHorizon 是嵌套对象: 浅合并会让 persisted 的部分 longHorizon 整体替换 default,
+    // 丢失后续新增字段的默认值. 用 normalizeLongHorizonSettings 深合并保护.
+    next.longHorizon = normalizeLongHorizonSettings(next.longHorizon);
     if (next.schemaVersion !== CURRENT_SCHEMA_VERSION) {
         // 当前只有 v1, 把任意旧数据(可能没有 schemaVersion)对齐到 CURRENT_SCHEMA_VERSION
         next.schemaVersion = CURRENT_SCHEMA_VERSION;
