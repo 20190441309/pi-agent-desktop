@@ -2,6 +2,7 @@
 // 多 tab 终端面板, 集成 xterm.js + node-pty
 
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { isIpcError } from "@shared";
@@ -28,9 +29,17 @@ interface TerminalPanelProps {
     isOpen: boolean;
     onClose: () => void;
     initialCommand?: { command: string; mode?: TerminalCommandMode; nonce: number } | null;
+    displayMode?: "overlay" | "embedded";
 }
 
-export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }: TerminalPanelProps): React.ReactElement | null {
+export function TerminalPanel({
+    workspacePath,
+    isOpen,
+    onClose,
+    initialCommand,
+    displayMode = "overlay",
+}: TerminalPanelProps): React.ReactElement | null {
+    const { t } = useTranslation();
     const [tabs, setTabs] = useState<Tab[]>([]);
     const tabsRef = useRef<Tab[]>([]);
     const [activeId, setActiveId] = useState<string | null>(null);
@@ -242,7 +251,10 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
     if (!isOpen) return null;
 
     return (
-        <div className="border-t border-[var(--mm-border)] bg-[var(--mm-bg-panel)] flex flex-col h-64">
+        <div
+            className={`${displayMode === "embedded" ? "h-full" : "h-64 border-t border-[var(--mm-border)]"} flex flex-col bg-[var(--mm-bg-panel)]`}
+            data-testid="terminal-panel"
+        >
             {/* Tab bar */}
             <div className="flex items-center gap-2 px-2 py-1 border-b border-[var(--mm-border)] bg-[var(--mm-bg-panel)]">
                 <div className="flex items-center gap-1 flex-1 overflow-x-auto">
@@ -313,14 +325,19 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
                 >
                     +
                 </button>
-                <button
-                    type="button"
-                    onClick={onClose}
-                    className="text-xs px-2 py-1 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded ml-1"
-                    title="收起终端"
-                >
-                    ✕
-                </button>
+                {displayMode === "overlay" ? (
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="text-xs px-2 py-1 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded ml-1"
+                        title="收起终端"
+                    >
+                        ✕
+                    </button>
+                ) : null}
+            </div>
+            <div className="border-b border-[var(--mm-border)] px-3 py-1 text-xs leading-5 text-[var(--mm-text-secondary)]" role="note">
+                {t("terminal.trustBoundary", { defaultValue: "终端由你直接控制，拥有本机完整权限；Agent 工具权限不会限制此终端" })}
             </div>
             {initialCommand?.mode === "draft" && (
                 <div className="border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">

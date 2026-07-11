@@ -1,7 +1,8 @@
 // Electron Main Process Entry Point
 
 import { app, BrowserWindow, Menu, Tray, nativeImage } from 'electron';
-import { join } from 'path';
+import { mkdirSync } from 'fs';
+import { dirname, join } from 'path';
 import { is } from '@electron-toolkit/utils';
 import { homedir } from 'os';
 import log from 'electron-log/main';
@@ -60,6 +61,8 @@ import { DesktopOverlayWindowManager } from './services/desktop-overlay-window';
 import { createMainWindowLifecycleController, type MainWindowLifecycleController } from './services/window-lifecycle';
 import { resolveTrayIconPath } from './services/tray-icon';
 import { attachWebSecurityHandlers } from './services/web-security';
+import { resolveStoredToolPermissions } from './services/permission/runtime-policy';
+import { resolveNativeSessionPath } from './services/pi-session/session-path';
 import type { PiAgentConfig } from './types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -332,6 +335,18 @@ const agentRegistry = new AgentRuntimeRegistry({
   send: sendToRenderer,
   agentDir: PI_AGENT_DIR,
   getSettings: () => store.get('settings'),
+  getEffectiveToolPermissions: (workspaceId, sessionId) => {
+    const sessionPermissions = sessionId
+      ? store.get('sessions').find((session) => session.id === sessionId)?.toolPermissions
+      : undefined;
+    const workspacePermissions = store.get('settings')?.workspaceToolDefaults?.[workspaceId];
+    return resolveStoredToolPermissions({ sessionPermissions, workspacePermissions });
+  },
+  resolveNativeSessionPath: (sessionId) => {
+    const sessionPath = resolveNativeSessionPath(app.getPath('userData'), sessionId);
+    mkdirSync(dirname(sessionPath), { recursive: true });
+    return sessionPath;
+  },
   getPiAgentConfig: () => piAgentConfig,
   getTaskService: () => taskService,
   getMemoryService: () => memoryService,

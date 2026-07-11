@@ -15,11 +15,22 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    await app.firstWindow();
     const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
 
+async function retryMainEvaluate(action: () => Promise<void>): Promise<void> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        try {
+            await action();
+            return;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (!message.includes("Execution context was destroyed") || attempt === 4) throw error;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+    }
+}
 async function closeApp(app: ElectronApplication | undefined): Promise<void> {
     try {
         await app?.close();
@@ -36,10 +47,10 @@ async function skipOnboarding(page: Page): Promise<void> {
 }
 
 async function stubAgentPromptIpc(app: ElectronApplication): Promise<void> {
-    await app.evaluate(({ ipcMain }) => {
+    await retryMainEvaluate(() => app.evaluate(({ ipcMain }) => {
         ipcMain.removeHandler("agents:prompt");
         ipcMain.handle("agents:prompt", async () => undefined);
-    });
+    }));
 }
 
 async function emitBoundAgentEvents(page: Page, app: ElectronApplication, events: Array<Record<string, unknown>>): Promise<void> {

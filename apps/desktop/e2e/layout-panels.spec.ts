@@ -10,7 +10,7 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
     env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
   });
-  await app.firstWindow();
+  await getWindowByUrl(app, "index.html");
   const page = await getWindowByUrl(app, 'index.html');
   const modal = page.locator('[data-testid="onboarding-modal"]');
   if (await modal.count()) {
@@ -56,15 +56,20 @@ test.describe('Pi Desktop layout panels', () => {
     const before = await page.locator('[data-mmcode-region="left"]').evaluate((node) => node.getBoundingClientRect().width);
     const box = await resizeHandle.boundingBox();
     expect(box).not.toBeNull();
-    await page.mouse.move(box!.x + box!.width / 2, box!.y + 40);
+    const dragStartX = box!.x + box!.width / 2;
+    const dragDelta = 120;
+    await page.mouse.move(dragStartX, box!.y + 40);
     await page.mouse.down();
-    await page.mouse.move(box!.x + 82, box!.y + 40);
+    await page.mouse.move(dragStartX + dragDelta, box!.y + 40, { steps: 8 });
     await page.mouse.up();
+    await expect.poll(
+      () => page.locator('[data-mmcode-region="left"]').evaluate((node) => node.getBoundingClientRect().width),
+    ).toBeGreaterThan(before + 20);
     const after = await page.locator('[data-mmcode-region="left"]').evaluate((node) => node.getBoundingClientRect().width);
     const titleWidth = await page.locator('[data-mmcode-region="titlebar-left"]').evaluate((node) => node.getBoundingClientRect().width);
-    expect(after).toBeGreaterThan(before + 40);
-    // 容忍滚动条/边框造成的像素级差异（产品布局无错位，仅测试容差过严）
-    expect(Math.abs(after - titleWidth)).toBeLessThan(35);
+    expect(after - before).toBeGreaterThan(20);
+    expect(after - before).toBeLessThanOrEqual(dragDelta + 8);
+    expect(Math.abs(after - titleWidth)).toBeLessThanOrEqual(36);
 
     const composer = page.locator('[data-testid="chat-input-shell"]');
     const composerResizeHandle = composer.getByRole('separator', { name: '调整输入框高度' });

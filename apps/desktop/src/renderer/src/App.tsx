@@ -8,7 +8,7 @@
 //          UI 一概不动,只把链路接通
 // v1.0.16: 删 task-store(死代码) + CommandPalette 3 callback 真接通
 
-import React, { useEffect, useMemo, useRef, useState, useCallback, Suspense, lazy } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
@@ -19,24 +19,15 @@ import { WorkspaceNoticeBanner, emitWorkspaceNotice } from "./components/Workspa
 import { CommandPalette } from "./components/CommandPalette/CommandPalette";
 import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet/ShortcutsCheatsheet";
 import { SkillsPanel } from "./components/SkillsPanel/SkillsPanel";
-import { GitPanel } from "./components/GitPanel/GitPanel";
-// Code-split heavy panels (Monaco/xterm pull in megabytes of vendor JS).
-// Lazy-loading keeps the initial chat-view bundle small.
-const FileWorkspace = lazy(() =>
-    import("./components/FileWorkspace/FileWorkspace").then((m) => ({ default: m.FileWorkspace })),
-);
-const TerminalPanel = lazy(() =>
-    import("./components/Terminal/TerminalPanel").then((m) => ({ default: m.TerminalPanel })),
-);
 import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
 import { PermissionRequestStack } from "./components/ChatView/PermissionRequestStack";
-import { MemoryPanel } from "./components/LongHorizon/MemoryPanel";
-import { TaskOverviewPanel } from "./components/LongHorizon/TaskOverviewPanel";
+import { RunPanel, type RunView } from "./components/RunPanel/RunPanel";
 import { SearchHistory } from "./components/SearchHistory/SearchHistory";
 import { SessionCenter } from "./components/SessionCenter/SessionCenter";
 import { TopTabBar } from "./components/TopTabBar/TopTabBar";
+import { WorkbenchPanel, type WorkbenchView } from "./components/Workbench/WorkbenchPanel";
 import {
     MiniMaxCodeLayout,
     MiniMaxCodeSidebar,
@@ -63,12 +54,12 @@ import { isIpcError, type DeferredEdit, type SettingsWindowTab } from "@shared";
 import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 import { addToast } from "./stores/toast-store";
 
-type MainPanel = "chat" | "skills" | "git" | "files" | "tasks" | "memory" | "history";
+type MainPanel = "chat" | "run" | "workbench" | "skills" | "history";
 
 /**
  * Canonical section identifiers for the center panel router.
  *
- * - "chat" / "tools" / "git" / "files" / "tasks" / "memory" map to center panels
+ * - "chat" / "run" / "workbench" / "extensions" map to center panels
  * - "new-task" renders ChatView in blank-slate mode (no current session)
  * - "history" renders the full SessionCenter management surface
  * - `session:<id>` is a transient navigation action — resolved to "chat" after
@@ -77,7 +68,7 @@ type MainPanel = "chat" | "skills" | "git" | "files" | "tasks" | "memory" | "his
  * "settings" and "search" are intercepted by routeSection() and do not become
  * persistent center-panel sections.
  */
-type SectionId = "chat" | "tasks" | "memory" | "tools" | "git" | "files" | "new-task" | "history";
+type SectionId = "chat" | "run" | "workbench" | "extensions" | "new-task" | "history";
 
 /**
  * Input type for routeSection() — covers all values that can arrive from
@@ -92,8 +83,8 @@ type FileWorkspaceTarget = { path: string; mode?: "edit" | "diff"; nonce: number
 /** Validate that an unknown section string from a DOM event is a valid SectionId. */
 function isValidSectionId(value: string): value is SectionId {
     switch (value) {
-        case "chat": case "git": case "files":
-            case "tasks": case "memory": case "tools": case "new-task": case "history":
+        case "chat": case "run": case "workbench":
+            case "extensions": case "new-task": case "history":
             return true;
         default:
             return false;
@@ -119,11 +110,9 @@ function readStoredLeftSidebarWidth(): number {
 
 function panelForSection(section: SectionId): MainPanel {
     switch (section) {
-        case "files": return "files";
-        case "tools": return "skills";
-        case "git": return "git";
-        case "tasks": return "tasks";
-        case "memory": return "memory";
+        case "run": return "run";
+        case "workbench": return "workbench";
+        case "extensions": return "skills";
         case "chat": return "chat";
         case "new-task": return "chat";
         case "history": return "history";
@@ -176,7 +165,8 @@ function App(): React.ReactElement {
 function AppShell(): React.ReactElement {
     const { t } = useTranslation();
     const [activeSection, setActiveSection] = useState<SectionId>("chat");
-    const [showTerminal, setShowTerminal] = useState(false);
+    const [runView, setRunView] = useState<RunView>("tasks");
+    const [workbenchView, setWorkbenchView] = useState<WorkbenchView>("files");
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [showCheatsheet, setShowCheatsheet] = useState(false);
     const [showOnboarding, setShowOnboarding] = useState(false);
@@ -542,7 +532,8 @@ function AppShell(): React.ReactElement {
             const command = detail?.command?.trim();
             if (!command) return;
             setTerminalCommandTarget({ command, mode: detail?.mode ?? "run", nonce: Date.now() });
-            setShowTerminal(true);
+            setWorkbenchView("terminal");
+            setActiveSection("workbench");
         };
         const onOpenFile = (e: Event): void => {
             const detail = (e as CustomEvent<{ path?: string; mode?: "edit" | "diff" }>).detail;
@@ -554,7 +545,8 @@ function AppShell(): React.ReactElement {
                 mode: detail?.mode,
                 nonce: Date.now(),
             });
-            setActiveSection("files");
+            setWorkbenchView("files");
+            setActiveSection("workbench");
         };
         const onOpenGitDiff = (e: Event): void => {
             const detail = (e as CustomEvent<{ file?: string }>).detail;
@@ -566,7 +558,8 @@ function AppShell(): React.ReactElement {
                 mode: "diff",
                 nonce: Date.now(),
             });
-            setActiveSection("files");
+            setWorkbenchView("files");
+            setActiveSection("workbench");
         };
         window.addEventListener("chatpanel:prefill", onPrefill);
         window.addEventListener("app:switch-section", onSwitchSection);
@@ -585,7 +578,7 @@ function AppShell(): React.ReactElement {
     // v1.0.16: CommandPalette 3 个 callback 真接通
     //  - onSelectFile: 用 chatpanel:prefill 事件把 @path 灌进 ChatInput(走 mention 格式)
     //  - onSelectHistory: 切到 chat + 切到该 session
-    //  - onRunCommand: case 分发到 setActiveSection / openSettings / setShowTerminal / selectDirectory
+    //  - onRunCommand: case 分发到主区路由 / openSettings / selectDirectory
     const handleSelectFile = useCallback((path: string) => {
         setActiveSection("chat");
         window.dispatchEvent(
@@ -602,8 +595,18 @@ function AppShell(): React.ReactElement {
             window.piAPI?.openSettingsWindow();
             return;
         }
-        if (section === "skills") {
-            setActiveSection("tools");
+        if (section === "tools" || section === "skills") {
+            setActiveSection("extensions");
+            return;
+        }
+        if (section === "tasks" || section === "memory") {
+            setRunView(section);
+            setActiveSection("run");
+            return;
+        }
+        if (section === "files" || section === "git" || section === "terminal") {
+            setWorkbenchView(section);
+            setActiveSection("workbench");
             return;
         }
         if (section === "search") {
@@ -674,7 +677,7 @@ function AppShell(): React.ReactElement {
                 routeSection("new-task");
                 return;
             case "open_skills":
-                routeSection("tools");
+                routeSection("extensions");
                 return;
             case "open_files":
                 if (!currentWorkspace) {
@@ -682,7 +685,7 @@ function AppShell(): React.ReactElement {
                     return false;
                 }
                 setFileWorkspaceTarget(null);
-                setActiveSection("files");
+                routeSection("files");
                 return;
             case "open_git":
                 if (!currentWorkspace) {
@@ -740,7 +743,7 @@ function AppShell(): React.ReactElement {
                     emitCommandPaletteStatus({ message: t("app.workspaceRequired"), tone: "error" });
                     return false;
                 }
-                setShowTerminal((v) => !v);
+                routeSection("terminal");
                 return;
             default:
                 logger.warn("[App] unknown command palette cmd:", cmdId);
@@ -772,7 +775,7 @@ function AppShell(): React.ReactElement {
     const shortcutHandlers = useMemo(
         () => ({
             "open-command-palette": () => setPaletteOpen((v) => !v),
-            "toggle-terminal": () => setShowTerminal((v) => !v),
+            "toggle-terminal": () => routeSection("terminal"),
             "open-settings": () => window.piAPI?.openSettingsWindow(),
             "new-chat": () => {
                 useSessionStore.setState({ currentSessionId: null });
@@ -787,12 +790,10 @@ function AppShell(): React.ReactElement {
                     setShowCheatsheet(false);
                 } else if (paletteOpen) {
                     setPaletteOpen(false);
-                } else if (showTerminal) {
-                    setShowTerminal(false);
                 }
             },
         }),
-        [paletteOpen, showCheatsheet, showTerminal, showSearchHistory],
+        [paletteOpen, routeSection, showCheatsheet, showSearchHistory],
     );
     useShortcuts(shortcutHandlers);
 
@@ -839,7 +840,7 @@ function AppShell(): React.ReactElement {
                                 : activeSection
                         }
                         onTabChange={routeSection}
-                        rightSlot={null}
+                        onOpenSettings={() => void window.piAPI?.openSettingsWindow()}
                     />
                 }
                 leftCollapsed={leftCollapsed}
@@ -883,37 +884,26 @@ function AppShell(): React.ReactElement {
                                 </div>
                             </ErrorBoundary>
                         )}
-                        {activePanel === "tasks" && (
-                            <ErrorBoundary fallback={panelFallback(t("app.panels.tasks"))}>
-                                <TaskOverviewPanel />
+                        {activePanel === "run" && (
+                            <ErrorBoundary fallback={panelFallback(t("app.panels.run"))}>
+                                <RunPanel view={runView} onViewChange={setRunView} />
                             </ErrorBoundary>
                         )}
-                        {activePanel === "memory" && (
-                            <ErrorBoundary fallback={panelFallback(t("app.panels.memory"))}>
-                                <MemoryPanel />
+                        {activePanel === "workbench" && (
+                            <ErrorBoundary fallback={panelFallback(t("app.panels.workbench"))}>
+                                <WorkbenchPanel
+                                    workspacePath={currentWorkspace?.path}
+                                    workspaceId={currentWorkspace?.id}
+                                    view={workbenchView}
+                                    onViewChange={setWorkbenchView}
+                                    fileTarget={fileWorkspaceTarget}
+                                    terminalCommand={terminalCommandTarget}
+                                />
                             </ErrorBoundary>
                         )}
                         {activePanel === "history" && (
                             <ErrorBoundary fallback={panelFallback(t("app.panels.history"))}>
                                 <SessionCenter onOpenChat={() => setActiveSection("chat")} />
-                            </ErrorBoundary>
-                        )}
-                        {activePanel === "git" && currentWorkspace && (
-                            <ErrorBoundary fallback={panelFallback(t("app.panels.git"))}>
-                                <GitPanel workspacePath={currentWorkspace.path} />
-                            </ErrorBoundary>
-                        )}
-                        {activePanel === "files" && currentWorkspace && (
-                            <ErrorBoundary fallback={panelFallback(t("app.panels.files"))}>
-                                <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-[#666]">Loading…</div>}>
-                                    <div className="flex-1 overflow-hidden">
-                                        <FileWorkspace
-                                            workspacePath={currentWorkspace.path}
-                                            workspaceId={currentWorkspace.id}
-                                            initialTarget={fileWorkspaceTarget}
-                                        />
-                                    </div>
-                                </Suspense>
                             </ErrorBoundary>
                         )}
                     </>
@@ -970,31 +960,6 @@ function AppShell(): React.ReactElement {
                     </>,
                     portalTarget,
                 )}
-
-            {/* 终端面板:固定底部 280px,不影响三栏主体 */}
-            {showTerminal && currentWorkspace && (
-                <div
-                    style={{
-                        position: "fixed",
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        height: 280,
-                        zIndex: 40,
-                        background: "var(--mm-bg-panel)",
-                        borderTop: "1px solid var(--mm-border)",
-                    }}
-                >
-                    <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-[#666]">Loading…</div>}>
-                        <TerminalPanel
-                            isOpen={showTerminal}
-                            workspacePath={currentWorkspace.path}
-                            initialCommand={terminalCommandTarget}
-                            onClose={() => setShowTerminal(false)}
-                        />
-                    </Suspense>
-                </div>
-            )}
 
             {/* 审批浮窗(有点击行为时显示) — v1.0.14 关闭按钮真接 */}
             {approvalVisible &&

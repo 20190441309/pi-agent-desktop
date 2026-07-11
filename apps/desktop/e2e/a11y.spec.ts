@@ -18,6 +18,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 interface A11yViolation {
     rule: string;
@@ -153,7 +154,7 @@ test.describe('Pi Desktop a11y', () => {
             env: { ...process.env, CI: process.env.CI ?? '1', ELECTRON_RENDERER_URL: '' },
         });
 
-        const window: Page = await app.firstWindow();
+        const window: Page = await getWindowByUrl(app, "index.html");
         await window.waitForLoadState('domcontentloaded');
         // 冷启动: 先等 networkidle 让初始资源加载稳定, 再定位 tablist (避免 15s 内未渲染超时)
         await window.waitForLoadState('networkidle');
@@ -205,7 +206,7 @@ test.describe('Pi Desktop a11y', () => {
             env: { ...process.env, CI: process.env.CI ?? '1', ELECTRON_RENDERER_URL: '' },
         });
 
-        const window: Page = await app.firstWindow();
+        const window: Page = await getWindowByUrl(app, "index.html");
         await window.waitForLoadState('domcontentloaded');
         await window.waitForLoadState('networkidle');
         await window.waitForSelector('[role="tablist"][aria-label="顶部标签栏"]', { timeout: 15_000 });

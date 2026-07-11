@@ -19,6 +19,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 import { join } from 'path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
@@ -156,7 +157,7 @@ async function launchApp(): Promise<DeepAppContext> {
             ...(deepConfig.apiKeyValue ? { [DEEP_API_KEY_ENV]: deepConfig.apiKeyValue } : {}),
         },
     });
-    const page = await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     await page.waitForLoadState('domcontentloaded');
 
     // Skip onboarding if present

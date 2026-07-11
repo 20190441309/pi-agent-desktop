@@ -17,7 +17,7 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
-    await app.firstWindow();
+    await getWindowByUrl(app, "index.html");
     const page = await getWindowByUrl(app, 'index.html');
 
     // Skip onboarding if present
@@ -60,15 +60,17 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         await page.screenshot({ path: join(screenshotDir, '01-initial-launch.png') });
         console.log('[AUTO] Screenshot 01: Initial launch captured');
 
-        // ===== Step 2: Click "新建任务" (New Task) =====
-        const newTaskBtn = page.locator('button[data-mmcode-section="new-task"]');
-        await expect(newTaskBtn).toBeVisible({ timeout: 5000 });
-        await newTaskBtn.click();
+        // ===== Step 2: Open the conversation surface =====
+        const chatTab = page.getByRole('tab', { name: '对话' });
+        await expect(chatTab).toBeVisible({ timeout: 5000 });
+        await chatTab.click();
+        await expect(page.locator('textarea[aria-label="发送"]')).toBeVisible({ timeout: 5000 });
         await page.waitForTimeout(500);
         await page.screenshot({ path: join(screenshotDir, '02-after-click-new-task.png') });
-        console.log('[AUTO] Clicked "新建任务" (New Task)');
+        console.log('[AUTO] Opened conversation surface');
 
         // ===== Step 3: Click "任务" =====
+        await page.getByRole('tab', { name: '运行' }).click();
         const tasksTab = page.getByRole('tab', { name: '任务' });
         await expect(tasksTab).toBeVisible({ timeout: 5000 });
         await tasksTab.click();
@@ -78,7 +80,7 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         console.log('[AUTO] Clicked "任务"');
 
         // ===== Step 4: Click "工具" =====
-        const skillsBtn = page.getByRole('tab', { name: '工具' });
+        const skillsBtn = page.getByRole('tab', { name: '扩展' });
         await expect(skillsBtn).toBeVisible({ timeout: 5000 });
         await skillsBtn.click();
         await page.waitForTimeout(500);
@@ -97,6 +99,7 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         }
 
         // ===== Step 5: Click "记忆" =====
+        await page.getByRole('tab', { name: '运行' }).click();
         const memoryBtn = page.getByRole('tab', { name: '记忆' });
         await expect(memoryBtn).toBeVisible({ timeout: 5000 });
         await memoryBtn.click();
@@ -105,7 +108,7 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         console.log('[AUTO] Clicked "记忆"');
 
         // ===== Step 6: Click "设置" (Settings) — opens window =====
-        const settingsBtn = page.getByRole('tab', { name: '设置' });
+        const settingsBtn = page.getByRole('button', { name: '打开设置' });
         await expect(settingsBtn).toBeVisible({ timeout: 5000 });
         const settingsWindowPromise = app.waitForEvent('window');
         await settingsBtn.click();
@@ -164,7 +167,8 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         }
 
         // ===== Step 10: Final screenshot — back to new task view =====
-        await newTaskBtn.click();
+        await chatTab.click();
+        await expect(page.locator('textarea[aria-label="发送"]')).toBeVisible({ timeout: 5000 });
         await page.waitForTimeout(500);
         await page.screenshot({ path: join(screenshotDir, '10-final-state.png') });
         console.log('[AUTO] Final screenshot captured');

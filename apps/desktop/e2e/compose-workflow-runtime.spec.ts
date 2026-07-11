@@ -205,7 +205,6 @@ async function launchApp(userDataDir: string, fakePiDir: string): Promise<{ app:
             ELECTRON_RENDERER_URL: "",
         },
     });
-    await app.firstWindow();
     const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
@@ -247,7 +246,7 @@ async function waitForBoundAgent(page: Page, sessionId: string): Promise<string>
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
     const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("tab", { name: "设置" }).click();
+    await page.getByRole("button", { name: "打开设置" }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState("domcontentloaded");
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible({ timeout: 10_000 });
@@ -490,7 +489,8 @@ test.describe("Compose workflow runtime acceptance", () => {
         await expect.poll(() => existsSync(join(workspacePath, "docs", "compose", "plans", "compose-runtime-e2e.md")), { timeout: 10_000 }).toBe(true);
         await expect.poll(() => existsSync(join(workspacePath, "docs", "compose", "reports", "compose-runtime-e2e.md")), { timeout: 10_000 }).toBe(true);
 
-        await page.getByRole("tab", { name: "任务" }).click();
+        await page.getByRole("tab", { name: "运行" }).click();
+        await page.getByRole("tablist", { name: "运行视图" }).getByRole("tab", { name: "任务" }).click();
         await expect(page.getByText("任务总览")).toBeVisible({ timeout: 10_000 });
         await expect(page.getByText("Brainstorm")).toBeVisible({ timeout: 10_000 });
         await expect(page.getByText("Design")).toBeVisible();

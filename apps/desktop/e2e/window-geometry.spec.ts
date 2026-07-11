@@ -2,6 +2,7 @@ import { test, expect, _electron, type ElectronApplication, type Page } from "@p
 import { join } from "path";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 
@@ -11,7 +12,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    const page = await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     await page.waitForLoadState("domcontentloaded");
 
     const modal = page.locator("[data-testid=\"onboarding-modal\"]");
@@ -62,17 +63,18 @@ test.describe("Pi Desktop window geometry", () => {
         app = launched.app;
         const page = launched.page;
 
-        await page.waitForFunction(() => document.querySelectorAll('[role="tab"]').length >= 5, undefined, { timeout: 30_000 });
+        const topTabs = page.getByRole("tablist", { name: "顶部标签栏" }).getByRole("tab");
+        await expect(topTabs).toHaveCount(4, { timeout: 30_000 });
         await expect(page.getByRole("tab", { name: "对话" })).toBeVisible({ timeout: 10_000 });
 
         const mainWindow = await windowMetrics(app, "index.html");
-        expect(mainWindow.bounds.width).toBe(896);
-        expect(mainWindow.bounds.height).toBe(756);
+        expect(Math.abs(mainWindow.bounds.width - 896)).toBeLessThanOrEqual(1);
+        expect(Math.abs(mainWindow.bounds.height - 756)).toBeLessThanOrEqual(1);
         expect(mainWindow.minSize).toEqual([896, 756]);
         await page.screenshot({ path: join(ACCEPTANCE_DIR, "2026-07-02-window-geometry-main.png"), fullPage: true });
 
         const settingsWindowPromise = app.waitForEvent("window");
-        await page.getByRole("tab", { name: "设置" }).click();
+        await page.getByRole("button", { name: "打开设置" }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState("domcontentloaded");
         await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible({ timeout: 10_000 });

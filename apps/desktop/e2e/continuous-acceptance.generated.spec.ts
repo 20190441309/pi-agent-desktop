@@ -163,11 +163,12 @@ test.describe("continuous acceptance generated run", () => {
 
             await record("顶部 tabs 全部可见且对话 tab 处于选中状态", async () => {
                 if (!page) throw new Error("main page missing");
-                for (const name of ["对话", "任务", "记忆", "工具", "设置"]) {
+                for (const name of ["对话", "运行", "工作台", "扩展"]) {
                     await visible(page, page.getByRole("tab", { name }));
                 }
+                await visible(page, page.getByRole("button", { name: "打开设置" }));
                 await expect(page.getByRole("tab", { name: "对话" })).toHaveAttribute("aria-selected", "true");
-                return "5 个顶部 tab 可见，对话 tab aria-selected=true。";
+                return "4 个顶部 tab 与独立设置按钮可见，对话 tab aria-selected=true。";
             }, "top-tabs-visible");
 
             await record("新对话入口显示真实 ChatInput 控件并禁用空发送", async () => {
@@ -182,15 +183,18 @@ test.describe("continuous acceptance generated run", () => {
 
             await record("任务 tab 切换后显示任务总览真实面板", async () => {
                 if (!page) throw new Error("main page missing");
-                await page.getByRole("tab", { name: "任务" }).click();
+                await page.getByRole("tab", { name: "运行" }).click();
+                const runTabs = page.getByRole("tablist", { name: "运行视图" });
+                await runTabs.getByRole("tab", { name: "任务" }).click();
                 await visible(page, page.getByText("任务总览"));
-                await expect(page.getByRole("tab", { name: "任务" })).toHaveAttribute("aria-selected", "true");
+                await expect(runTabs.getByRole("tab", { name: "任务" })).toHaveAttribute("aria-selected", "true");
                 return "任务 tab 路由到 TaskOverviewPanel。";
             }, "tasks-tab");
 
             await record("记忆 tab 切换后显示记忆搜索面板", async () => {
                 if (!page) throw new Error("main page missing");
-                await page.getByRole("tab", { name: "记忆" }).click();
+                await page.getByRole("tab", { name: "运行" }).click();
+                await page.getByRole("tablist", { name: "运行视图" }).getByRole("tab", { name: "记忆管理" }).click();
                 await visible(page, page.getByRole("heading", { name: "记忆" }));
                 await visible(page, page.getByPlaceholder("搜索记忆..."));
                 return "记忆 tab 路由到 MemoryPanel，搜索框可见。";
@@ -198,7 +202,7 @@ test.describe("continuous acceptance generated run", () => {
 
             await record("工具 tab 显示插件面板并可展开创建菜单", async () => {
                 if (!page) throw new Error("main page missing");
-                await page.getByRole("tab", { name: "工具" }).click();
+                await page.getByRole("tab", { name: "扩展" }).click();
                 await visible(page, page.getByRole("region", { name: "插件面板" }));
                 await page.getByRole("button", { name: /创建/ }).first().click();
                 await visible(page, page.getByRole("button", { name: /编写技能/ }).first());
@@ -222,7 +226,7 @@ test.describe("continuous acceptance generated run", () => {
             await record("设置 tab 打开独立设置窗口", async () => {
                 if (!page || !app) throw new Error("main page or app missing");
                 const settingsWindowPromise = app.waitForEvent("window");
-                await page.getByRole("tab", { name: "设置" }).click();
+                await page.getByRole("button", { name: "打开设置" }).click();
                 settingsWindow = await settingsWindowPromise;
                 await settingsWindow.waitForLoadState("domcontentloaded");
                 await visible(settingsWindow, settingsWindow.getByRole("tablist", { name: "设置分类" }));

@@ -20,7 +20,6 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
             PI_DESKTOP_CONFIG_DIR: configDir,
         },
     });
-    await app.firstWindow();
     const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
@@ -41,7 +40,7 @@ async function prepareWorkspace(page: Page, workspacePath: string): Promise<void
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
     const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("tab", { name: "设置" }).click();
+    await page.getByRole("button", { name: "打开设置" }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState("domcontentloaded");
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();

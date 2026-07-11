@@ -3,6 +3,7 @@ import { electronMainEntry } from "../playwright.config";
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const SCREENSHOT_DIR = join(__dirname, "..", "e2e-output", "long-horizon-live");
 const DEEP_API_KEY_ENV = "PI_DESKTOP_DEEP_API_KEY";
@@ -106,7 +107,7 @@ async function launchLiveApp(): Promise<LiveContext> {
             [DEEP_API_KEY_ENV]: apiKey,
         },
     });
-    const page = await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     await page.waitForLoadState("domcontentloaded");
     await skipOnboarding(page);
 

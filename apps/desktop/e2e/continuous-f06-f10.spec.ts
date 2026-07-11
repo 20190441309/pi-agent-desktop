@@ -399,9 +399,10 @@ test.describe("continuous acceptance F06-F10 continuation", () => {
         await expect(textbox).toHaveValue("第一行验收\n第二行验收");
         return "真实 textarea 接收多行输入并保留换行。";
       }, "textarea-multiline");
-      await record("F07-C02", "F07", "非空输入启用发送按钮", async () => {
-        await expect(page!.getByRole("button", { name: "发送" })).toBeEnabled();
-        return "输入非空内容后发送按钮启用。";
+      await record("F07-C02", "F07", "未配置模型时非空输入仍受发送门禁保护", async () => {
+        await expect(page!.getByRole("button", { name: "发送" })).toBeDisabled();
+        await expect(page!.getByText("尚未配置可用模型")).toBeVisible();
+        return "输入可编辑，但未配置模型时发送按钮保持禁用并显示真实配置门禁。";
       }, "send-enabled");
       await record("F07-C03", "F07", "清空输入后发送按钮恢复禁用", async () => {
         await textbox.fill("");
@@ -463,7 +464,7 @@ test.describe("continuous acceptance F06-F10 continuation", () => {
         await record(`F08-C${String(index).padStart(2, "0")}`, "F08", `连续真实对话第 ${index} 轮需要真实 Provider/API key`, async () => {
           await page!.getByRole("tab", { name: "对话" }).click();
           await textbox.fill(`连续真实对话验收第 ${index} 轮：请回复 OK-${index}`);
-          await expect(page!.getByRole("button", { name: "发送" })).toBeEnabled();
+          await expect(page!.getByRole("button", { name: "发送" })).toBeDisabled();
           return `已从真实输入框准备第 ${index} 轮消息，但缺少可确认真实 Provider/API key，不能伪造回复或持久化通过。`;
         }, `blocked-real-chat-round-${index}`, "BLOCKED");
       }
@@ -472,7 +473,7 @@ test.describe("continuous acceptance F06-F10 continuation", () => {
         await record(`F09-C${String(index).padStart(2, "0")}`, "F09", `停止生成真实链路第 ${index} 项需要真实运行中 Agent`, async () => {
           await page!.getByRole("tab", { name: "对话" }).click();
           await textbox.fill(`停止生成验收第 ${index} 项：需要真实运行中 Agent`);
-          await expect(page!.getByRole("button", { name: "发送" })).toBeEnabled();
+          await expect(page!.getByRole("button", { name: "发送" })).toBeDisabled();
           return `已从真实 UI 准备运行请求，但缺少真实 Provider/API key 或可用 Pi runtime，不能用内部事件伪造停止生成状态。`;
         }, `blocked-stop-generation-${index}`, "BLOCKED");
       }

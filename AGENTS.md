@@ -130,31 +130,33 @@ The SQLite schema supports tree-structured conversations (Pi JSONL v3) via `pare
 
 `services/approval/classifier.ts` assigns risk levels (high/edit/read) to tool calls. `interceptor.ts` intercepts Pi CLI tool calls and routes high-risk ones through the approval IPC flow. `pending-edits.ts` manages deferred file edits shown to the user after execution.
 
-### UI Layout (Agent Studio design, v1.1)
+### UI Layout (Agent Studio design, v1.2)
 
 ```
 ┌────────────────── TitleBar (32px) ──────────────────────────┐
-│  TopTabBar (36px): 对话 | 任务 | 记忆 | 工具 | 设置  [WS▾] │
+│  TopTabBar (36px): 对话 | 运行 | 工作台 | 扩展        [设置] │
 ├──────────┬───────────────────────────┬──────────────────────┤
 │ Left     │ Center (flex-1)           │ Right Rail (280px)   │
-│ 240px    │                           │ default: collapsed   │
+│ 190px+   │                           │ default: collapsed   │
 │          │                           │                      │
-│ 新对话    │ ChatView / SkillsPanel /  │ Usage, Permissions,  │
-│ 分组切换  │ GitPanel / MemoryPanel /  │ Thinking, Env,       │
-│ 会话列表  │ TaskOverviewPanel         │ Progress, Tools      │
+│ 新对话    │ ChatView / RunPanel /     │ Usage, Permissions,  │
+│ 分组切换  │ WorkbenchPanel /          │ Thinking, Env,       │
+│ 会话列表  │ SkillsPanel               │ Progress, Tools      │
 │ (date/ws)│                           │                      │
 └──────────┴───────────────────────────┴──────────────────────┘
 ```
 
-- **TopTabBar** (`components/TopTabBar/`): 5 tabs, `activeSection` drives center panel. Tab ids: `chat`, `tasks`, `memory`, `tools`, `settings`. **Gotcha**: tab id must match `panelForSection()` in App.tsx — `"tools"` maps to `"skills"` panel.
-- **WorkspaceSwitcher** (`components/TopTabBar/WorkspaceSwitcher.tsx`): dropdown in TopTabBar right slot, reads `useWorkspaceStore`.
+- **TopTabBar** (`components/TopTabBar/`): 4 tabs driven by `activeSection`: `chat`, `run`, `workbench`, `extensions`. Settings is a right-side icon that opens the independent settings window.
+- **Route aliases**: legacy section ids stay supported in `App.tsx`: `tasks` / `memory` → `run`, `files` / `git` / `terminal` → `workbench`, and `tools` / `skills` → `extensions`.
+- **RunPanel** (`components/RunPanel/RunPanel.tsx`): secondary tabs `tasks` and `memory`; reuses `TaskOverviewPanel` and `MemoryPanel`.
+- **WorkbenchPanel** (`components/Workbench/WorkbenchPanel.tsx`): secondary tabs `files`, `git`, and `terminal`; the terminal uses the full-height embedded display mode.
 - **Left sidebar** (`MiniMaxCodeSidebar.tsx`): pure conversation list, no nav items. Group toggle: `date` (今天/昨天/本周/本月/更早) vs `workspace` (ProjectGroupedSessionList). Mode persisted in `settings-store.sidebarGroupMode`.
 - **DateGroupedSessionList** (`components/MiniMaxCode/DateGroupedSessionList.tsx`): date-grouped sessions with collapsible groups + archived section.
 - **Right rail** (`RightRail.tsx`): default collapsed (`settings-store.rightRailCollapsed: true`). Auto-expands only on 0→1 message transition. Manual toggle via floating button.
 - **Settings window**: independent `BrowserWindow` (800×600), NOT a modal. IPC: `settings:open-window` / `settings:close-window` in `settings-window.ipc.ts`. Renderer entry: `settings.html` → `SettingsWindow.tsx` → `SettingsContent.tsx` (shared with legacy `SettingsPanel` modal).
 - **Layout shell**: `MiniMaxCodeLayout` accepts `topBarSlot`, `leftSlot`, `centerSlot`, `rightSlot` — all collapsible via `leftCollapsed`/`rightCollapsed` props.
-- **MemoryPanel** (`components/LongHorizon/MemoryPanel.tsx`): complete implementation backed by `window.piAPI.memorySearch` / `memoryListRecent` — not a stub.
-- **TaskOverviewPanel** (`components/LongHorizon/TaskOverviewPanel.tsx`): complete implementation reading `useTaskProgress` / `usePlanStore` — not a stub.
+- **MemoryPanel** (`components/LongHorizon/MemoryPanel.tsx`): complete implementation backed by `window.piAPI.memorySearch` / `memoryListRecent`; rendered inside `RunPanel`.
+- **TaskOverviewPanel** (`components/LongHorizon/TaskOverviewPanel.tsx`): complete implementation reading `useTaskProgress` / `usePlanStore`; rendered inside `RunPanel`.
 
 ## Key Files
 

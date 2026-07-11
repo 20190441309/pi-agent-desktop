@@ -15,7 +15,7 @@ import type { AgentRuntimeRegistry } from "../../services/agent-runtime/registry
 
 type RegistryStub = Pick<
     AgentRuntimeRegistry,
-    "list" | "create" | "prompt" | "abort" | "stop" | "restart" | "getMessages" | "getRuntimeState"
+    "list" | "create" | "prompt" | "abort" | "stop" | "restart" | "getMessages" | "getRuntimeState" | "syncPermissions"
 >;
 
 describe("setupAgentsIpc", () => {
@@ -38,6 +38,7 @@ describe("setupAgentsIpc", () => {
             restart: vi.fn(async () => ({ id: "agent_3", workspaceId: "ws_1", title: "Agent 3", status: "idle", createdAt: 1, updatedAt: 1 })),
             getMessages: vi.fn(() => []),
             getRuntimeState: vi.fn(() => ({ agentId: "agent_1", status: "idle", isStreaming: false })),
+            syncPermissions: vi.fn(async () => ({ activeTools: ["read"], deniedTools: ["write"] })),
         };
 
         setupAgentsIpc(registry as AgentRuntimeRegistry);
@@ -48,9 +49,40 @@ describe("setupAgentsIpc", () => {
         await handlers.get("agents:create")?.({}, { workspaceId: "ws_1" });
         await handlers.get("agents:prompt")?.({}, { agentId: "agent_2", message: "hello" });
         await handlers.get("agents:stop")?.({}, "agent_2");
+        await expect(handlers.get("agents:sync-permissions")?.({}, "agent_2")).resolves.toEqual({
+            activeTools: ["read"],
+            deniedTools: ["write"],
+        });
 
         expect(registry.create).toHaveBeenCalledWith({ workspaceId: "ws_1" });
         expect(registry.prompt).toHaveBeenCalledWith({ agentId: "agent_2", message: "hello" });
         expect(registry.stop).toHaveBeenCalledWith("agent_2");
+        expect(registry.syncPermissions).toHaveBeenCalledWith("agent_2");
+    });
+
+    it("returns ipcError for an invalid permission sync agent id", async () => {
+        const registry = { syncPermissions: vi.fn() } as unknown as AgentRuntimeRegistry;
+        setupAgentsIpc(registry);
+
+        await expect(handlers.get("agents:sync-permissions")?.({}, "")).resolves.toMatchObject({
+            __brand: "IpcError",
+        });
+        expect(registry.syncPermissions).not.toHaveBeenCalled();
+    });
+
+    it("returns a branded syncPermissionsFailed ipcError when permission sync throws", async () => {
+        const registry = {
+            syncPermissions: vi.fn(async () => {
+                throw new Error("tool registry unavailable");
+            }),
+        } as unknown as AgentRuntimeRegistry;
+        setupAgentsIpc(registry);
+
+        await expect(handlers.get("agents:sync-permissions")?.({}, "agent_1")).resolves.toEqual({
+            __brand: "IpcError",
+            code: "ipcErrors.agents.syncPermissionsFailed",
+            fallback: "tool registry unavailable",
+            params: undefined,
+        });
     });
 });

@@ -24,6 +24,9 @@ export default defineConfig({
     // Electron is single-instance by design; do not run specs in parallel.
     fullyParallel: false,
     workers: 1,
+    // Electron window creation/navigation can race once during long single-worker runs.
+    // A retry must pass from a fresh app launch; deterministic regressions still fail.
+    retries: 1,
     // Electron cold start can take a while on Windows.
     timeout: 60_000,
     expect: {

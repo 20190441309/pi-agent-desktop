@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const SESSION_ID = "generated-ui-v1-session";
@@ -14,11 +15,22 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
+    const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
 
+async function retryMainEvaluate(action: () => Promise<void>): Promise<void> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        try {
+            await action();
+            return;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (!message.includes("Execution context was destroyed") || attempt === 4) throw error;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+    }
+}
 async function closeApp(app: ElectronApplication | undefined): Promise<void> {
     try {
         await app?.close();
@@ -35,7 +47,7 @@ async function skipOnboarding(page: Page): Promise<void> {
 }
 
 async function stubHostActions(app: ElectronApplication): Promise<void> {
-    await app.evaluate(({ ipcMain }) => {
+    await retryMainEvaluate(() => app.evaluate(({ ipcMain }) => {
         const target = globalThis as typeof globalThis & {
             __generatedUiOpenPathCalls?: string[];
         };
@@ -47,7 +59,7 @@ async function stubHostActions(app: ElectronApplication): Promise<void> {
             target.__generatedUiOpenPathCalls?.push(targetPath);
             return "";
         });
-    });
+    }));
 }
 
 async function emitBoundAgentEvents(page: Page, app: ElectronApplication, events: Array<Record<string, unknown>>): Promise<void> {
@@ -184,6 +196,10 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
             },
             { workspacePath, sessionId: SESSION_ID, sessionTitle: SESSION_TITLE, readmePath, now },
         );
+        await expect.poll(async () => page.evaluate(async (sessionId) => {
+            const sessions = await window.piAPI.listSessions();
+            return sessions.some((session) => session.id === sessionId);
+        }, SESSION_ID), { timeout: 10_000 }).toBe(true);
 
         await closeApp(app);
         app = undefined;
@@ -411,7 +427,8 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
         const explicitCard = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "显式 generatedUi" }) }).first();
 
         await legacyCard.getByRole("button", { name: "打开工具页" }).click();
-        await expect(page.getByRole("tab", { name: "工具" })).toHaveAttribute("aria-selected", "true");
+        await expect(page.getByRole("tab", { name: "扩展" })).toHaveAttribute("aria-selected", "true");
+        await expect(page.getByRole("region", { name: "插件面板" })).toBeVisible();
         await page.screenshot({
             path: join(ACCEPTANCE_DIR, "2026-07-01-generated-ui-v1-03-switch-view-tools.png"),
             fullPage: true,

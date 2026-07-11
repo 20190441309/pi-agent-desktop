@@ -11,16 +11,26 @@ import { PendingEdits } from "../../main/services/approval/pending-edits";
 
 // Mock SDK + Electron (same pattern as registry.test.ts)
 vi.mock("../../main/services/pi-session/factory", () => ({
-  createWorkspaceSession: vi.fn(async (opts: { workspaceId: string }) => ({
-    workspaceId: opts.workspaceId,
-    session: {
+  createWorkspaceSession: vi.fn(async (opts: { workspaceId: string }) => {
+    const tools = ["read", "bash", "write", "edit", "plan_write"].map((name) => ({ name }));
+    let activeToolNames = tools.map((tool) => tool.name);
+    const session = {
       prompt: vi.fn(async () => undefined),
       abort: vi.fn(),
       dispose: vi.fn(),
       subscribe: vi.fn(),
-    },
-    dispose: vi.fn(),
-  })),
+      getAllTools: vi.fn(() => tools),
+      getActiveToolNames: vi.fn(() => [...activeToolNames]),
+      setActiveToolsByName: vi.fn((names: string[]) => {
+        activeToolNames = [...names];
+      }),
+    };
+    return {
+      workspaceId: opts.workspaceId,
+      session,
+      dispose: session.dispose,
+    };
+  }),
 }));
 vi.mock("../../main/services/approval/interceptor", () => ({
   createApprovalInterceptor: vi.fn(() => ({ handleEvent: vi.fn(async () => undefined) })),

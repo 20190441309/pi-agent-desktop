@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await _electron.launch({
@@ -10,9 +11,20 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
+    const page = await getWindowByUrl(app, "index.html");
+    const modal = page.locator('[data-testid="onboarding-modal"]');
+    if (await modal.isVisible().catch(() => false)) {
+        await page.getByRole("button", { name: "跳过引导" }).click();
+        await expect(modal).toHaveCount(0, { timeout: 5_000 });
+    }
     return { app, page };
+}
+async function waitForPersistedSessions(page: Page, expectedIds: string[]): Promise<void> {
+    await expect.poll(async () => page.evaluate(async (ids) => {
+        const sessions = await window.piAPI.listSessions();
+        const persistedIds = new Set(sessions.map((session) => session.id));
+        return ids.every((id) => persistedIds.has(id));
+    }, expectedIds), { timeout: 10_000 }).toBe(true);
 }
 
 test.describe("Pi Desktop — session history navigation", () => {
@@ -39,7 +51,9 @@ test.describe("Pi Desktop — session history navigation", () => {
         await page.evaluate(
             async ({ workspacePath, now }) => {
                 window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
+                window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
                 const ws = await window.piAPI.createWorkspace("history-e2e", workspacePath);
+                await window.piAPI.selectWorkspace(ws.path);
                 const oldSession = await window.piAPI.createSession(ws.id, "旧会话", "e2e-old-session");
                 const targetSession = await window.piAPI.createSession(ws.id, "目标会话", "e2e-target-session");
 
@@ -64,16 +78,21 @@ test.describe("Pi Desktop — session history navigation", () => {
             },
             { workspacePath, now },
         );
+        await waitForPersistedSessions(page, ["e2e-old-session", "e2e-target-session"]);
 
         await app.close();
         app = undefined;
 
         ({ app, page } = await launchApp(userDataDir));
 
+        const targetSessionButton = page
+            .getByRole("navigation", { name: "会话列表" })
+            .getByRole("button", { name: "目标会话", exact: true });
+        await expect(targetSessionButton).toBeVisible({ timeout: 15_000 });
         await page.locator('button[data-mmcode-section="new-task"]').click();
         await expect(page.getByText("输入消息后，Pi Agent 会在当前工作区开始运行。")).toBeVisible({ timeout: 15_000 });
 
-        await page.getByRole("button", { name: "目标会话", exact: true }).click();
+        await targetSessionButton.click();
 
         await expect(page.getByRole("article", { name: /你 ·/ })).toContainText(
             "打开历史会话后必须看到这条用户消息",
@@ -97,6 +116,7 @@ test.describe("Pi Desktop — session history navigation", () => {
         await page.evaluate(
             async ({ workspacePath, now }) => {
                 window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
+                window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
                 const ws = await window.piAPI.createWorkspace("search-history-e2e", workspacePath);
                 const targetSession = await window.piAPI.createSession(ws.id, "浮层搜索会话", "search-history-target-session");
                 await window.piAPI.appendMessage(targetSession.id, {
@@ -114,6 +134,8 @@ test.describe("Pi Desktop — session history navigation", () => {
             },
             { workspacePath, now },
         );
+
+        await waitForPersistedSessions(page, ["search-history-target-session"]);
 
         await app.close();
         app = undefined;
@@ -159,6 +181,7 @@ test.describe("Pi Desktop — session history navigation", () => {
         await page.evaluate(
             async ({ workspacePath, now }) => {
                 window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
+                window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
                 const ws = await window.piAPI.createWorkspace("sidebar-actions-e2e", workspacePath);
                 const archiveSession = await window.piAPI.createSession(ws.id, "待归档会话", "sidebar-archive-session");
                 const deleteSession = await window.piAPI.createSession(ws.id, "待删除会话", "sidebar-delete-session");
@@ -177,6 +200,8 @@ test.describe("Pi Desktop — session history navigation", () => {
             },
             { workspacePath, now },
         );
+
+        await waitForPersistedSessions(page, ["sidebar-archive-session", "sidebar-delete-session"]);
 
         await app.close();
         app = undefined;
@@ -235,8 +260,10 @@ test.describe("Pi Desktop — session history navigation", () => {
         await page.evaluate(
             async ({ workspacePathA, workspacePathB, now }) => {
                 window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
+                window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
                 const wsA = await window.piAPI.createWorkspace("sidebar-ws-a", workspacePathA);
                 const wsB = await window.piAPI.createWorkspace("sidebar-ws-b", workspacePathB);
+                await window.piAPI.selectWorkspace(wsA.path);
                 const pinSession = await window.piAPI.createSession(wsA.id, "待置顶会话", "sidebar-pin-session");
                 const archiveSession = await window.piAPI.createSession(wsA.id, "待归档会话", "sidebar-archive-context-session");
                 const renameSession = await window.piAPI.createSession(wsA.id, "待重命名会话", "sidebar-rename-session");
@@ -254,6 +281,14 @@ test.describe("Pi Desktop — session history navigation", () => {
             { workspacePathA, workspacePathB, now },
         );
 
+        await waitForPersistedSessions(page, [
+            "sidebar-pin-session",
+            "sidebar-archive-context-session",
+            "sidebar-rename-session",
+            "sidebar-context-delete-session",
+            "sidebar-ws-b-session",
+        ]);
+
         await app.close();
         app = undefined;
 
@@ -261,8 +296,10 @@ test.describe("Pi Desktop — session history navigation", () => {
         await mkdir(screenshotDir, { recursive: true });
 
         const sidebar = page.getByRole("navigation", { name: "会话列表" });
-        await sidebar.getByRole("button", { name: "按工作区分组" }).click();
-        await expect(sidebar.getByRole("button", { name: "按工作区分组" })).toHaveAttribute("aria-pressed", "true");
+        const workspaceGrouping = sidebar.getByRole("button", { name: "按工作区分组" });
+        await expect(workspaceGrouping).toBeVisible({ timeout: 15_000 });
+        await workspaceGrouping.click();
+        await expect(workspaceGrouping).toHaveAttribute("aria-pressed", "true");
         await expect(sidebar.getByText("sidebar-ws-a")).toBeVisible({ timeout: 10_000 });
         await expect(sidebar.getByText("sidebar-ws-b")).toBeVisible({ timeout: 10_000 });
 

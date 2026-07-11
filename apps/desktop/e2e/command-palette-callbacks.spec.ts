@@ -25,6 +25,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -33,7 +34,7 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1' },
     });
-    const page = await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     await page.waitForLoadState('domcontentloaded');
     // 走 React onComplete 路径 (memory 警告: 不能 modal.remove() 破坏 React ownership)
     const modalCount = await page.locator('[data-testid="onboarding-modal"]').count();
@@ -94,9 +95,16 @@ async function reloadAppShell(page: Page): Promise<void> {
 }
 
 async function openPalette(page: Page): Promise<void> {
-    await page.keyboard.press('Control+k');
+    await page.bringToFront();
+    await page.evaluate(() => window.focus());
     const palette = page.locator('[role="dialog"][aria-label*="命令面板"]');
-    await expect(palette).toBeVisible({ timeout: 3000 });
+    await page.keyboard.press('Control+k');
+    if (!await palette.isVisible().catch(() => false)) {
+        await page.evaluate(() => {
+            window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true }));
+        });
+    }
+    await expect(palette).toBeVisible({ timeout: 5000 });
 }
 
 async function closePalette(page: Page): Promise<void> {
@@ -127,25 +135,32 @@ test.describe('CommandPalette 3 callback (v1.0.16 fix)', () => {
     test('cmd mode — 导航命令 click 行为正确 (new_chat / open_skills / open_settings)', async () => {
         ({ app, page } = await launchApp());
 
-        // 起点: chat panel 副标题可见
-        await expect(page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。')).toBeVisible({ timeout: 15_000 });
+        // 起点: 当前 chat 空态可见，顶部对话 tab 处于选中状态
+        const topTabs = page.getByRole('tablist', { name: '顶部标签栏' });
+        await expect(page.getByText('新对话', { exact: true })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。', { exact: true })).toBeVisible();
+        await expect(topTabs.getByRole('tab', { name: '对话' })).toHaveAttribute('aria-selected', 'true');
 
-        // ── 1. new_chat — 切到 chat (本来就在 chat, 验证 palette 关闭 + 副标题还在)
+        // ── 1. new_chat — 切到 chat (本来就在 chat, 验证 palette 关闭 + 当前空态仍在)
         await openPalette(page);
         await switchMode(page, 'cmd');
         const cmdPalette = page.locator('[role="dialog"][aria-label*="命令面板"]');
         await cmdPalette.getByRole('option', { name: /新建对话/ }).click();
         // palette 关闭
         await expect(cmdPalette).toBeHidden({ timeout: 3000 });
-        // 还在 chat (副标题可见)
-        await expect(page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。')).toBeVisible();
+        // 还在 chat，且真实新对话空态仍可交互
+        await expect(topTabs.getByRole('tab', { name: '对话' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByText('新对话', { exact: true })).toBeVisible();
+        await expect(page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。', { exact: true })).toBeVisible();
+        await expect(page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="输入消息" i], textarea[placeholder*="描述" i]').first()).toBeVisible();
 
         // ── 2. open_skills — 切到 SkillsPanel
         await openPalette(page);
         await switchMode(page, 'cmd');
         await cmdPalette.getByRole('option', { name: /打开 Skills/ }).click();
         await expect(cmdPalette).toBeHidden({ timeout: 3000 });
-        // SkillsPanel 接管中栏
+        // SkillsPanel 现在位于顶部“扩展”下，并接管中栏
+        await expect(topTabs.getByRole('tab', { name: '扩展' })).toHaveAttribute('aria-selected', 'true');
         await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
 
         // ── 3. open_settings — 打开独立 Settings window
@@ -217,13 +232,25 @@ test.describe('CommandPalette 3 callback (v1.0.16 fix)', () => {
         await palette.getByRole('option', { name: /切换终端/ }).click();
 
         await expect(palette).toBeHidden({ timeout: 3000 });
+        const topTabs = page.getByRole('tablist', { name: '顶部标签栏' });
+        const workbenchTabs = page.getByRole('tablist', { name: '工作台视图' });
+        await expect(topTabs.getByRole('tab', { name: '工作台' })).toHaveAttribute('aria-selected', 'true');
+        await expect(workbenchTabs.getByRole('tab', { name: '终端' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('terminal-panel')).toBeVisible({ timeout: 5000 });
         await expect(page.getByRole('status').filter({ hasText: '暂无终端' })).toBeVisible({ timeout: 5000 });
         await expect(page.getByRole('button', { name: /新建终端/ })).toBeVisible();
+
+        await workbenchTabs.getByRole('tab', { name: '文件' }).click();
+        await expect(workbenchTabs.getByRole('tab', { name: '文件' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('terminal-panel')).toBeHidden();
 
         await openPalette(page);
         await switchMode(page, 'cmd');
         await palette.getByRole('option', { name: /切换终端/ }).click();
-        await expect(page.getByRole('status').filter({ hasText: '暂无终端' })).toHaveCount(0, { timeout: 3000 });
+        await expect(palette).toBeHidden({ timeout: 3000 });
+        await expect(workbenchTabs.getByRole('tab', { name: '终端' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('terminal-panel')).toBeVisible();
+        await expect(page.getByRole('status').filter({ hasText: '暂无终端' })).toBeVisible();
     });
 
     test('file mode — 渲染 + 3 tab 切换正常', async () => {

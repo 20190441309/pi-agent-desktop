@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
     ASSISTANT_REPLY,
@@ -14,6 +15,24 @@ import {
 } from "./support/programmer-workflow";
 import { prepareMiniNodeProject, readMiniProjectResult } from "./support/programmer-project";
 
+function prepareStubModelConfig(configDir: string): void {
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "models.json"), JSON.stringify({
+        providers: {
+            e2e: {
+                name: "E2E Stub",
+                baseUrl: "http://127.0.0.1:1/v1",
+                api: "openai-completions",
+                models: [{ id: "stub-model", name: "Stub Model", contextWindow: 8192, maxTokens: 1024 }],
+            },
+        },
+    }, null, 2), "utf8");
+    writeFileSync(join(configDir, "settings.json"), JSON.stringify({
+        defaultProvider: "e2e",
+        defaultModel: "stub-model",
+    }, null, 2), "utf8");
+}
+
 test.describe("normal programmer real Electron workflow", () => {
     test.setTimeout(TEST_TIMEOUT_MS);
 
@@ -24,6 +43,7 @@ test.describe("normal programmer real Electron workflow", () => {
         const projectName = `programmer-e2e-project-${Date.now()}`;
         const workspacePath = join(workspaceParentPath, projectName);
         const miniProject = prepareMiniNodeProject(workspacePath);
+        prepareStubModelConfig(configDir);
 
         let context: Awaited<ReturnType<typeof launchApp>> | undefined;
         try {
@@ -43,9 +63,8 @@ test.describe("normal programmer real Electron workflow", () => {
                 path: test.info().outputPath("programmer-workflow-terminal-test.png"),
                 fullPage: true,
             });
-
-            await expandRightRailIfNeeded(context.page);
-            await context.page.getByRole("button", { name: "浏览全部文件" }).click();
+            await context.page.getByRole("tab", { name: "工作台" }).click();
+            await context.page.getByRole("tab", { name: "文件" }).click();
             const fileSearch = context.page.getByRole("textbox", { name: "搜索文件" });
             await expect(fileSearch).toBeVisible({ timeout: 5_000 });
 

@@ -17,6 +17,7 @@ const {
     sessionManagerOpen,
     sessionSendUserMessage,
     createAgentSessionMock,
+    createGuardedBuiltinsMock,
     sdkMock,
 } = vi.hoisted(() => ({
     authStorageCreate: vi.fn(() => ({ getApiKey: vi.fn() })),
@@ -43,6 +44,11 @@ const {
         },
         extensionsResult: { extensions: [] },
     }),
+    createGuardedBuiltinsMock: vi.fn(() => [
+        { name: "read", execute: vi.fn() },
+        { name: "bash", execute: vi.fn() },
+        { name: "write", execute: vi.fn() },
+    ]),
     sdkMock: {} as Record<string, unknown>,
 }));
 
@@ -77,6 +83,10 @@ vi.mock("../sdk-runtime", () => ({
     loadPiSdk: vi.fn(async () => sdkMock),
 }));
 
+vi.mock("../../permission/guarded-tools", () => ({
+    createGuardedBuiltins: createGuardedBuiltinsMock,
+}));
+
 describe("createWorkspaceSession", () => {
     const selectedModel = { provider: "longcat", id: "LongCat-2.0-Preview" };
 
@@ -92,6 +102,7 @@ describe("createWorkspaceSession", () => {
         sessionSendUserMessage.mockReset();
         sessionSendUserMessage.mockResolvedValue(undefined);
         createAgentSessionMock.mockClear();
+        createGuardedBuiltinsMock.mockClear();
         createAgentSessionMock.mockResolvedValue({
             session: {
                 prompt: vi.fn(),
@@ -307,6 +318,65 @@ describe("createWorkspaceSession", () => {
         expect(createAgentSessionMock).toHaveBeenCalledWith(expect.objectContaining({
             noTools: "builtin",
             tools: ["read", "grep"],
+        }));
+    });
+
+    it("appends guarded built-ins while preserving existing custom tools", async () => {
+        const getRuntimePolicy = vi.fn();
+        const actorTool = { name: "actor", execute: vi.fn() };
+
+        await createWorkspaceSession({
+            workspaceId: "ws_guarded",
+            workspacePath: "C:/repo",
+            getRuntimePolicy,
+            customTools: [actorTool] as never,
+        });
+
+        expect(createGuardedBuiltinsMock).toHaveBeenCalledWith("C:/repo", getRuntimePolicy);
+        expect(createAgentSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+            customTools: [
+                actorTool,
+                expect.objectContaining({ name: "read" }),
+                expect.objectContaining({ name: "bash" }),
+                expect.objectContaining({ name: "write" }),
+            ],
+        }));
+    });
+
+    it("keeps guarded built-ins effective when a custom tool uses the same name", async () => {
+        const customWrite = { name: "write", execute: vi.fn() };
+
+        await createWorkspaceSession({
+            workspaceId: "ws_guarded_override",
+            workspacePath: "C:/repo",
+            getRuntimePolicy: vi.fn(),
+            customTools: [customWrite] as never,
+        });
+
+        const passedTools = createAgentSessionMock.mock.calls.at(-1)?.[0].customTools as Array<{
+            name: string;
+            execute: unknown;
+        }>;
+        const guardedTools = createGuardedBuiltinsMock.mock.results.at(-1)?.value;
+        const guardedWrite = guardedTools.find((tool) => tool.name === "write");
+
+        expect(passedTools).toContain(customWrite);
+        expect(passedTools.filter((tool) => tool.name === "write").at(-1)).toBe(guardedWrite);
+        expect(passedTools.at(-1)).toBe(guardedWrite);
+    });
+
+    it("leaves custom tools untouched when no runtime policy callback is supplied", async () => {
+        const actorTool = { name: "actor", execute: vi.fn() };
+
+        await createWorkspaceSession({
+            workspaceId: "ws_unguarded",
+            workspacePath: "C:/repo",
+            customTools: [actorTool] as never,
+        });
+
+        expect(createGuardedBuiltinsMock).not.toHaveBeenCalled();
+        expect(createAgentSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+            customTools: [actorTool],
         }));
     });
 

@@ -16,6 +16,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 import { join } from 'path';
 import type { ChildProcess } from 'child_process';
 
@@ -45,8 +46,13 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
     activeApp = app;
-    const page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
+    await getWindowByUrl(app, "index.html");
+    const page = await getWindowByUrl(app, 'index.html');
+    const onboarding = page.locator('[data-testid="onboarding-modal"]');
+    if (await onboarding.count()) {
+        await page.getByRole('button', { name: '跳过引导' }).click({ timeout: 5_000 });
+        await expect(onboarding).toHaveCount(0, { timeout: 5_000 });
+    }
     return { app, page };
 }
 
@@ -94,8 +100,9 @@ test.describe('Pi Desktop — Core Workflow', () => {
         expect(result.ws1).toBeTruthy();
         expect(result.ws2).toBeTruthy();
 
-        // Verify workspaces appear in sidebar
-        await expect(page.locator('button[data-mmcode-section="new-task"]')).toBeVisible();
+        // Verify the real conversation surface is available after workspace creation.
+        await page.getByRole('tab', { name: '对话' }).click();
+        await expect(page.locator('textarea[aria-label="发送"]')).toBeVisible();
 
         // Switch workspace via Command Palette
         await page.keyboard.press('Control+k');

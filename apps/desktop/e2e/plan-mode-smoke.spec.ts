@@ -96,7 +96,7 @@ test.describe('Plan Mode Smoke Test', () => {
       args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
       env: { ...process.env, CI: '1' },
     });
-    await app.firstWindow();
+    await getWindowByUrl(app, "index.html");
     page = await getWindowByUrl(app, 'index.html');
 
     page.on('console', (msg) => {

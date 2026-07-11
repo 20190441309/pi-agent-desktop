@@ -90,7 +90,6 @@ async function seedWorkspaceAndSessions(page: Page): Promise<void> {
         window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
         const workspace = await window.piAPI.createWorkspace("continuous-window-sidebar", workspacePath);
         if ("code" in workspace) throw new Error(workspace.fallback);
-        await window.piAPI.selectWorkspace(workspace.path);
 
         const alpha = await window.piAPI.createSession(workspace.id, "验收会话 Alpha", "continuous-session-alpha");
         const beta = await window.piAPI.createSession(workspace.id, "验收会话 Beta", "continuous-session-beta");
@@ -99,6 +98,9 @@ async function seedWorkspaceAndSessions(page: Page): Promise<void> {
         await window.piAPI.renameSession(beta.id, "验收会话 Beta");
         await window.piAPI.renameSession(gamma.id, "验收会话 Gamma");
         await window.piAPI.updateSessionMetadata(gamma.id, { archived: true });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        const selected = await window.piAPI.selectWorkspace(workspace.path);
+        if (selected && "code" in selected) throw new Error(selected.fallback);
     }, { workspacePath: WORKSPACE_PATH });
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByRole("tablist", { name: "顶部标签栏" })).toBeVisible({ timeout: 15_000 });
@@ -338,12 +340,13 @@ test.describe("continuous acceptance window, tabs, and sidebar", () => {
                 return "窗口控制区域与顶部 tablist 没有水平重叠。";
             }, "titlebar-overlap-analysis");
 
-            const tabNames = ["对话", "任务", "记忆", "工具", "设置"] as const;
+            const tabNames = ["对话", "运行", "工作台", "扩展"] as const;
             await record("F03-C02", "F03", "顶部 tabs 具有正确 tablist 与 aria 语义", async () => {
                 if (!page) throw new Error("main page missing");
                 const tablist = page.getByRole("tablist", { name: "顶部标签栏" });
                 await expect(tablist).toBeVisible();
                 for (const name of tabNames) await expect(tablist.getByRole("tab", { name })).toBeVisible();
+                await expect(page.getByRole("button", { name: "打开设置" })).toBeVisible();
                 return "顶部 tabs 都位于真实 tablist 中，可由无障碍角色定位。";
             }, "tabs-aria");
 
@@ -357,15 +360,18 @@ test.describe("continuous acceptance window, tabs, and sidebar", () => {
 
             await record("F03-C04", "F03", "任务 tab 路由到任务总览并设置选中态", async () => {
                 if (!page) throw new Error("main page missing");
-                await page.getByRole("tab", { name: "任务" }).click();
+                await page.getByRole("tab", { name: "运行" }).click();
+                const runTabs = page.getByRole("tablist", { name: "运行视图" });
+                await runTabs.getByRole("tab", { name: "任务" }).click();
                 await expect(page.getByText("任务总览")).toBeVisible();
-                await expect(page.getByRole("tab", { name: "任务" })).toHaveAttribute("aria-selected", "true");
+                await expect(runTabs.getByRole("tab", { name: "任务" })).toHaveAttribute("aria-selected", "true");
                 return "任务 tab 显示任务总览且 aria-selected=true。";
             }, "tab-tasks");
 
             await record("F03-C05", "F03", "记忆 tab 路由到记忆搜索并显示输入", async () => {
                 if (!page) throw new Error("main page missing");
-                await page.getByRole("tab", { name: "记忆" }).click();
+                await page.getByRole("tab", { name: "运行" }).click();
+                await page.getByRole("tablist", { name: "运行视图" }).getByRole("tab", { name: "记忆管理" }).click();
                 await expect(page.getByRole("heading", { name: "记忆" })).toBeVisible();
                 await expect(page.getByPlaceholder("搜索记忆...")).toBeVisible();
                 return "记忆 tab 显示 MemoryPanel 搜索输入，不是空路由。";
@@ -373,7 +379,7 @@ test.describe("continuous acceptance window, tabs, and sidebar", () => {
 
             await record("F03-C06", "F03", "工具 tab 路由到插件面板并保留创建入口", async () => {
                 if (!page) throw new Error("main page missing");
-                await page.getByRole("tab", { name: "工具" }).click();
+                await page.getByRole("tab", { name: "扩展" }).click();
                 await expect(page.getByRole("region", { name: "插件面板" })).toBeVisible();
                 await expect(page.getByRole("button", { name: /创建/ }).first()).toBeVisible();
                 return "工具 tab 显示 SkillsPanel 和创建入口。";
@@ -382,7 +388,7 @@ test.describe("continuous acceptance window, tabs, and sidebar", () => {
             await record("F03-C07", "F03", "设置 tab 打开独立设置窗口而非替换主中心区", async () => {
                 if (!page || !app) throw new Error("main page or app missing");
                 const settingsWindowPromise = app.waitForEvent("window");
-                await page.getByRole("tab", { name: "设置" }).click();
+                await page.getByRole("button", { name: "打开设置" }).click();
                 const settingsWindow = await settingsWindowPromise;
                 await settingsWindow.waitForLoadState("domcontentloaded");
                 await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();
@@ -393,7 +399,7 @@ test.describe("continuous acceptance window, tabs, and sidebar", () => {
 
             await record("F03-C08", "F03", "tab 循环切换后可回到对话并继续输入", async () => {
                 if (!page) throw new Error("main page missing");
-                for (const name of ["任务", "记忆", "工具", "对话"] as const) {
+                for (const name of ["运行", "工作台", "扩展", "对话"] as const) {
                     await page.getByRole("tab", { name }).click();
                 }
                 await page.locator('textarea[aria-label="发送"]').first().fill("tab route persistence check");
@@ -411,8 +417,8 @@ test.describe("continuous acceptance window, tabs, and sidebar", () => {
 
             await record("F03-C10", "F03", "顶部 tabs 截图显示选中态与中心面板一致", async () => {
                 if (!page) throw new Error("main page missing");
-                await page.getByRole("tab", { name: "工具" }).click();
-                await expect(page.getByRole("tab", { name: "工具" })).toHaveAttribute("aria-selected", "true");
+                await page.getByRole("tab", { name: "扩展" }).click();
+                await expect(page.getByRole("tab", { name: "扩展" })).toHaveAttribute("aria-selected", "true");
                 await expect(page.getByRole("region", { name: "插件面板" })).toBeVisible();
                 return "工具 tab 选中态和中心插件面板一致。";
             }, "tabs-state-analysis");

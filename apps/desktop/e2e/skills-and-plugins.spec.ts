@@ -20,7 +20,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
-    await app.firstWindow();
+    await getWindowByUrl(app, "index.html");
     const page = await getWindowByUrl(app, 'index.html');
 
     const modalCount = await page.locator('[data-testid="onboarding-modal"]').count();
@@ -111,7 +111,7 @@ test.describe('Pi Desktop — Skills & Plugins', () => {
         const userDataDir = test.info().outputPath(`skills-${Date.now()}`);
         const { app, page } = await launchApp(userDataDir);
 
-        await page.getByRole('tab', { name: '工具' }).click();
+        await page.getByRole('tab', { name: '扩展' }).click();
 
         // Verify skills region is visible
         await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
@@ -159,7 +159,7 @@ test.describe('Pi Desktop — Skills & Plugins', () => {
         const { app, page } = await launchApp(userDataDir);
         await installPiPackagesIpcStubs(app);
 
-        await page.getByRole('tab', { name: '工具' }).click();
+        await page.getByRole('tab', { name: '扩展' }).click();
         await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
 
         await expect(page.getByRole('button', { name: '安装 audit-pkg' })).toBeVisible({ timeout: 5000 });

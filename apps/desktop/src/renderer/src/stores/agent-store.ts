@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AgentMessage, AgentRuntimeState, AgentTab } from "@shared";
+import { isIpcError, type AgentMessage, type AgentPermissionSyncResult, type AgentRuntimeState, type AgentTab } from "@shared";
 import { logger } from "../utils/logger";
 import { addToast } from "./toast-store";
 import { i18n } from "../i18n";
@@ -16,6 +16,7 @@ interface AgentStore {
     sendPrompt: (message: string) => Promise<void>;
     stopAgent: (agentId: string) => Promise<void>;
     restartAgent: (agentId: string) => Promise<AgentTab>;
+    syncPermissions: (agentId: string) => Promise<AgentPermissionSyncResult>;
     setAgentMessages: (agentId: string, messages: AgentMessage[]) => void;
     appendStreamMessage: (agentId: string, message: AgentMessage) => void;
     updateStreamMessage: (agentId: string, messageId: string, updates: Partial<AgentMessage>) => void;
@@ -169,6 +170,12 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
             addToast(i18n.t("errors.agentRestartFailed"), "error");
         }
         return newAgent;
+    },
+
+    syncPermissions: async (agentId) => {
+        const result = await window.piAPI.agentsSyncPermissions(agentId);
+        if (isIpcError(result)) throw new Error(result.fallback);
+        return result;
     },
 
     setAgentMessages: (agentId, messages) =>

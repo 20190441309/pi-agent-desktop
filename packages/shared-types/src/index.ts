@@ -651,6 +651,35 @@ export type ToolPermissions = Record<ToolPermissionKey, boolean>;
 
 export type ToolPermissionPreset = "minimal" | "development" | "all";
 
+export const TOOL_PERMISSION_PRESETS: Record<ToolPermissionPreset, ToolPermissions> = Object.freeze({
+    minimal: Object.freeze({
+        fileRead: true,
+        fileWrite: false,
+        shell: false,
+        git: false,
+        network: false,
+        extensions: false,
+    }),
+    development: Object.freeze({
+        fileRead: true,
+        fileWrite: true,
+        shell: true,
+        git: true,
+        network: false,
+        extensions: true,
+    }),
+    all: Object.freeze({
+        fileRead: true,
+        fileWrite: true,
+        shell: true,
+        git: true,
+        network: true,
+        extensions: true,
+    }),
+});
+
+export const DEVELOPMENT_TOOL_PERMISSIONS: ToolPermissions = TOOL_PERMISSION_PRESETS.development;
+
 export interface SessionUsageSnapshot {
     provider?: string;
     model?: string;
@@ -1170,6 +1199,11 @@ export function isSettingsWindowTab(value: unknown): value is SettingsWindowTab 
     return SETTINGS_WINDOW_TABS.some((tab) => tab === value);
 }
 
+export interface AgentPermissionSyncResult {
+    activeTools: string[];
+    deniedTools: string[];
+}
+
 export interface PiAPI {
     // Pi Driver
     sendPrompt(workspaceId: string, message: string, options?: SendPromptOptions): Promise<unknown>;
@@ -1267,6 +1301,7 @@ export interface PiAPI {
     agentsMessages(agentId: string): Promise<AgentMessage[]>;
     agentsRuntimeState(agentId: string): Promise<AgentRuntimeState>;
     agentsSetThinking(agentId: string, level: "none" | "low" | "medium" | "high"): Promise<void>;
+    agentsSyncPermissions(agentId: string): Promise<AgentPermissionSyncResult | IpcError>;
     onAgentsState(cb: (agents: AgentTab[]) => void): Unsubscribe;
     onAgentMessages(cb: (payload: { agentId: string; messages: AgentMessage[] }) => void): Unsubscribe;
     onAgentEvent(cb: (payload: { agentId: string; workspaceId: string; event: PiEvent }) => void): Unsubscribe;

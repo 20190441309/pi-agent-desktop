@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_LONG_HORIZON_SETTINGS } from "@shared";
+import { DEFAULT_LONG_HORIZON_SETTINGS, type ToolPermissions } from "@shared";
 import { AgentRuntimeRegistry } from "../registry";
 import { PendingEdits } from "../../approval/pending-edits";
 import { createExtensionUiBridge } from "../../extensions/extension-ui-bridge";
@@ -13,13 +13,17 @@ const sessions: Array<{
     dispose: ReturnType<typeof vi.fn>;
     subscribe: ReturnType<typeof vi.fn>;
     subscribers: Array<(event: unknown) => void | Promise<void>>;
+    getAllTools: ReturnType<typeof vi.fn>;
+    getActiveToolNames: ReturnType<typeof vi.fn>;
+    setActiveToolsByName: ReturnType<typeof vi.fn>;
 }> = [];
-const { interceptorHandleMock } = vi.hoisted(() => ({
+const { interceptorHandleMock, sessionCreationState } = vi.hoisted(() => ({
     interceptorHandleMock: vi.fn(async () => undefined),
+    sessionCreationState: { nextActiveToolsError: undefined as Error | undefined },
 }));
 
 vi.mock("../../pi-session/factory", () => ({
-    createWorkspaceSession: vi.fn(async (opts: { workspaceId: string }) => {
+    createWorkspaceSession: vi.fn(async (opts: { workspaceId: string; sessionPath?: string; getRuntimePolicy?: () => unknown }) => {
         const index = sessions.length + 1;
         const subscribers: Array<(event: unknown) => void | Promise<void>> = [];
         const session = {
@@ -35,7 +39,24 @@ vi.mock("../../pi-session/factory", () => ({
                 subscribers.push(subscriber);
             }),
             subscribers,
+            getAllTools: vi.fn(() => [
+                { name: "read" },
+                { name: "write" },
+                { name: "bash" },
+                { name: "git_status" },
+                { name: "fetch" },
+                { name: "actor" },
+            ]),
+            getActiveToolNames: vi.fn(() => ["read", "write", "bash", "git_status", "fetch", "actor"]),
+            setActiveToolsByName: vi.fn(),
         };
+        if (sessionCreationState.nextActiveToolsError) {
+            const error = sessionCreationState.nextActiveToolsError;
+            sessionCreationState.nextActiveToolsError = undefined;
+            session.setActiveToolsByName.mockImplementationOnce(() => {
+                throw error;
+            });
+        }
         sessions.push(session);
         return {
             workspaceId: opts.workspaceId,
@@ -70,6 +91,7 @@ describe("AgentRuntimeRegistry", () => {
         sessions.length = 0;
         interceptorHandleMock.mockReset();
         interceptorHandleMock.mockResolvedValue(undefined);
+        sessionCreationState.nextActiveToolsError = undefined;
         vi.mocked(createWorkspaceSession).mockClear();
         emitted = [];
         registry = new AgentRuntimeRegistry({
@@ -303,6 +325,60 @@ describe("AgentRuntimeRegistry", () => {
         resolvePrompt?.();
     });
 
+    it("keeps the operation tail until an accepted Plan turn settles", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+        const planTurn = deferred();
+        sessions[0].prompt.mockImplementation(async (message: string) => {
+            if (message === `${PLAN_DIRECTIVE}\n\ninspect`) {
+                await planTurn.promise;
+            }
+        });
+
+        let planAccepted = false;
+        await registry.prompt({ agentId: agent.id, message: "inspect", mode: "plan" }).then(() => {
+            planAccepted = true;
+        });
+
+        expect(planAccepted).toBe(true);
+        expect(sessions[0].prompt.mock.calls.map(([message]) => message)).toEqual([
+            "/plan",
+            `${PLAN_DIRECTIVE}\n\ninspect`,
+        ]);
+        expect(sessions[0].setActiveToolsByName).toHaveBeenCalledTimes(1);
+        expect(sessions[0].setActiveToolsByName).toHaveBeenLastCalledWith(["read", "git_status", "actor"]);
+
+        let buildAccepted = false;
+        const buildPrompt = registry.prompt({ agentId: agent.id, message: "implement", mode: "build" }).then(() => {
+            buildAccepted = true;
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(buildAccepted).toBe(false);
+        expect(sessions[0].setActiveToolsByName).toHaveBeenCalledTimes(1);
+        expect(sessions[0].prompt.mock.calls.map(([message]) => message)).toEqual([
+            "/plan",
+            `${PLAN_DIRECTIVE}\n\ninspect`,
+        ]);
+        const getRuntimePolicy = vi.mocked(createWorkspaceSession).mock.calls[0]?.[0].getRuntimePolicy;
+        expect(getRuntimePolicy?.()).toMatchObject({ mode: "plan" });
+
+        planTurn.resolve();
+        await buildPrompt;
+
+        expect(buildAccepted).toBe(true);
+        expect(sessions[0].prompt.mock.calls.map(([message]) => message)).toEqual([
+            "/plan",
+            `${PLAN_DIRECTIVE}\n\ninspect`,
+            "/plan",
+            "implement",
+        ]);
+        expect(sessions[0].setActiveToolsByName).toHaveBeenLastCalledWith([
+            "read", "write", "bash", "git_status", "actor",
+        ]);
+        expect(getRuntimePolicy?.()).toMatchObject({ mode: "build" });
+    });
+
     it("queues mode-exit commands with the same follow-up behavior before executing a queued prompt", async () => {
         const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
 
@@ -339,6 +415,49 @@ describe("AgentRuntimeRegistry", () => {
         expect(restarted.sessionPath).toBe("C:/pi/session.jsonl");
         expect(sessions[0].dispose).toHaveBeenCalled();
         expect(sessions).toHaveLength(2);
+    });
+
+    it("derives a native Pi session path from the desktop session id", async () => {
+        const resolveNativeSessionPath = vi.fn(() => "C:/user-data/pi-sessions/session-123-b9c84322f82434cb.jsonl");
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) => workspaceId === "ws_1"
+                ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            resolveNativeSessionPath,
+        });
+
+        const agent = await registry.create({ workspaceId: "ws_1", sessionId: "session-123" });
+
+        expect(resolveNativeSessionPath).toHaveBeenCalledWith("session-123");
+        expect(createWorkspaceSession).toHaveBeenCalledWith(expect.objectContaining({
+            sessionPath: "C:/user-data/pi-sessions/session-123-b9c84322f82434cb.jsonl",
+        }));
+        expect(agent.sessionPath).toBe("C:/user-data/pi-sessions/session-123-b9c84322f82434cb.jsonl");
+    });
+
+    it("preserves an explicit imported native session path", async () => {
+        const resolveNativeSessionPath = vi.fn();
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) => workspaceId === "ws_1"
+                ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            resolveNativeSessionPath,
+        });
+
+        await registry.create({
+            workspaceId: "ws_1",
+            sessionId: "session-123",
+            sessionPath: "D:/imports/native.jsonl",
+        });
+
+        expect(resolveNativeSessionPath).not.toHaveBeenCalled();
+        expect(createWorkspaceSession).toHaveBeenCalledWith(expect.objectContaining({
+            sessionPath: "D:/imports/native.jsonl",
+        }));
     });
 
     it("refreshes workspace runtimes in place without changing agent ids", async () => {
@@ -417,6 +536,274 @@ describe("AgentRuntimeRegistry", () => {
             channel: "agents:event",
             payload: { agentId: agent.id, workspaceId: "ws_1", event: { type: "agent_start" } },
         });
+    });
+
+    const developmentPermissions: ToolPermissions = {
+        fileRead: true,
+        fileWrite: true,
+        shell: true,
+        git: true,
+        network: false,
+        extensions: true,
+    };
+
+    function deferred(): { promise: Promise<void>; resolve: () => void } {
+        let resolve!: () => void;
+        const promise = new Promise<void>((done) => {
+            resolve = done;
+        });
+        return { promise, resolve };
+    }
+
+    it("serializes concurrent Plan and Build prompts for the same agent", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+        const planTransition = deferred();
+        sessions[0].prompt.mockImplementationOnce(() => planTransition.promise);
+
+        const planPrompt = registry.prompt({ agentId: agent.id, message: "inspect", mode: "plan" });
+        await Promise.resolve();
+        const buildPrompt = registry.prompt({ agentId: agent.id, message: "implement", mode: "build" });
+        await Promise.resolve();
+
+        expect(sessions[0].prompt).toHaveBeenCalledTimes(1);
+        expect(sessions[0].prompt).toHaveBeenCalledWith("/plan");
+        expect(sessions[0].setActiveToolsByName).not.toHaveBeenCalled();
+
+        planTransition.resolve();
+        await Promise.all([planPrompt, buildPrompt]);
+
+        expect(sessions[0].prompt.mock.calls.map(([message]) => message)).toEqual([
+            "/plan",
+            `${PLAN_DIRECTIVE}\n\ninspect`,
+            "/plan",
+            "implement",
+        ]);
+        expect(sessions[0].setActiveToolsByName.mock.calls.map(([tools]) => tools)).toEqual([
+            ["read", "git_status", "actor"],
+            ["read", "write", "bash", "git_status", "actor"],
+        ]);
+        const getRuntimePolicy = vi.mocked(createWorkspaceSession).mock.calls[0]?.[0].getRuntimePolicy;
+        expect(getRuntimePolicy?.()).toMatchObject({ mode: "build" });
+    });
+
+    it("keeps prompt serialization independent across agents", async () => {
+        const first = await registry.create({ workspaceId: "ws_1", title: "A" });
+        const second = await registry.create({ workspaceId: "ws_1", title: "B" });
+        const firstTransition = deferred();
+        sessions[0].prompt.mockImplementationOnce(() => firstTransition.promise);
+
+        const blocked = registry.prompt({ agentId: first.id, message: "inspect", mode: "plan" });
+        await Promise.resolve();
+        await registry.prompt({ agentId: second.id, message: "independent", mode: "build" });
+
+        expect(sessions[1].setActiveToolsByName).toHaveBeenCalled();
+        expect(sessions[1].prompt).toHaveBeenCalledWith("independent", undefined);
+        expect(sessions[0].prompt).toHaveBeenCalledTimes(1);
+
+        firstTransition.resolve();
+        await blocked;
+    });
+
+    it("queues public permission sync behind an in-flight mode transition", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+        const planTransition = deferred();
+        sessions[0].prompt.mockImplementationOnce(() => planTransition.promise);
+
+        const planPrompt = registry.prompt({ agentId: agent.id, message: "inspect", mode: "plan" });
+        await Promise.resolve();
+        const permissionSync = registry.syncPermissions(agent.id);
+        await Promise.resolve();
+
+        expect(sessions[0].prompt).toHaveBeenCalledTimes(1);
+        expect(sessions[0].prompt).toHaveBeenCalledWith("/plan");
+        expect(sessions[0].setActiveToolsByName).not.toHaveBeenCalled();
+
+        planTransition.resolve();
+        const [, syncResult] = await Promise.all([planPrompt, permissionSync]);
+
+        expect(syncResult).toEqual({
+            activeTools: ["read", "git_status", "actor"],
+            deniedTools: ["write", "bash", "fetch"],
+        });
+        expect(sessions[0].setActiveToolsByName.mock.calls.map(([tools]) => tools)).toEqual([
+            ["read", "git_status", "actor"],
+            ["read", "git_status", "actor"],
+        ]);
+        const getRuntimePolicy = vi.mocked(createWorkspaceSession).mock.calls[0]?.[0].getRuntimePolicy;
+        expect(getRuntimePolicy?.()).toMatchObject({ mode: "plan" });
+    });
+
+    it("creates the runtime policy from the session permission override", async () => {
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) => workspaceId === "ws_1"
+                ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            getEffectiveToolPermissions: (_workspaceId, sessionId) => sessionId === "session_1"
+                ? { ...developmentPermissions, fileWrite: false }
+                : developmentPermissions,
+        });
+
+        await registry.create({ workspaceId: "ws_1", sessionId: "session_1" });
+
+        const getRuntimePolicy = vi.mocked(createWorkspaceSession).mock.calls[0]?.[0].getRuntimePolicy;
+        expect(getRuntimePolicy?.()).toMatchObject({
+            mode: "build",
+            permissions: { ...developmentPermissions, fileWrite: false },
+        });
+    });
+
+    it("uses workspace permissions when the session has no override", async () => {
+        const getEffectiveToolPermissions = vi.fn(() => ({ ...developmentPermissions, network: true }));
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) => workspaceId === "ws_1"
+                ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            getEffectiveToolPermissions,
+        });
+
+        await registry.create({ workspaceId: "ws_1" });
+
+        expect(getEffectiveToolPermissions).toHaveBeenCalledWith("ws_1", undefined);
+        const getRuntimePolicy = vi.mocked(createWorkspaceSession).mock.calls[0]?.[0].getRuntimePolicy;
+        expect(getRuntimePolicy?.()).toMatchObject({ permissions: { ...developmentPermissions, network: true } });
+    });
+
+    it("defaults to the development permission preset", async () => {
+        await registry.create({ workspaceId: "ws_1" });
+
+        const getRuntimePolicy = vi.mocked(createWorkspaceSession).mock.calls[0]?.[0].getRuntimePolicy;
+        expect(getRuntimePolicy?.()).toMatchObject({ permissions: developmentPermissions });
+    });
+
+    it("applies the latest active tools before each user prompt", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+
+        await registry.prompt({ agentId: agent.id, message: "hello" });
+
+        expect(sessions[0].setActiveToolsByName).toHaveBeenCalledWith([
+            "read", "write", "bash", "git_status", "actor",
+        ]);
+        expect(sessions[0].setActiveToolsByName.mock.invocationCallOrder[0]).toBeLessThan(
+            sessions[0].prompt.mock.invocationCallOrder[0],
+        );
+    });
+
+    it("removes mutation and shell tools before a Plan prompt", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+
+        await registry.prompt({ agentId: agent.id, message: "inspect", mode: "plan" });
+
+        expect(sessions[0].setActiveToolsByName).toHaveBeenLastCalledWith(["read", "git_status", "actor"]);
+        expect(sessions[0].setActiveToolsByName.mock.invocationCallOrder[0]).toBeLessThan(
+            sessions[0].prompt.mock.invocationCallOrder[1],
+        );
+    });
+
+    it("applies the current runtime policy after refreshing a session", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+        await registry.prompt({ agentId: agent.id, message: "plan", mode: "plan" });
+
+        await registry.refreshWorkspace("ws_1");
+
+        expect(sessions[1].setActiveToolsByName).toHaveBeenCalledWith(["read", "git_status", "actor"]);
+    });
+
+    it("returns active and denied tools in registered order when permissions sync", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+
+        const result = await registry.syncPermissions(agent.id, "plan");
+
+        expect(result).toEqual({
+            activeTools: ["read", "git_status", "actor"],
+            deniedTools: ["write", "bash", "fetch"],
+        });
+    });
+
+    it("keeps the previous controller policy when active tool configuration fails", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+        const getRuntimePolicy = vi.mocked(createWorkspaceSession).mock.calls[0]?.[0].getRuntimePolicy;
+        sessions[0].setActiveToolsByName.mockImplementationOnce(() => {
+            throw new Error("activation failed");
+        });
+
+        await expect(registry.syncPermissions(agent.id, "plan")).rejects.toThrow("activation failed");
+
+        expect(getRuntimePolicy?.()).toMatchObject({ mode: "build" });
+    });
+
+    it("deduplicates registered tool names by first occurrence", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+        sessions[0].getAllTools.mockReturnValue([
+            { name: "read" },
+            { name: "write" },
+            { name: "read" },
+            { name: "bash" },
+            { name: "write" },
+        ]);
+
+        const result = await registry.syncPermissions(agent.id, "plan");
+
+        expect(result).toEqual({
+            activeTools: ["read"],
+            deniedTools: ["write", "bash"],
+        });
+        expect(sessions[0].setActiveToolsByName).toHaveBeenCalledWith(["read"]);
+    });
+
+    it("keeps the previous session active when refresh configuration fails", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+        const previous = registry.getWorkspaceSession(agent.id);
+        sessionCreationState.nextActiveToolsError = new Error("candidate activation failed");
+
+        await expect(registry.refreshWorkspace("ws_1")).rejects.toThrow("candidate activation failed");
+
+        expect(registry.getWorkspaceSession(agent.id)).toBe(previous);
+        expect(sessions[0].dispose).not.toHaveBeenCalled();
+        expect(sessions[1].dispose).toHaveBeenCalledOnce();
+        expect(sessions[1].subscribe).not.toHaveBeenCalled();
+    });
+
+    it("configures a refreshed session before subscribing and disposing the previous session", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+
+        await registry.refreshWorkspace("ws_1");
+
+        expect(sessions[1].setActiveToolsByName.mock.invocationCallOrder[0]).toBeLessThan(
+            sessions[1].subscribe.mock.invocationCallOrder[0],
+        );
+        expect(sessions[1].subscribe.mock.invocationCallOrder[0]).toBeLessThan(
+            sessions[0].dispose.mock.invocationCallOrder[0],
+        );
+        expect(registry.getWorkspaceSession(agent.id).session).toBe(sessions[1]);
+    });
+
+    it("syncs Plan tools before an internal prompt without changing the current mode", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1" });
+        await registry.prompt({ agentId: agent.id, message: "plan first", mode: "plan" });
+        sessions[0].getAllTools.mockReturnValue([
+            { name: "read" },
+            { name: "write" },
+            { name: "edit" },
+            { name: "bash" },
+            { name: "plan_write" },
+        ]);
+        sessions[0].setActiveToolsByName.mockClear();
+        sessions[0].prompt.mockClear();
+
+        await registry.promptInternal(agent.id, "internal follow-up");
+
+        expect(sessions[0].setActiveToolsByName).toHaveBeenCalledWith(["read", "plan_write"]);
+        expect(sessions[0].setActiveToolsByName.mock.invocationCallOrder[0]).toBeLessThan(
+            sessions[0].prompt.mock.invocationCallOrder[0],
+        );
+        expect(sessions[0].prompt).toHaveBeenCalledOnce();
+        expect(sessions[0].prompt).toHaveBeenCalledWith("internal follow-up", undefined);
+        const getRuntimePolicy = vi.mocked(createWorkspaceSession).mock.calls[0]?.[0].getRuntimePolicy;
+        expect(getRuntimePolicy?.()).toMatchObject({ mode: "plan" });
     });
 
     it("keeps long-running workflow turns alive when progress events continue before the watchdog deadline", async () => {

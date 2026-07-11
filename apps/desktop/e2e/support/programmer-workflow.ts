@@ -58,7 +58,12 @@ export async function launchApp(options: LaunchOptions): Promise<AppContext> {
 }
 
 export async function closeApp(app: ElectronApplication | undefined): Promise<void> {
-    const process = app?.process();
+    let process: ReturnType<ElectronApplication["process"]> | undefined;
+    try {
+        process = app?.process();
+    } catch {
+        // The Playwright handle may already be disposed after Electron exits.
+    }
     try {
         await app?.close();
     } catch (error) {
@@ -154,6 +159,18 @@ async function waitForExit(process: ChildProcess | undefined, timeoutMs = 5_000)
     });
 }
 
+async function retryMainAction(action: () => Promise<void>): Promise<void> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        try {
+            await action();
+            return;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (!message.includes("Execution context was destroyed") || attempt === 4) throw error;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+    }
+}
 async function installStableIpcStubs(app: ElectronApplication, selectedWorkspacePath: string): Promise<void> {
     await app.evaluate(({ ipcMain }, workspacePath) => {
         type MainGlobal = typeof globalThis & {

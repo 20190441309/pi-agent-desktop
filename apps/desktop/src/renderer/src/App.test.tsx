@@ -64,8 +64,14 @@ vi.mock("./components/ShortcutsCheatsheet/ShortcutsCheatsheet", () => ({
 vi.mock("./components/SkillsPanel/SkillsPanel", () => ({
     SkillsPanel: () => <div>SkillsPanel</div>,
 }));
+vi.mock("./components/FileWorkspace/FileWorkspace", () => ({
+    FileWorkspace: () => <div>FileWorkspace</div>,
+}));
+vi.mock("./components/GitPanel/GitPanel", () => ({
+    GitPanel: () => <div>GitPanel</div>,
+}));
 vi.mock("./components/Terminal/TerminalPanel", () => ({
-    TerminalPanel: () => null,
+    TerminalPanel: ({ isOpen }: { isOpen: boolean }) => isOpen ? <div>TerminalPanel</div> : null,
 }));
 vi.mock("./components/ApprovalPanel/ApprovalPanel", () => ({
     ApprovalPanel: () => null,
@@ -143,6 +149,8 @@ const piAPI = {
         workspaceId: input.workspaceId,
         title: input.title ?? "Agent",
         status: "idle",
+        sessionId: input.sessionId,
+        sessionPath: input.sessionPath,
         createdAt: 1,
         updatedAt: 1,
     })),
@@ -324,6 +332,18 @@ describe("App sidebar session navigation", () => {
                 sessionId: "s_1",
             });
         });
+        expect(piAPI.agentsCreate).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            useSessionStore.setState({ sessionsLoading: true });
+        });
+        await act(async () => {
+            useSessionStore.setState({ sessionsLoading: false });
+        });
+
+        await waitFor(() => {
+            expect(piAPI.agentsCreate).toHaveBeenCalledTimes(1);
+        });
     });
 
     it("默认 Agent 创建请求未完成时不会重复创建", async () => {
@@ -398,19 +418,20 @@ describe("App sidebar session navigation", () => {
         vi.useRealTimers();
     });
 
-    it("主导航切换为对话任务记忆工具设置五个真实一级入口", () => {
+    it("主导航只保留对话、运行、工作台和扩展，设置使用右侧图标按钮", () => {
         render(<App />);
 
         expect(screen.getByRole("tab", { name: "对话" })).toBeTruthy();
-        expect(screen.getByRole("tab", { name: "任务" })).toBeTruthy();
-        expect(screen.getByRole("tab", { name: "记忆" })).toBeTruthy();
-        expect(screen.getByRole("tab", { name: "工具" })).toBeTruthy();
-        expect(screen.getByRole("tab", { name: "设置" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "运行" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "工作台" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "扩展" })).toBeTruthy();
+        expect(screen.queryByRole("tab", { name: "记忆" })).toBeNull();
+        expect(screen.queryByRole("tab", { name: "设置" })).toBeNull();
         expect(screen.queryByRole("tab", { name: "技能" })).toBeNull();
         expect(screen.queryByRole("tab", { name: "Git" })).toBeNull();
         expect(screen.queryByRole("tab", { name: "历史" })).toBeNull();
 
-        fireEvent.click(screen.getByRole("tab", { name: "设置" }));
+        fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
 
         expect(window.piAPI.openSettingsWindow).toHaveBeenCalledTimes(1);
     });
@@ -427,16 +448,29 @@ describe("App sidebar session navigation", () => {
         });
     });
 
-    it("点击任务和记忆标签时进入对应主区而不是历史搜索回退", async () => {
+    it("运行页默认展示任务，并把记忆降为页内二级入口", async () => {
         render(<App />);
 
-        fireEvent.click(screen.getByRole("tab", { name: "任务" }));
+        fireEvent.click(screen.getByRole("tab", { name: "运行" }));
         expect(await screen.findByText("任务总览")).toBeTruthy();
         expect(screen.queryByText("ChatView")).toBeNull();
 
-        fireEvent.click(screen.getByRole("tab", { name: "记忆" }));
+        fireEvent.click(screen.getByRole("tab", { name: "记忆管理" }));
         expect(await screen.findByRole("heading", { name: "记忆" })).toBeTruthy();
         expect(screen.queryByText("输入关键词搜索所有对话")).toBeNull();
+    });
+
+    it("工作台把文件、Git 和终端收拢为页内视图", async () => {
+        render(<App />);
+
+        fireEvent.click(screen.getByRole("tab", { name: "工作台" }));
+        expect(await screen.findByText("FileWorkspace")).toBeTruthy();
+
+        fireEvent.click(screen.getByRole("tab", { name: "Git" }));
+        expect(await screen.findByText("GitPanel")).toBeTruthy();
+
+        fireEvent.click(screen.getByRole("tab", { name: "终端" }));
+        expect(await screen.findByText("TerminalPanel")).toBeTruthy();
     });
 
     it("点击侧栏新对话加号会进入新对话并请求聚焦输入框", async () => {
@@ -570,7 +604,7 @@ describe("App sidebar session navigation", () => {
             expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("false");
         });
 
-        fireEvent.click(screen.getByRole("tab", { name: "工具" }));
+        fireEvent.click(screen.getByRole("tab", { name: "扩展" }));
 
         expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("true");
         expect(screen.getByText("SkillsPanel")).toBeTruthy();
@@ -578,7 +612,7 @@ describe("App sidebar session navigation", () => {
 
     it("权限请求在非聊天页到达时会自动切回对话页，并显示在主窗口 composer lane", async () => {
         render(<App />);
-        fireEvent.click(screen.getByRole("tab", { name: "工具" }));
+        fireEvent.click(screen.getByRole("tab", { name: "扩展" }));
 
         act(() => {
             usePermissionStore.setState({
@@ -605,7 +639,7 @@ describe("App sidebar session navigation", () => {
 
     it("主窗口可见时会把运行提醒拉回对话页，但不再渲染 workspace 浮卡", async () => {
         render(<App />);
-        fireEvent.click(screen.getByRole("tab", { name: "工具" }));
+        fireEvent.click(screen.getByRole("tab", { name: "扩展" }));
 
         act(() => {
             window.dispatchEvent(new CustomEvent("pi:stream-start", {

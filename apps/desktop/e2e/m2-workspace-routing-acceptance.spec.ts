@@ -17,7 +17,6 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    await app.firstWindow();
     const page = await getWindowByUrl(app, "index.html");
 
     const onboarding = page.locator('[data-testid="onboarding-modal"]');

@@ -19,7 +19,6 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    await app.firstWindow();
     const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
@@ -41,7 +40,7 @@ async function skipOnboarding(page: Page): Promise<void> {
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
     const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("tab", { name: "设置" }).click();
+    await page.getByRole("button", { name: "打开设置" }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState("domcontentloaded");
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible({ timeout: 10_000 });

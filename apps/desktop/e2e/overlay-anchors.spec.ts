@@ -5,7 +5,6 @@ import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { getWindowByUrl } from "./support/electron-windows";
 
-const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 
 type OverlayTestGlobals = typeof globalThis & {
   __PI_DESKTOP_TEST_OVERLAY__?: {
@@ -31,7 +30,6 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
     args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
     env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
   });
-  await app.firstWindow();
   const page = await getWindowByUrl(app, "index.html");
   const modal = page.locator("[data-testid=\"onboarding-modal\"]");
   if (await modal.count()) {
@@ -210,12 +208,12 @@ test.describe("Pi Desktop overlay anchors", () => {
     expect(chatGeometry.bottomGap, JSON.stringify(chatGeometry)).toBeGreaterThanOrEqual(10);
     expect(chatGeometry.bottomGap, JSON.stringify(chatGeometry)).toBeLessThanOrEqual(16);
     expect((await inspectOverlayWindow(app))?.dom.permissionVisible ?? false).toBe(false);
-    await page.screenshot({ path: join(ACCEPTANCE_DIR, "2026-07-02-overlay-cluster-02-chat-permission.png"), fullPage: true });
+    await page.screenshot({ path: test.info().outputPath("overlay-cluster-02-chat-permission.png"), fullPage: true });
 
     await page.keyboard.press("Escape");
     await expect(chatPermission).toHaveCount(0, { timeout: 5_000 });
 
-    await page.getByRole("tab", { name: "工具" }).click();
+    await page.getByRole("tab", { name: "扩展" }).click();
     await emitPermissionRequest(app, {
       requestId: "main_tools_permission",
       workspaceId,
@@ -226,7 +224,7 @@ test.describe("Pi Desktop overlay anchors", () => {
     await expect(page.getByRole("tab", { name: "对话" })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("alertdialog", { name: "权限请求 1" })).toBeVisible({ timeout: 5_000 });
     expect((await inspectOverlayWindow(app))?.dom.permissionVisible ?? false).toBe(false);
-    await page.screenshot({ path: join(ACCEPTANCE_DIR, "2026-07-02-overlay-cluster-03-tools-permission-return-chat.png"), fullPage: true });
+    await page.screenshot({ path: test.info().outputPath("overlay-cluster-03-tools-permission-return-chat.png"), fullPage: true });
 
     await page.keyboard.press("Escape");
     await expect(page.getByRole("alertdialog", { name: "权限请求 1" })).toHaveCount(0, { timeout: 5_000 });
@@ -246,7 +244,7 @@ test.describe("Pi Desktop overlay anchors", () => {
     await expect(page.locator('[data-testid="chat-input-shell"]').getByText("任务运行中 · 新输入会作为追加指令进入当前会话")).toBeVisible({ timeout: 5_000 });
     const visibleOverlay = await inspectOverlayWindow(app);
     expect(visibleOverlay?.visible ?? false).toBe(false);
-    await page.screenshot({ path: join(ACCEPTANCE_DIR, "2026-07-02-overlay-cluster-05-main-progress-chat.png"), fullPage: true });
+    await page.screenshot({ path: test.info().outputPath("overlay-cluster-05-main-progress-chat.png"), fullPage: true });
 
     await app.evaluate(() => {
       const target = globalThis as OverlayTestGlobals;
@@ -282,6 +280,6 @@ test.describe("Pi Desktop overlay anchors", () => {
       permissionVisible: false,
       reminderVisible: true,
     });
-    await captureOverlayWindow(app, join(ACCEPTANCE_DIR, "2026-07-02-overlay-cluster-11-hidden-progress-overlay.png"));
+    await captureOverlayWindow(app, test.info().outputPath("overlay-cluster-11-hidden-progress-overlay.png"));
   });
 });

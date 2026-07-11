@@ -2,6 +2,7 @@ import { mkdir } from "fs/promises";
 import { expect, test, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const configDir = `${userDataDir}-pi-config`;
@@ -16,7 +17,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
             PI_DESKTOP_CONFIG_DIR: configDir,
         },
     });
-    const page = await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     await page.waitForLoadState("domcontentloaded");
     return { app, page };
 }
@@ -35,7 +36,7 @@ async function prepareWorkspace(page: Page, workspacePath: string): Promise<void
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
     const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("tab", { name: "设置" }).click();
+    await page.getByRole("button", { name: "打开设置" }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState("domcontentloaded");
     return settingsWindow;

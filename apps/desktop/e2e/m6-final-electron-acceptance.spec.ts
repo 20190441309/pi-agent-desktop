@@ -39,6 +39,24 @@ function prepareWorkspaceRepo(workspacePath: string): void {
     writeFileSync(join(workspacePath, "README.md"), "# M6 Acceptance\n\nREADME changed for release gate.\n", "utf-8");
 }
 
+function prepareStubModelConfig(configDir: string): void {
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "models.json"), JSON.stringify({
+        providers: {
+            e2e: {
+                name: "E2E Stub",
+                baseUrl: "http://127.0.0.1:1/v1",
+                api: "openai-completions",
+                models: [{ id: "stub-model", name: "Stub Model", contextWindow: 8192, maxTokens: 1024 }],
+            },
+        },
+    }, null, 2), "utf-8");
+    writeFileSync(join(configDir, "settings.json"), JSON.stringify({
+        defaultProvider: "e2e",
+        defaultModel: "stub-model",
+    }, null, 2), "utf-8");
+}
+
 async function launchApp(
     userDataDir: string,
     configDir: string,
@@ -53,7 +71,6 @@ async function launchApp(
             PI_DESKTOP_CONFIG_DIR: configDir,
         },
     });
-    await app.firstWindow();
     const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
@@ -198,7 +215,7 @@ async function emitApprovalDeferredReview(
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
     const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("tab", { name: "设置" }).click();
+    await page.getByRole("button", { name: "打开设置" }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState("domcontentloaded");
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible({ timeout: 10_000 });
@@ -255,6 +272,7 @@ test.describe("M6 release gate — final Electron acceptance", () => {
         const now = Date.now();
 
         prepareWorkspaceRepo(workspaceTwoPath);
+        prepareStubModelConfig(configDir);
 
         let page: Page;
         ({ app, page } = await launchApp(userDataDir, configDir));
@@ -326,7 +344,9 @@ test.describe("M6 release gate — final Electron acceptance", () => {
             const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="输入消息" i], textarea[placeholder*="描述" i]').first();
             await expect(textarea).toBeVisible({ timeout: 10_000 });
             await textarea.fill(HISTORY_NEEDLE);
-            await textarea.press("Enter");
+            const sendButton = page.getByRole("button", { name: "发送", exact: true });
+            await expect(sendButton).toBeEnabled({ timeout: 10_000 });
+            await sendButton.click();
 
             await expect(page.getByRole("article", { name: /你 ·/ })).toContainText(HISTORY_NEEDLE, { timeout: 10_000 });
             await emitCurrentAgentEvents(page, app!, [

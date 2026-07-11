@@ -3,6 +3,7 @@ import { join } from "path";
 import { test, expect, _electron, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const REAL_GIT_WORKSPACE_PATH = process.cwd();
 
@@ -12,8 +13,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
+    const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
 
@@ -167,14 +167,15 @@ async function captureMainEntrypoints(page: Page, dir: string, prefix: string): 
     await expectHealthyLayout(page);
     await screenshot(page, dir, `${prefix}-02-chat`);
 
-    await page.getByRole("tab", { name: "工具" }).click();
-    await expectTopTabSelected(page, "工具");
+    await page.getByRole("tab", { name: "扩展" }).click();
+    await expectTopTabSelected(page, "扩展");
     await expect(page.getByRole("region", { name: "插件面板" })).toBeVisible();
     await expectHealthyLayout(page);
     await screenshot(page, dir, `${prefix}-03-tools`);
 
-    await page.getByRole("tab", { name: "记忆" }).click();
-    await expectTopTabSelected(page, "记忆");
+    await page.getByRole("tab", { name: "运行" }).click();
+    await page.getByRole("tab", { name: "记忆管理" }).click();
+    await expectTopTabSelected(page, "运行");
     await expect(page.getByRole("heading", { name: "记忆" })).toBeVisible();
     await expectHealthyLayout(page);
     await screenshot(page, dir, `${prefix}-04-memory`);
@@ -275,7 +276,7 @@ test.describe("Pi Desktop — visual function audit", () => {
         ({ app, page } = await launchApp(userDataDir));
 
         await expect(page.getByRole("tablist", { name: "顶部标签栏" })).toBeVisible({ timeout: 15_000 });
-        await expect(page.getByRole("tab", { name: "工具" })).toBeVisible();
+        await expect(page.getByRole("tab", { name: "扩展" })).toBeVisible();
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "01-initial-loaded");
 
@@ -293,8 +294,8 @@ test.describe("Pi Desktop — visual function audit", () => {
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "03-session-detail");
 
-        await page.getByRole("tab", { name: "工具" }).click();
-        await expectTopTabSelected(page, "工具");
+        await page.getByRole("tab", { name: "扩展" }).click();
+        await expectTopTabSelected(page, "扩展");
         await expect(page.getByRole("region", { name: "插件面板" })).toBeVisible();
         await expect(page.getByRole("tab", { name: "Pi 插件" })).toBeVisible();
         await expect(page.getByText("加载 Pi 插件市场...")).toBeHidden({ timeout: 30_000 });
@@ -309,8 +310,9 @@ test.describe("Pi Desktop — visual function audit", () => {
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "04-tools");
 
-        await page.getByRole("tab", { name: "记忆" }).click();
-        await expectTopTabSelected(page, "记忆");
+        await page.getByRole("tab", { name: "运行" }).click();
+        await page.getByRole("tab", { name: "记忆管理" }).click();
+        await expectTopTabSelected(page, "运行");
         await expect(page.getByRole("heading", { name: "记忆" })).toBeVisible();
         await expect(page.getByPlaceholder("搜索记忆...")).toBeVisible();
         await expectHealthyLayout(page);
@@ -330,8 +332,13 @@ test.describe("Pi Desktop — visual function audit", () => {
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "07-git");
 
+        await page.getByRole("tab", { name: "终端" }).click();
+        await expect(page.getByTestId("terminal-panel")).toBeVisible({ timeout: 10_000 });
+        await expectHealthyLayout(page);
+        await screenshot(page, screenshotDir, "07-terminal");
+
         const settingsWindowPromise = app.waitForEvent("window");
-        await page.getByRole("tab", { name: "设置" }).click();
+        await page.getByRole("button", { name: "打开设置" }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState("domcontentloaded");
         await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();
@@ -421,7 +428,7 @@ test.describe("Pi Desktop — visual function audit", () => {
         await expect(page.getByRole("tablist", { name: "顶部标签栏" })).toBeVisible({ timeout: 15_000 });
 
         const settingsWindowPromise = app.waitForEvent("window");
-        await page.getByRole("tab", { name: "设置" }).click();
+        await page.getByRole("button", { name: "打开设置" }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState("domcontentloaded");
         await expect(settingsWindow.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -464,7 +471,7 @@ test.describe("Pi Desktop — visual function audit", () => {
         await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
         const settingsWindowPromise = app.waitForEvent("window");
-        await page.getByRole("tab", { name: "设置" }).click();
+        await page.getByRole("button", { name: "打开设置" }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState("domcontentloaded");
         await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();

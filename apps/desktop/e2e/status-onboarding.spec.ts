@@ -9,6 +9,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const TEST_TIMEOUT = 60_000;
 
@@ -18,17 +19,32 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
+    await getWindowByUrl(app, "index.html");
+    const page = await getWindowByUrl(app, 'index.html');
     return { app, page };
 }
 
 test.describe('Pi Desktop — Status & Onboarding', () => {
+    let app: ElectronApplication | undefined;
+
     test.setTimeout(TEST_TIMEOUT);
+
+    test.afterEach(async () => {
+        const currentApp = app;
+        app = undefined;
+        if (!currentApp) return;
+        try {
+            await currentApp.close();
+        } catch {
+            // The app may already be gone after a worker-side timeout.
+        }
+    });
 
     test('pi status IPC: detect installed Pi CLI', async () => {
         const userDataDir = test.info().outputPath(`pi-status-${Date.now()}`);
-        const { app, page } = await launchApp(userDataDir);
+        const launched = await launchApp(userDataDir);
+        app = launched.app;
+        const { page } = launched;
 
         const status = await page.evaluate(async () => {
             return await window.piAPI.getStatus();
@@ -37,12 +53,13 @@ test.describe('Pi Desktop — Status & Onboarding', () => {
         expect(status).toBeTruthy();
         console.log(`[TEST] Pi status: installed=${status.installed}, version=${status.version ?? 'unknown'}`);
 
-        await app.close();
     });
 
     test('onboarding modal appears for fresh user', async () => {
         const userDataDir = test.info().outputPath(`onboarding-${Date.now()}`);
-        const { app, page } = await launchApp(userDataDir);
+        const launched = await launchApp(userDataDir);
+        app = launched.app;
+        const { page } = launched;
 
         // Should show onboarding for fresh user
         const modal = page.locator('[data-testid="onboarding-modal"]');
@@ -61,12 +78,13 @@ test.describe('Pi Desktop — Status & Onboarding', () => {
             console.log('[TEST] Onboarding not shown (possibly already completed)');
         }
 
-        await app.close();
     });
 
     test('pi config IPC: get models config', async () => {
         const userDataDir = test.info().outputPath(`pi-config-${Date.now()}`);
-        const { app, page } = await launchApp(userDataDir);
+        const launched = await launchApp(userDataDir);
+        app = launched.app;
+        const { page } = launched;
 
         const config = await page.evaluate(async () => {
             return await window.piAPI.configGetModels();
@@ -76,6 +94,5 @@ test.describe('Pi Desktop — Status & Onboarding', () => {
         expect(config.parsed).toBeTruthy();
         console.log(`[TEST] Models config keys: ${Object.keys(config.parsed).join(', ')}`);
 
-        await app.close();
     });
 });

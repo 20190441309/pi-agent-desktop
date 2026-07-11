@@ -24,6 +24,7 @@ const api = {
     })),
     agentsMessages: vi.fn(async () => []),
     agentsRuntimeState: vi.fn(async (agentId: string) => ({ agentId, status: "idle", isStreaming: false })),
+    agentsSyncPermissions: vi.fn(async () => ({ activeTools: ["read", "edit"], deniedTools: ["bash"] })),
     onAgentsState: vi.fn(() => () => undefined),
     onAgentMessages: vi.fn(() => () => undefined),
 };
@@ -104,6 +105,13 @@ describe("agent-store", () => {
         ]);
 
         expect(useAgentStore.getState().messagesByAgent.agent_1).toHaveLength(1);
+    });
+
+    it("syncs permissions for a live agent and returns the enforced tool sets", async () => {
+        const result = await useAgentStore.getState().syncPermissions("agent_1");
+
+        expect(api.agentsSyncPermissions).toHaveBeenCalledWith("agent_1");
+        expect(result).toEqual({ activeTools: ["read", "edit"], deniedTools: ["bash"] });
     });
 
     it("hydrates existing agent messages during init", async () => {

@@ -2,7 +2,9 @@ import { test, expect, _electron, type ElectronApplication, type Page } from "@p
 import { mkdirSync } from "fs";
 import { join } from "path";
 import { electronMainEntry } from "../playwright.config";
+import { PLAN_DIRECTIVE } from "../src/main/services/agent-modes/plan-prompt";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const SESSION_ID = "deep-use-agent-mode-session";
@@ -38,7 +40,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    const page = await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     await page.waitForLoadState("domcontentloaded");
     return { app, page };
 }
@@ -291,14 +293,17 @@ test.describe("Pi Desktop deep-use agent mode runtime acceptance", () => {
         await page.screenshot({ path: join(ACCEPTANCE_DIR, "2026-06-26-deep-use-19-build-mode-runtime-sequence.png"), fullPage: true });
 
         const calls = await recordedPromptCalls(app);
+        const planUserMessage = `附加文件:\n@${ATTACHMENT_PATH}\n\n用户消息:\n了解一下这个项目`;
         expect(calls).toEqual([
             { message: "/plan", streamingBehavior: null },
-            { message: `附加文件:\n@${ATTACHMENT_PATH}\n\n用户消息:\n了解一下这个项目`, streamingBehavior: null },
+            { message: `${PLAN_DIRECTIVE}\n\n${planUserMessage}`, streamingBehavior: null },
             { message: "/plan", streamingBehavior: null },
             { message: "/compose on", streamingBehavior: null },
             { message: "全面审查代码", streamingBehavior: null },
             { message: "/compose off", streamingBehavior: null },
             { message: "开始实现", streamingBehavior: null },
         ]);
+        expect(calls[1]?.message).toContain(PLAN_DIRECTIVE);
+        expect(calls[1]?.message).toContain(planUserMessage);
     });
 });
