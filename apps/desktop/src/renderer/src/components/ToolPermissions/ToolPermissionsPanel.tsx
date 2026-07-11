@@ -3,6 +3,7 @@ import { isIpcError, type ToolPermissionKey, type ToolPermissions, type ToolPerm
 import { useI18n } from "../../i18n";
 import { TOOL_PERMISSION_PRESETS, useSettingsStore } from "../../stores/settings-store";
 import { useSessionStore } from "../../stores/session-store";
+import { useAgentStore } from "../../stores/agent-store";
 
 interface ToolPermissionsPanelProps {
   workspaceId?: string | null;
@@ -35,9 +36,10 @@ export function describeToolPermissions(permissions: ToolPermissions): string {
 }
 
 export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps): React.JSX.Element {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const pendingSessionPersistCount = useRef<number | null>(null);
+  const sessionOperationQueue = useRef<Promise<void>>(Promise.resolve());
+  const latestSessionOperation = useRef(0);
   const currentSession = useSessionStore((state) =>
     state.currentSessionId
       ? state.sessions.find((session) => session.id === state.currentSessionId) ?? null
@@ -51,10 +53,6 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
   const updateWorkspaceToolDefaults = useSettingsStore((state) => state.updateWorkspaceToolDefaults);
   const clearWriteError = useSettingsStore((state) => state.clearWriteError);
   const settingsWriteError = useSettingsStore((state) => state.lastWriteError);
-  const updateSessionToolPermissions = useSessionStore((state) => state.updateSessionToolPermissions);
-  const persistErrorCount = useSessionStore((state) => state.persistErrorCount);
-  const lastPersistError = useSessionStore((state) => state.lastPersistError);
-
   const effective = currentSession?.toolPermissions ?? workspaceDefaults;
   const canApply = Boolean(currentSession || workspaceId);
 
@@ -64,28 +62,73 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
     }
   }, [settingsWriteError, t]);
 
-  useEffect(() => {
-    if (pendingSessionPersistCount.current == null) return;
-    if (persistErrorCount <= pendingSessionPersistCount.current) return;
-    setStatus({
-      type: "error",
-      message: t("toolPermissions.status.sessionPersistFailed", { message: lastPersistError ?? t("chatInput.errors.unknown") }),
-    });
-    pendingSessionPersistCount.current = null;
-  }, [lastPersistError, persistErrorCount, t]);
-
-  const applyPermissions = (next: ToolPermissions): void => {
+  const applyPermissions = async (
+    update: ToolPermissions | ((current: ToolPermissions) => ToolPermissions),
+  ): Promise<void> => {
     if (!canApply) {
       setStatus({ type: "error", message: t("toolPermissions.status.noTarget") });
       return;
     }
     if (currentSession) {
-      pendingSessionPersistCount.current = persistErrorCount;
-      updateSessionToolPermissions(currentSession.id, next);
-      setStatus({ type: "success", message: t("toolPermissions.status.sessionApplied") });
+      const sessionId = currentSession.id;
+      const operationId = latestSessionOperation.current + 1;
+      latestSessionOperation.current = operationId;
+      setStatus(null);
+      const run = async (): Promise<void> => {
+        const latestSession = useSessionStore.getState().sessions.find((session) => session.id === sessionId);
+        const currentPermissions = latestSession?.toolPermissions
+          ?? useSettingsStore.getState().getWorkspaceToolDefaults(latestSession?.workspaceId ?? workspaceId ?? "");
+        const next = typeof update === "function" ? update(currentPermissions) : update;
+        try {
+          const persisted = await window.piAPI.updateSessionMetadata(sessionId, { toolPermissions: next });
+          if (isIpcError(persisted)) throw new Error(persisted.fallback);
+          useSessionStore.setState((state) => ({
+            sessions: state.sessions.map((session) =>
+              session.id === sessionId
+                ? { ...session, toolPermissions: next, updatedAt: new Date() }
+                : session,
+            ),
+          }));
+
+          const agentState = useAgentStore.getState();
+          const currentAgent = agentState.agents.find((agent) => agent.id === agentState.currentAgentId);
+          const liveAgentId = currentAgent?.sessionId === sessionId
+            ? currentAgent.id
+            : agentState.agents.find((agent) => agent.sessionId === sessionId)?.id ?? null;
+
+          if (!liveAgentId) {
+            if (operationId !== latestSessionOperation.current) return;
+            setStatus({
+              type: "success",
+              message: t("toolPermissions.status.sessionDeferred"),
+            });
+            return;
+          }
+
+          const result = await agentState.syncPermissions(liveAgentId);
+          if (operationId !== latestSessionOperation.current) return;
+          const separator = locale === "zh-CN" ? "、" : ", ";
+          const active = result.activeTools.length > 0 ? result.activeTools.join(separator) : t("toolPermissions.status.none");
+          const denied = result.deniedTools.length > 0 ? result.deniedTools.join(separator) : t("toolPermissions.status.none");
+          setStatus({
+            type: "success",
+            message: t("toolPermissions.status.sessionSynced", { active, denied }),
+          });
+        } catch (error) {
+          if (operationId !== latestSessionOperation.current) return;
+          setStatus({
+            type: "error",
+            message: t("toolPermissions.status.sessionApplyFailed", { message: formatWriteError(error) }),
+          });
+        }
+      };
+      const operation = sessionOperationQueue.current.then(run, run);
+      sessionOperationQueue.current = operation.then(() => undefined, () => undefined);
+      await operation;
       return;
     }
     if (workspaceId) {
+      const next = typeof update === "function" ? update(workspaceDefaults) : update;
       clearWriteError();
       updateWorkspaceToolDefaults(workspaceId, next);
       setStatus({ type: "success", message: t("toolPermissions.status.workspaceUpdated") });
@@ -106,7 +149,7 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
             key={preset.id}
             type="button"
             disabled={!canApply}
-            onClick={() => applyPermissions(TOOL_PERMISSION_PRESETS[preset.id])}
+            onClick={() => void applyPermissions(TOOL_PERMISSION_PRESETS[preset.id])}
             className="rounded-[2px] border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
           >
             {t(`toolPermissions.preset.${preset.id}`)}
@@ -126,7 +169,10 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
               type="checkbox"
               checked={effective[item.key]}
               disabled={!canApply}
-              onChange={(event) => applyPermissions({ ...effective, [item.key]: event.target.checked })}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                void applyPermissions((current) => ({ ...current, [item.key]: checked }));
+              }}
               className="h-4 w-4 accent-[#1f1f1f] disabled:cursor-not-allowed disabled:opacity-45"
             />
           </label>

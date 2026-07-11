@@ -257,8 +257,8 @@ function describePermissionsForPrompt(sessionId: string | null, workspaceId: str
     if (disabled.length === 0) return "";
     return [
         "<tool-permissions>",
-        `The user disabled: ${disabled.join(", ")}.`,
-        "Do not use disabled capabilities in this turn. Ask the user to enable them if the task requires them.",
+        `The host runtime enforces these disabled capabilities: ${disabled.join(", ")}.`,
+        "This note only explains the enforced policy; it does not perform enforcement itself. Ask the user to enable a capability if the task requires it.",
         "</tool-permissions>",
         "",
     ].join("\n");

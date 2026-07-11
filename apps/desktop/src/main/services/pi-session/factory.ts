@@ -14,6 +14,8 @@ import type {
     ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { PiAgentConfig } from "../../types";
+import { createGuardedBuiltins } from "../permission/guarded-tools";
+import type { RuntimeToolPolicy } from "../permission/runtime-policy";
 import { loadPiSdk } from "./sdk-runtime";
 
 const require = createRequire(__filename);
@@ -45,6 +47,7 @@ export interface CreateSessionOpts {
     tools?: string[];
     noTools?: "all" | "builtin";
     customTools?: ToolDefinition[];
+    getRuntimePolicy?: () => RuntimeToolPolicy;
     desktopExtensions?: string[];
 }
 
@@ -70,6 +73,9 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
         additionalExtensionPaths,
     });
     await resourceLoader.reload();
+    const customTools = opts.getRuntimePolicy
+        ? [...(opts.customTools ?? []), ...createGuardedBuiltins(opts.workspacePath, opts.getRuntimePolicy)]
+        : opts.customTools;
 
     const { session } = await sdk.createAgentSession({
         cwd: opts.workspacePath,
@@ -80,7 +86,7 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
         model: selectedModel,
         tools: opts.tools,
         noTools: opts.noTools,
-        customTools: opts.customTools,
+        customTools,
         resourceLoader,
         sessionManager: opts.sessionPath ? sdk.SessionManager.open(opts.sessionPath) : undefined,
     });

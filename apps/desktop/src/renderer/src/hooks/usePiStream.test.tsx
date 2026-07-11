@@ -10,7 +10,7 @@ import { useAgentStore } from "../stores/agent-store";
 import { useAgentModeStore } from "../stores/agent-mode-store";
 
 let emitPiEvent: ((event: PiEvent) => void) | null = null;
-const sendPrompt = vi.fn(async () => undefined);
+const sendPrompt = vi.fn<(_workspaceId: string, _message: string, _options?: unknown) => Promise<unknown>>(async () => undefined);
 const stopPrompt = vi.fn<(_workspaceId: string) => Promise<unknown>>(async () => undefined);
 const agentsPrompt = vi.fn(async () => undefined);
 const agentsAbort = vi.fn(async () => undefined);
@@ -215,6 +215,30 @@ describe("usePiStream", () => {
             message: expect.stringContaining("agent follow up"),
             mode: "compose",
         });
+    });
+
+    it("describes disabled permissions as host runtime enforcement rather than prompt enforcement", async () => {
+        useSessionStore.setState((state) => ({
+            sessions: state.sessions.map((session) => ({
+                ...session,
+                toolPermissions: {
+                    fileRead: true,
+                    fileWrite: false,
+                    shell: false,
+                    git: false,
+                    network: false,
+                    extensions: false,
+                },
+            })),
+        }));
+
+        await act(async () => { render(<HookStateHost />); });
+        await act(async () => { screen.getByText("send-follow-up").click(); });
+
+        const outbound = sendPrompt.mock.calls[0]?.[1] ?? "";
+        expect(outbound).toContain("host runtime enforces");
+        expect(outbound).toContain("This note only explains the enforced policy");
+        expect(outbound).not.toContain("Do not use disabled capabilities");
     });
 
     it("forwards selected Plan agent mode without local clarification", async () => {

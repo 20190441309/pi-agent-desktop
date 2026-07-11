@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { ipcError, type IpcError, type Session as PersistedSession } from "@shared";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useAgentStore } from "../../stores/agent-store";
 import { ToolPermissionsPanel } from "./ToolPermissionsPanel";
 
 const developmentPermissions = {
@@ -28,6 +30,7 @@ describe("ToolPermissionsPanel", () => {
       value: {
         setSettings: vi.fn(async () => undefined),
         updateSessionMetadata: vi.fn(async () => undefined),
+        agentsSyncPermissions: vi.fn(async () => ({ activeTools: ["read", "edit"], deniedTools: ["bash"] })),
       },
       configurable: true,
     });
@@ -45,9 +48,14 @@ describe("ToolPermissionsPanel", () => {
       persistErrorCount: 0,
       lastPersistError: null,
     });
+    useAgentStore.setState({ agents: [], currentAgentId: null });
   });
 
-  it("updates current session permissions and shows save feedback", () => {
+  it("shows success only after session persistence and live-agent runtime sync both succeed", async () => {
+    let resolvePersist!: (value: PersistedSession | IpcError) => void;
+    window.piAPI.updateSessionMetadata = vi.fn<Window["piAPI"]["updateSessionMetadata"]>(
+      () => new Promise<PersistedSession | IpcError>((resolve) => { resolvePersist = resolve; }),
+    );
     useSessionStore.setState({
       currentSessionId: "s1",
       sessions: [
@@ -62,19 +70,146 @@ describe("ToolPermissionsPanel", () => {
         },
       ],
     });
+    useAgentStore.setState({
+      agents: [{ id: "agent_1", workspaceId: "w1", sessionId: "s1", title: "任务", status: "idle", createdAt: 1, updatedAt: 1 }],
+      currentAgentId: "agent_1",
+    });
 
     renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
 
     fireEvent.click(screen.getByLabelText("Bash / PowerShell"));
 
+    await waitFor(() => {
+      expect(window.piAPI.updateSessionMetadata).toHaveBeenCalledWith(
+        "s1",
+        expect.objectContaining({
+          toolPermissions: expect.objectContaining({ shell: true }),
+        }),
+      );
+    });
+    expect(window.piAPI.agentsSyncPermissions).not.toHaveBeenCalled();
+    expect(screen.queryByText(/运行时已启用/)).toBeNull();
+
+    resolvePersist({
+      id: "s1",
+      workspaceId: "w1",
+      title: "任务",
+      createdAt: 1,
+      updatedAt: 2,
+      messages: [],
+      toolPermissions: { ...developmentPermissions, shell: true },
+    });
+    await waitFor(() => expect(window.piAPI.agentsSyncPermissions).toHaveBeenCalledWith("agent_1"));
     expect(useSessionStore.getState().sessions[0].toolPermissions?.shell).toBe(true);
-    expect(window.piAPI.updateSessionMetadata).toHaveBeenCalledWith(
-      "s1",
-      expect.objectContaining({
-        toolPermissions: expect.objectContaining({ shell: true }),
-      }),
+    expect(screen.getByRole("status").textContent).toContain("运行时已启用：read、edit");
+    expect(screen.getByRole("status").textContent).toContain("已禁用：bash");
+  });
+
+  it("reports runtime sync failure without claiming success after persistence", async () => {
+    window.piAPI.agentsSyncPermissions = vi.fn(async () => ipcError("ipcErrors.agents.syncFailed", "runtime unavailable"));
+    useSessionStore.setState({
+      currentSessionId: "s1",
+      sessions: [{ id: "s1", workspaceId: "w1", title: "任务", createdAt: new Date(), updatedAt: new Date(), messages: [], toolPermissions: developmentPermissions }],
+    });
+    useAgentStore.setState({
+      agents: [{ id: "agent_1", workspaceId: "w1", sessionId: "s1", title: "任务", status: "idle", createdAt: 1, updatedAt: 1 }],
+      currentAgentId: "agent_1",
+    });
+
+    renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
+    fireEvent.click(screen.getByLabelText("网络"));
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("runtime unavailable"));
+    expect(screen.queryByText(/运行时已启用/)).toBeNull();
+  });
+
+  it("explains that persisted session permissions take effect on the next agent session when no live agent exists", async () => {
+    useSessionStore.setState({
+      currentSessionId: "s1",
+      sessions: [{ id: "s1", workspaceId: "w1", title: "任务", createdAt: new Date(), updatedAt: new Date(), messages: [], toolPermissions: developmentPermissions }],
+    });
+
+    renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
+    fireEvent.click(screen.getByLabelText("网络"));
+
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("下次 agent session 生效"));
+    expect(window.piAPI.agentsSyncPermissions).not.toHaveBeenCalled();
+  });
+
+  it("syncs the agent bound to the current session when another agent tab is selected", async () => {
+    useSessionStore.setState({
+      currentSessionId: "s1",
+      sessions: [{ id: "s1", workspaceId: "w1", title: "任务", createdAt: new Date(), updatedAt: new Date(), messages: [], toolPermissions: developmentPermissions }],
+    });
+    useAgentStore.setState({
+      agents: [
+        { id: "agent_other", workspaceId: "w1", sessionId: "s2", title: "其他", status: "idle", createdAt: 1, updatedAt: 1 },
+        { id: "agent_bound", workspaceId: "w1", sessionId: "s1", title: "任务", status: "idle", createdAt: 1, updatedAt: 1 },
+      ],
+      currentAgentId: "agent_other",
+    });
+
+    renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
+    fireEvent.click(screen.getByLabelText("网络"));
+
+    await waitFor(() => expect(window.piAPI.agentsSyncPermissions).toHaveBeenCalledWith("agent_bound"));
+    expect(screen.getByRole("status").textContent).toContain("运行时已启用：read、edit");
+  });
+
+  it("serializes rapid session changes and merges each change from the latest stored permissions", async () => {
+    const resolvers: Array<(value: PersistedSession | IpcError) => void> = [];
+    window.piAPI.updateSessionMetadata = vi.fn<Window["piAPI"]["updateSessionMetadata"]>(
+      () => new Promise<PersistedSession | IpcError>((resolve) => { resolvers.push(resolve); }),
     );
-    expect(screen.getByRole("status").textContent).toContain("已应用到当前会话");
+    useSessionStore.setState({
+      currentSessionId: "s1",
+      sessions: [{ id: "s1", workspaceId: "w1", title: "任务", createdAt: new Date(), updatedAt: new Date(), messages: [], toolPermissions: developmentPermissions }],
+    });
+
+    renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
+    fireEvent.click(screen.getByLabelText("文件写入"));
+    fireEvent.click(screen.getByLabelText("网络"));
+
+    await waitFor(() => expect(window.piAPI.updateSessionMetadata).toHaveBeenCalledTimes(1));
+    expect(window.piAPI.updateSessionMetadata).toHaveBeenNthCalledWith(1, "s1", {
+      toolPermissions: expect.objectContaining({ fileWrite: false, network: false }),
+    });
+
+    resolvers[0]({ id: "s1", workspaceId: "w1", title: "任务", createdAt: 1, updatedAt: 2, messages: [] });
+    await waitFor(() => expect(window.piAPI.updateSessionMetadata).toHaveBeenCalledTimes(2));
+    expect(window.piAPI.updateSessionMetadata).toHaveBeenNthCalledWith(2, "s1", {
+      toolPermissions: expect.objectContaining({ fileWrite: false, network: true }),
+    });
+
+    resolvers[1]({ id: "s1", workspaceId: "w1", title: "任务", createdAt: 1, updatedAt: 3, messages: [] });
+    await waitFor(() => {
+      expect(useSessionStore.getState().sessions[0].toolPermissions).toMatchObject({ fileWrite: false, network: true });
+    });
+  });
+
+  it("discovers an agent created while session permissions are being saved", async () => {
+    let resolvePersist!: (value: PersistedSession | IpcError) => void;
+    window.piAPI.updateSessionMetadata = vi.fn<Window["piAPI"]["updateSessionMetadata"]>(
+      () => new Promise<PersistedSession | IpcError>((resolve) => { resolvePersist = resolve; }),
+    );
+    useSessionStore.setState({
+      currentSessionId: "s1",
+      sessions: [{ id: "s1", workspaceId: "w1", title: "任务", createdAt: new Date(), updatedAt: new Date(), messages: [], toolPermissions: developmentPermissions }],
+    });
+
+    renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
+    fireEvent.click(screen.getByLabelText("网络"));
+    await waitFor(() => expect(window.piAPI.updateSessionMetadata).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      useAgentStore.setState({
+        agents: [{ id: "agent_late", workspaceId: "w1", sessionId: "s1", title: "任务", status: "idle", createdAt: 1, updatedAt: 1 }],
+        currentAgentId: "agent_late",
+      });
+      resolvePersist({ id: "s1", workspaceId: "w1", title: "任务", createdAt: 1, updatedAt: 2, messages: [] });
+    });
+
+    await waitFor(() => expect(window.piAPI.agentsSyncPermissions).toHaveBeenCalledWith("agent_late"));
+    expect(screen.getByRole("status").textContent).toContain("运行时已启用：read、edit");
   });
 
   it("updates workspace defaults and shows success feedback", async () => {

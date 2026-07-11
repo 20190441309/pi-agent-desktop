@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import type { CreateAgentInput, SendAgentPromptInput } from "@shared";
+import { ipcError, type CreateAgentInput, type SendAgentPromptInput } from "@shared";
 import type { AgentRuntimeRegistry } from "../services/agent-runtime/registry";
 import { agentsCreateSchema, agentsPromptSchema, agentsIdSchema, agentsSetThinkingSchema } from "./schemas";
 
@@ -36,5 +36,19 @@ export function setupAgentsIpc(registry: AgentRuntimeRegistry): void {
     ipcMain.handle("agents:set-thinking", async (_event, agentId: string, level: "none" | "low" | "medium" | "high") => {
         agentsSetThinkingSchema.parse([agentId, level]);
         registry.setThinking(agentId, level);
+    });
+    ipcMain.handle("agents:sync-permissions", async (_event, agentId: string) => {
+        const parsed = agentsIdSchema.safeParse([agentId]);
+        if (!parsed.success) {
+            return ipcError("ipcErrors.agents.invalidAgentId", "agentId must be a non-empty string");
+        }
+        try {
+            return await registry.syncPermissions(agentId);
+        } catch (error) {
+            return ipcError(
+                "ipcErrors.agents.syncPermissionsFailed",
+                error instanceof Error ? error.message : String(error),
+            );
+        }
     });
 }

@@ -24,7 +24,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
-    await app.firstWindow();
+    await getWindowByUrl(app, "index.html");
     const page = await getWindowByUrl(app, 'index.html');
 
     // Skip onboarding
@@ -152,12 +152,12 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         const { app, page } = await launchApp(userDataDir);
 
         const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('tab', { name: '设置' }).click();
+        await page.getByRole('button', { name: '打开设置' }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState('domcontentloaded');
 
         // Get tabs
-        const tabs = settingsWindow.locator('[role="tab"]');
+        const tabs = settingsWindow.getByRole('tablist', { name: '设置分类' }).getByRole('tab');
         const tabCount = await tabs.count();
         expect(tabCount).toBe(10);
         console.log(`[TEST] Settings has ${tabCount} tabs`);
@@ -204,7 +204,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         await expect.poll(async () => (await windowState(app, 'index.html')).isMinimized).toBe(false);
 
         const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('tab', { name: '设置' }).click();
+        await page.getByRole('button', { name: '打开设置' }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState('domcontentloaded');
         await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible();
@@ -254,7 +254,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         await page.screenshot({ path: test.info().outputPath('right-rail-without-tool-permissions.png'), fullPage: true });
 
         const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('tab', { name: '设置' }).click();
+        await page.getByRole('button', { name: '打开设置' }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState('domcontentloaded');
         await settingsWindow.getByRole('tab', { name: '权限' }).click();

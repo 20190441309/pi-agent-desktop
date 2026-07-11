@@ -2,6 +2,7 @@ import { mkdir } from "fs/promises";
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
     const configDir = `${userDataDir}-pi-config`;
@@ -16,7 +17,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
             PI_DESKTOP_CONFIG_DIR: configDir,
         },
     });
-    const page = await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     await page.waitForLoadState("domcontentloaded");
     return { app, page };
 }
@@ -24,18 +25,29 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
 async function prepareWorkspace(page: Page, workspacePath: string): Promise<void> {
     await page.evaluate(async ({ workspacePath }) => {
         window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
-        await window.piAPI.createWorkspace("settings-audit", workspacePath);
+        window.localStorage.setItem("pi-desktop.onboarding.completed", "true");
+        const workspace = await window.piAPI.createWorkspace("settings-audit", workspacePath);
+        await window.piAPI.selectWorkspace(workspace.path);
+        await new Promise((resolve) => setTimeout(resolve, 10));
     }, { workspacePath });
-    const onboardingModal = page.locator('[data-testid="onboarding-modal"]');
-    if (await onboardingModal.count()) {
-        await page.getByRole("button", { name: "跳过引导" }).click({ timeout: 5_000 });
-        await expect(onboardingModal).toHaveCount(0);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const settingsButton = page.getByRole("button", { name: "打开设置" });
+    const skipOnboarding = page.getByRole("button", { name: "跳过引导" });
+    await page.waitForFunction(
+        () => document.querySelector('button[aria-label="打开设置"]') !== null
+            || Array.from(document.querySelectorAll("button")).some((button) => button.textContent?.trim() === "跳过引导"),
+        undefined,
+        { timeout: 30_000 },
+    );
+    if (await skipOnboarding.isVisible().catch(() => false)) {
+        await skipOnboarding.click();
     }
+    await expect(settingsButton).toBeVisible({ timeout: 10_000 });
 }
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
     const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("tab", { name: "设置" }).click();
+    await page.getByRole("button", { name: "打开设置" }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState("domcontentloaded");
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();
@@ -747,6 +759,7 @@ test.describe("Pi Desktop — settings window interaction audit", () => {
                 },
             });
             await window.piAPI.selectWorkspace(main.path);
+            await new Promise((resolve) => setTimeout(resolve, 10));
         }, { workspacePath, otherWorkspacePath });
 
         await page.reload();

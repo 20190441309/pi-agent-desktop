@@ -3,6 +3,7 @@ import { join } from "path";
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const SCREENSHOT_DIR = join(__dirname, "..", "e2e-output", "main-token-stats");
 const SESSION_ID = "main-token-stats-session";
@@ -21,8 +22,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
             PI_DESKTOP_CONFIG_DIR: configDir,
         },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
+    const page = await getWindowByUrl(app, "index.html");
     return { app, page };
 }
 
@@ -49,7 +49,7 @@ async function openRightRailIfNeeded(page: Page): Promise<void> {
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
     const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("tab", { name: "设置" }).click();
+    await page.getByRole("button", { name: "打开设置" }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState("domcontentloaded");
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible({ timeout: 10_000 });
@@ -94,6 +94,11 @@ test.describe("main page token usage stats", () => {
                 },
             });
         }, { sessionId: SESSION_ID, sessionTitle: SESSION_TITLE, workspacePath });
+        await expect.poll(async () => page.evaluate(async (sessionId) => {
+            const sessions = await window.piAPI.listSessions();
+            const session = sessions.find((item) => item.id === sessionId);
+            return session?.usage?.totalTokens ?? 0;
+        }, SESSION_ID), { timeout: 10_000 }).toBe(60_000_000);
 
         await closeApp(app);
         launched = await launchApp(userDataDir);

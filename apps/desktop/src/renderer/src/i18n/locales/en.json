@@ -481,7 +481,8 @@
   "terminal": {
     "empty": "No terminal",
     "emptyHint": "Press {{shortcut}} or click below to open one",
-    "newTerminal": "+ New terminal"
+    "newTerminal": "+ New terminal",
+    "trustBoundary": "This user-controlled terminal has full local access; agent tool permissions do not restrict it"
   },
   "diffView": {
     "filesChanged": "{{count}} file(s) changed",
@@ -731,6 +732,10 @@
       "sessionPersistFailed": "Tool permissions were applied to this session, but saving failed: {{message}}",
       "noTarget": "Select a workspace or open a session before changing tool permissions.",
       "sessionApplied": "Applied to this session. Saving in the background.",
+      "sessionSynced": "Permissions saved and synchronized. Runtime active: {{active}}; denied: {{denied}}.",
+      "sessionDeferred": "Permissions saved. No linked live agent is active; they will take effect in the next agent session.",
+      "sessionApplyFailed": "Tool permissions were not fully applied: {{message}}",
+      "none": "none",
       "workspaceUpdated": "Updated workspace default permissions.",
       "workspaceUnavailable": "Select a workspace to configure default tool permissions."
     }
@@ -1118,12 +1123,32 @@
   },
     "topbar": {
       "chat": "Chat",
-      "tasks": "Tasks",
-      "memory": "Memory",
-      "tools": "Tools",
+      "run": "Run",
+      "workbench": "Workbench",
+      "extensions": "Extensions",
       "settings": "Settings",
       "ariaLabel": "Top tab bar"
     },
+  "runPanel": {
+    "ariaLabel": "Run views",
+    "tabs": {
+      "tasks": "Tasks",
+      "memory": "Memory management"
+    }
+  },
+  "workbenchPanel": {
+    "ariaLabel": "Workbench views",
+    "workspaceRequired": "Select a workspace to use files, Git, and terminal.",
+    "tabs": {
+      "files": "Files",
+      "git": "Git",
+      "terminal": "Terminal"
+    },
+    "loading": {
+      "files": "Loading file workspace...",
+      "terminal": "Loading terminal..."
+    }
+  },
   "titlebar": {
     "minimize": "Minimize window",
     "maximize": "Maximize",
@@ -1166,6 +1191,8 @@
     "panels": {
       "chat": "Chat",
       "skills": "Skills",
+      "run": "Run",
+      "workbench": "Workbench",
       "tasks": "Tasks",
       "memory": "Memory",
       "history": "Sessions",

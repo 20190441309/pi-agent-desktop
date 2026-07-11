@@ -92,6 +92,12 @@ describe("preload surface audit", () => {
         expect(ipcRenderer.invoke).toHaveBeenCalledWith("pi:list-skills", { workspaceId: "ws-1" });
     });
 
+    it("exposes permission sync on the dedicated agents channel", async () => {
+        const syncPermissions = piAPI.agentsSyncPermissions as (agentId: string) => Promise<unknown>;
+        await syncPermissions("agent_1");
+        expect(ipcRenderer.invoke).toHaveBeenCalledWith("agents:sync-permissions", "agent_1");
+    });
+
     it("no method name contains internal or debug", () => {
         const keys = Object.keys(piAPI);
         for (const key of keys) {

@@ -6,7 +6,7 @@
 //          启动时由 loadPiConfig 真从 Pi CLI 配置读;读不到时 Pi ChatInput / 设置页走空态
 
 import { create } from 'zustand';
-import { DEFAULT_LONG_HORIZON_SETTINGS, normalizeLongHorizonSettings, isIpcError, type AppSettings, type IpcError, type ShortcutOverride, type ToolPermissions } from '@shared';
+import { DEFAULT_LONG_HORIZON_SETTINGS, TOOL_PERMISSION_PRESETS as SHARED_TOOL_PERMISSION_PRESETS, normalizeLongHorizonSettings, isIpcError, type AppSettings, type IpcError, type ShortcutOverride, type ToolPermissions } from '@shared';
 import { logger } from '../utils/logger';
 import { addToast } from './toast-store';
 import { applyFontSize, applyTheme, getInitialFontSize, getInitialTheme, normalizeFontSize, type Theme } from '../utils/theme';
@@ -166,32 +166,7 @@ function applyAndCacheFontSize(fontSize: number): void {
 
 const SETTINGS_WRITE_DEBOUNCE_MS = 120;
 
-export const TOOL_PERMISSION_PRESETS: Record<"minimal" | "development" | "all", ToolPermissions> = {
-  minimal: {
-    fileRead: true,
-    fileWrite: false,
-    shell: false,
-    git: false,
-    network: false,
-    extensions: false,
-  },
-  development: {
-    fileRead: true,
-    fileWrite: true,
-    shell: true,
-    git: true,
-    network: false,
-    extensions: true,
-  },
-  all: {
-    fileRead: true,
-    fileWrite: true,
-    shell: true,
-    git: true,
-    network: true,
-    extensions: true,
-  },
-};
+export const TOOL_PERMISSION_PRESETS = SHARED_TOOL_PERMISSION_PRESETS;
 
 /** 内部 helper: 把 setSettings 返的 (void | IpcError) / throw 统一成 lastWriteError */
 function reportWriteError(e: unknown): IpcError | string {

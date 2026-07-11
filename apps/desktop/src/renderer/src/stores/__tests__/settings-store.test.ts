@@ -2,7 +2,7 @@
 // 覆盖: 初始状态 / updateSettings 走 IpcError 路径 / resetSettings / clearWriteError
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { ipcError } from "@shared";
+import { ipcError, TOOL_PERMISSION_PRESETS as SHARED_TOOL_PERMISSION_PRESETS } from "@shared";
 import type { AppSettings } from "@shared";
 
 function createLocalStorageMock(): Storage {
@@ -62,7 +62,15 @@ beforeEach(() => {
 // store 顶层会调 getSettings() (loadSettings), mock 默认返 {}
 mockApi.getSettings.mockResolvedValue({});
 
-import { useSettingsStore } from "../settings-store";
+import { TOOL_PERMISSION_PRESETS, useSettingsStore } from "../settings-store";
+
+describe("settings-store: tool permission presets", () => {
+    it("re-exports the frozen shared preset authority", () => {
+        expect(TOOL_PERMISSION_PRESETS).toBe(SHARED_TOOL_PERMISSION_PRESETS);
+        expect(Object.isFrozen(TOOL_PERMISSION_PRESETS)).toBe(true);
+        expect(Object.isFrozen(TOOL_PERMISSION_PRESETS.development)).toBe(true);
+    });
+});
 
 describe("settings-store: 初始状态", () => {
     it("默认 settings 是 defaultSettings", () => {

@@ -14,6 +14,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from './support/electron-launch';
+import { getWindowByUrl } from './support/electron-windows';
 
 test.describe('Pi Desktop launch', () => {
     let app: ElectronApplication;
@@ -43,7 +44,7 @@ test.describe('Pi Desktop launch', () => {
 
         // The main process creates exactly one BrowserWindow via
         // createWindow(). firstWindow() resolves as soon as it appears.
-        const window: Page = await app.firstWindow();
+        const window: Page = await getWindowByUrl(app, "index.html");
 
         // The renderer sets <title>Pi Desktop</title> in index.html, so the
         // document title is available as soon as the HTML is parsed.

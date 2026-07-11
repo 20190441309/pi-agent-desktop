@@ -23,7 +23,7 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
     env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
   });
-  await app.firstWindow();
+  await getWindowByUrl(app, "index.html");
   const page = await getWindowByUrl(app, 'index.html');
 
   // 跳过 onboarding
@@ -63,15 +63,18 @@ test.describe('Pi Desktop 完整功能演示', () => {
     await expect(page).toHaveTitle(/Pi|Desktop/);
 
     // ── 2. 顶部导航 ─────────────────────────
-    // 新建任务 (默认)
-    await expect(page.locator('button[data-mmcode-section="new-task"]')).toBeVisible({ timeout: 10000 });
+    // 对话 (默认)
+    const chatTab = page.getByRole('tab', { name: '对话' });
+    await expect(chatTab).toHaveAttribute('aria-selected', 'true', { timeout: 10000 });
+    await expect(page.locator('textarea[aria-label="发送"]')).toBeVisible({ timeout: 10000 });
 
-    await page.getByRole('tab', { name: '工具' }).click();
+    await page.getByRole('tab', { name: '扩展' }).click();
+    await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 10000 });
     await page.waitForTimeout(500);
     await page.screenshot({ path: 'e2e-output/demo-02-skills.png' });
 
     const settingsWindowPromise = app.waitForEvent('window');
-    await page.getByRole('tab', { name: '设置' }).click();
+    await page.getByRole('button', { name: '打开设置' }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState('domcontentloaded');
     await settingsWindow.screenshot({ path: 'e2e-output/demo-03-settings.png' });
@@ -81,8 +84,8 @@ test.describe('Pi Desktop 完整功能演示', () => {
     await page.bringToFront();
 
     // 回到聊天
-    await page.locator('button[data-mmcode-section="new-task"]').click();
-    await page.waitForTimeout(500);
+    await chatTab.click();
+    await expect(chatTab).toHaveAttribute('aria-selected', 'true');
 
     // ── 3. 聊天空态 ──────────────────────────────
     await expect(page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。')).toBeVisible({ timeout: 3000 });
@@ -123,7 +126,7 @@ test.describe('Pi Desktop 完整功能演示', () => {
 
     // ── 7. 设置 Model Tab ───────────────────────
     const modelSettingsWindowPromise = app.waitForEvent('window');
-    await page.getByRole('tab', { name: '设置' }).click();
+    await page.getByRole('button', { name: '打开设置' }).click();
     const modelSettingsWindow = await modelSettingsWindowPromise;
     await modelSettingsWindow.waitForLoadState('domcontentloaded');
 

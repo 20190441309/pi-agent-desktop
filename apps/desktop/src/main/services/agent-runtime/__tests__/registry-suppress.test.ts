@@ -7,6 +7,9 @@ interface MockSession {
     abort: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     subscribe: ReturnType<typeof vi.fn>;
+    getAllTools: ReturnType<typeof vi.fn>;
+    getActiveToolNames: ReturnType<typeof vi.fn>;
+    setActiveToolsByName: ReturnType<typeof vi.fn>;
     subscribers: Array<(event: unknown) => void | Promise<void>>;
 }
 
@@ -19,6 +22,8 @@ const { interceptorHandleMock } = vi.hoisted(() => ({
 vi.mock("../../pi-session/factory", () => ({
     createWorkspaceSession: vi.fn(async (opts: { workspaceId: string }) => {
         const subscribers: Array<(event: unknown) => void | Promise<void>> = [];
+        const tools = ["read", "bash", "write", "edit", "plan_write"].map((name) => ({ name }));
+        let activeToolNames = tools.map((tool) => tool.name);
         const session = {
             prompt: vi.fn(async () => undefined),
             abort: vi.fn(),
@@ -26,12 +31,20 @@ vi.mock("../../pi-session/factory", () => ({
             subscribe: vi.fn((subscriber: (event: unknown) => void | Promise<void>) => {
                 subscribers.push(subscriber);
             }),
+            getAllTools: vi.fn(() => tools),
+            getActiveToolNames: vi.fn(() => [...activeToolNames]),
+            setActiveToolsByName: vi.fn((names: string[]) => {
+                activeToolNames = [...names];
+            }),
         };
         sessions.push({
             prompt: session.prompt,
             abort: session.abort,
             dispose: session.dispose,
             subscribe: session.subscribe,
+            getAllTools: session.getAllTools,
+            getActiveToolNames: session.getActiveToolNames,
+            setActiveToolsByName: session.setActiveToolsByName,
             subscribers,
         });
         return {

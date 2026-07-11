@@ -481,7 +481,8 @@
   "terminal": {
     "empty": "暂无终端",
     "emptyHint": "按 {{shortcut}} 或点下面按钮新建",
-    "newTerminal": "+ 新建终端"
+    "newTerminal": "+ 新建终端",
+    "trustBoundary": "终端由你直接控制，拥有本机完整权限；Agent 工具权限不会限制此终端"
   },
   "diffView": {
     "filesChanged": "{{count}} 个文件变更",
@@ -731,6 +732,10 @@
       "sessionPersistFailed": "工具权限已应用到当前会话，但保存失败：{{message}}",
       "noTarget": "请先选择工作区或打开会话后再修改工具权限。",
       "sessionApplied": "已应用到当前会话，正在后台保存。",
+      "sessionSynced": "权限已保存并同步。运行时已启用：{{active}}；已禁用：{{denied}}。",
+      "sessionDeferred": "权限已保存；当前没有关联的 live agent，将在下次 agent session 生效。",
+      "sessionApplyFailed": "工具权限未完全应用：{{message}}",
+      "none": "无",
       "workspaceUpdated": "已更新工作区默认权限。",
       "workspaceUnavailable": "选择工作区后可配置默认工具权限。"
     }
@@ -1118,12 +1123,32 @@
   },
     "topbar": {
       "chat": "对话",
-      "tasks": "任务",
-      "memory": "记忆",
-      "tools": "工具",
+      "run": "运行",
+      "workbench": "工作台",
+      "extensions": "扩展",
       "settings": "设置",
       "ariaLabel": "顶部标签栏"
     },
+  "runPanel": {
+    "ariaLabel": "运行视图",
+    "tabs": {
+      "tasks": "任务",
+      "memory": "记忆管理"
+    }
+  },
+  "workbenchPanel": {
+    "ariaLabel": "工作台视图",
+    "workspaceRequired": "请先选择工作区，再使用文件、Git 和终端。",
+    "tabs": {
+      "files": "文件",
+      "git": "Git",
+      "terminal": "终端"
+    },
+    "loading": {
+      "files": "正在加载文件工作区...",
+      "terminal": "正在加载终端..."
+    }
+  },
   "titlebar": {
     "minimize": "最小化窗口",
     "maximize": "最大化",
@@ -1166,6 +1191,8 @@
     "panels": {
       "chat": "聊天",
       "skills": "技能",
+      "run": "运行",
+      "workbench": "工作台",
       "tasks": "任务",
       "memory": "记忆",
       "history": "会话中心",

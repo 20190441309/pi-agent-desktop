@@ -1,6 +1,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 async function skipOnboarding(page: Page): Promise<void> {
   const modal = page.locator('[data-testid="onboarding-modal"]');
@@ -178,7 +179,7 @@ test.describe("Pi Desktop — current chat UI user path", () => {
       args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
       env: { ...process.env, CI: "1" },
     });
-    page = await app.firstWindow();
+    page = await getWindowByUrl(app, "index.html");
     await page.waitForLoadState("domcontentloaded");
 
     await installTestIpc(app);
@@ -315,7 +316,7 @@ test.describe("Pi Desktop — current chat UI user path", () => {
       args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
       env: { ...process.env, CI: "1" },
     });
-    page = await app.firstWindow();
+    page = await getWindowByUrl(app, "index.html");
     await page.waitForLoadState("domcontentloaded");
 
     await page.evaluate(async ({ workspacePath }) => {

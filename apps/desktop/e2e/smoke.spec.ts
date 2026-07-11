@@ -1,7 +1,7 @@
 // E2E smoke: 全面 runtime test v1.0.16 Pi Desktop 的各个功能。
 //
 // 覆盖矩阵:
-//   - 顶部导航路由 (对话/任务/记忆/工具/设置) + 右栏 Files/Git 可见入口
+//   - 顶部导航路由 (对话/运行/工作台/扩展) + 设置图标 + 旧 Files/Git 入口
 //   - ChatView 新对话页 + ChatInput 渲染
 //   - 插件面板 3 个真接通按钮 (GitHub 导入/编写技能/搜索)
 //   - Settings 独立窗口接通 + 10 个 tabs
@@ -14,6 +14,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -22,8 +23,7 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: '1', ELECTRON_RENDERER_URL: '' },
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
+    const page = await getWindowByUrl(app, "index.html");
     // v1.0.16: 跳过 onboarding
     //   路径 A: 之前 localStorage 没设 firstLaunchDone → onboarding 渲染 → 点 "跳过引导"
     //   路径 B: 之前已点过 (localStorage=true) → onboarding 不渲染 → 跳过
@@ -55,47 +55,58 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         try { await app?.close(); } catch { /* ignore */ }
     });
 
-    test('1. 顶部导航主路由 + 可见 Files/Git 入口 (对话/任务/记忆/工具/设置)', async () => {
+    test('1. 顶部导航主路由 + 运行/工作台二级视图 + 设置图标', async () => {
         ({ app, page } = await launchApp());
 
         // 冷启动: 等 networkidle 让初始资源加载稳定后再断言 tablist, 避免 5s 默认超时不够
         await page.waitForLoadState('networkidle');
         await expect(page.getByRole('tablist', { name: '顶部标签栏' })).toBeVisible({ timeout: 15_000 });
         await expect(page.getByRole('tab', { name: '对话' })).toBeVisible();
-        await expect(page.getByRole('tab', { name: '任务' })).toBeVisible();
-        await expect(page.getByRole('tab', { name: '记忆' })).toBeVisible();
-        await expect(page.getByRole('tab', { name: '工具' })).toBeVisible();
-        await expect(page.getByRole('tab', { name: '设置' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: '运行' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: '工作台' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: '扩展' })).toBeVisible();
+        await expect(page.getByRole('button', { name: '打开设置' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: '记忆' })).toHaveCount(0);
+        await expect(page.getByRole('tab', { name: '设置' })).toHaveCount(0);
         await expect(page.locator('button[data-mmcode-section="new-task"]')).toBeVisible();
 
         // 导航已移到顶部，左栏只保留会话列表。
         await expect(page.locator('nav[aria-label="会话列表"]')).toBeVisible();
 
-        await page.getByRole('tab', { name: '任务' }).click();
+        await page.getByRole('tab', { name: '运行' }).click();
         await expect(page.getByText('任务总览')).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('tab', { name: '运行' })).toHaveAttribute('aria-selected', 'true');
         await expect(page.getByRole('tab', { name: '任务' })).toHaveAttribute('aria-selected', 'true');
 
-        await page.getByRole('tab', { name: '记忆' }).click();
+        await page.getByRole('tab', { name: '记忆管理' }).click();
         await expect(page.getByRole('heading', { name: '记忆' })).toBeVisible({ timeout: 5000 });
         await expect(page.getByPlaceholder('搜索记忆...')).toBeVisible();
-        await expect(page.getByRole('tab', { name: '记忆' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('tab', { name: '运行' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('tab', { name: '记忆管理' })).toHaveAttribute('aria-selected', 'true');
 
-        await page.getByRole('tab', { name: '工具' }).click();
+        await page.getByRole('tab', { name: '扩展' }).click();
         await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
-        await expect(page.getByRole('tab', { name: '工具' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('tab', { name: '扩展' })).toHaveAttribute('aria-selected', 'true');
 
         await page.locator('button[data-mmcode-section="new-task"]').click();
         await expandRightRailIfNeeded(page);
         await page.getByRole('button', { name: '浏览全部文件' }).click();
         await expect(page.getByRole('region', { name: '文件工作区' })).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('tab', { name: '工作台' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('tab', { name: '文件' })).toHaveAttribute('aria-selected', 'true');
 
         await page.getByRole('tab', { name: '对话' }).click();
         await expandRightRailIfNeeded(page);
         await page.getByRole('button', { name: /提交或推送/ }).click();
         await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('tab', { name: 'Git' })).toHaveAttribute('aria-selected', 'true');
+
+        await page.getByRole('tab', { name: '终端' }).click();
+        await expect(page.getByTestId('terminal-panel')).toBeVisible({ timeout: 5000 });
+        await expect(page.getByTestId('terminal-panel')).toHaveClass(/h-full/);
 
         const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('tab', { name: '设置' }).click();
+        await page.getByRole('button', { name: '打开设置' }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState('domcontentloaded');
         await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible({ timeout: 5000 });
@@ -130,7 +141,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         ({ app, page } = await launchApp());
 
         // 切到插件面板
-        await page.getByRole('tab', { name: '工具' }).click();
+        await page.getByRole('tab', { name: '扩展' }).click();
         await expect(page.getByRole('region', { name: '插件面板' })).toBeVisible({ timeout: 5000 });
 
         // (1) "+ 创建" dropdown 按钮接通
@@ -168,7 +179,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         ({ app, page } = await launchApp());
 
         const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('tab', { name: '设置' }).click();
+        await page.getByRole('button', { name: '打开设置' }).click();
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState('domcontentloaded');
 

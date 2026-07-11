@@ -3,6 +3,7 @@ import { electronMainEntry } from "../playwright.config";
 import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const SESSION_ID = "deep-use-surface-session";
@@ -20,7 +21,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
-    const page = await app.firstWindow();
+    const page = await getWindowByUrl(app, "index.html");
     await page.waitForLoadState("domcontentloaded");
     return { app, page };
 }
@@ -137,6 +138,7 @@ test.describe("Pi Desktop deep-use surface audit", () => {
         await expect(page.locator("article")).toHaveCount(initialArticleCount);
         await page.screenshot({ path: join(ACCEPTANCE_DIR, "2026-06-26-deep-use-06-goal-command-no-chat-effect.png"), fullPage: true });
 
+        await page.getByRole("tab", { name: "运行" }).click();
         await page.getByRole("tab", { name: "任务" }).click();
         await expect(page.getByText("任务总览")).toBeVisible({ timeout: 10_000 });
         await expect(page.getByText(GOAL_CONDITION).first()).toBeVisible({ timeout: 10_000 });
@@ -145,7 +147,7 @@ test.describe("Pi Desktop deep-use surface audit", () => {
         await expect(page.getByText("本轮还没有任务写入 registry。")).toBeVisible({ timeout: 10_000 });
         await page.screenshot({ path: join(ACCEPTANCE_DIR, "2026-06-26-deep-use-07-task-goal-linked.png"), fullPage: true });
 
-        await page.getByRole("tab", { name: "工具" }).click();
+        await page.getByRole("tab", { name: "扩展" }).click();
         await expect(page.getByRole("region", { name: "插件面板" })).toBeVisible({ timeout: 10_000 });
         await page.getByRole("button", { name: /创建/ }).click();
         await page.getByRole("button", { name: /编写技能/ }).last().click();

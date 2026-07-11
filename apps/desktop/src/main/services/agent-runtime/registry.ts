@@ -10,6 +10,8 @@ import {
     type SendAgentPromptInput,
     type Workspace,
     type AgentMode,
+    type AgentPermissionSyncResult,
+    type ToolPermissions,
 } from "@shared";
 import type { PiEvent } from "@shared/events";
 import {
@@ -27,6 +29,8 @@ import type { PiAgentConfig } from "../../types";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { SubagentManager } from "../subagent/manager";
 import { createActorTool } from "../subagent/actor-tool";
+import { createRuntimePolicyController, type RuntimePolicyController } from "../permission/guarded-tools";
+import { filterActiveTools, resolveRuntimePolicy, resolveStoredToolPermissions } from "../permission/runtime-policy";
 import log from "electron-log/main";
 
 type Send = (channel: string, payload: unknown) => void;
@@ -38,6 +42,8 @@ interface AgentRuntimeRegistryDeps {
     agentDir?: string;
     getSettings?: () => AppSettings;
     getPiAgentConfig?: () => PiAgentConfig | null;
+    getEffectiveToolPermissions?: (workspaceId: string, sessionId?: string) => ToolPermissions;
+    resolveNativeSessionPath?: (sessionId: string) => string;
     /**
      * Returns mode options for the given workspace (CRIT-1).
      * Implementations should override `planModeEnabled` with the workspace's
@@ -74,13 +80,14 @@ interface AgentRuntime {
     isStreaming: boolean;
     mode: AgentMode;
     sessionMode: AgentMode;
+    policyController: RuntimePolicyController;
+    operationTail: Promise<void>;
     thinkingLevel?: "none" | "low" | "medium" | "high";
     /** 卡死看门狗: running 期间计时, 超时未结束则合成 extension_error 翻转状态 */
     watchdog?: NodeJS.Timeout;
 }
 
 const AGENT_WATCHDOG_MS = 5 * 60 * 1000;
-
 export class AgentRuntimeRegistry {
     private readonly runtimes = new Map<string, AgentRuntime>();
     private suppressedAgentIds = new Set<string>();
@@ -97,18 +104,23 @@ export class AgentRuntimeRegistry {
 
         const id = randomUUID();
         const now = Date.now();
+        const sessionPath = input.sessionPath ?? (input.sessionId ? this.deps.resolveNativeSessionPath?.(input.sessionId) : undefined);
         const tab: AgentTab = {
             id,
             workspaceId: workspace.id,
             title: input.title || `${workspace.name} Agent`,
             status: "starting",
             sessionId: input.sessionId,
-            sessionPath: input.sessionPath,
+            sessionPath,
             createdAt: now,
             updatedAt: now,
         };
 
-        const session = await this.createPrimarySession(workspace, id, input.sessionPath);
+        const policyController = createRuntimePolicyController(resolveRuntimePolicy({
+            mode: "build",
+            workspacePermissions: this.getEffectiveToolPermissions(workspace.id, input.sessionId),
+        }));
+        const session = await this.createPrimarySession(workspace, id, policyController, sessionPath);
 
         const runtime: AgentRuntime = {
             tab,
@@ -118,6 +130,8 @@ export class AgentRuntimeRegistry {
             isStreaming: false,
             mode: "build",
             sessionMode: "build",
+            policyController,
+            operationTail: Promise.resolve(),
         };
         this.runtimes.set(id, runtime);
         this.subscribe(runtime);
@@ -131,39 +145,57 @@ export class AgentRuntimeRegistry {
         const runtime = this.requireRuntime(input.agentId);
         const text = input.message.trim();
         if (!text) return;
-        const modeOptions = this.deps.getModeOptions?.(runtime.workspace.id);
-        const mode = normalizeAgentMode(input.mode, modeOptions);
-        await this.syncRuntimeMode(runtime, mode, input.streamingBehavior);
-        runtime.mode = mode;
-        const visibleContent = visibleUserPromptContent(text);
-        this.addMessage(runtime, "user", visibleContent, { mode });
-        this.rememberRecentUserIntent(runtime, visibleContent, mode);
-        const outbound = buildAgentModePrompt(mode, text, modeOptions);
-        await this.promptRuntime(runtime, outbound, input.streamingBehavior, { returnEarly: true });
+        return new Promise<void>((resolveAccepted, rejectAccepted) => {
+            const operation = this.enqueueRuntimeOperation(runtime, async () => {
+                const modeOptions = this.deps.getModeOptions?.(runtime.workspace.id);
+                const mode = normalizeAgentMode(input.mode, modeOptions);
+                await this.syncRuntimeMode(runtime, mode, input.streamingBehavior);
+                runtime.mode = mode;
+                await this.configureSessionPermissions(runtime, runtime.session, mode);
+                const visibleContent = visibleUserPromptContent(text);
+                this.addMessage(runtime, "user", visibleContent, { mode });
+                this.rememberRecentUserIntent(runtime, visibleContent, mode);
+                const outbound = buildAgentModePrompt(mode, text, modeOptions);
+                await this.promptRuntime(runtime, outbound, input.streamingBehavior, {
+                    returnEarly: true,
+                    onAccepted: resolveAccepted,
+                });
+            });
+            void operation.catch(rejectAccepted);
+        });
     }
 
     async promptInternal(agentId: string, message: string): Promise<void> {
         const runtime = this.requireRuntime(agentId);
         const text = message.trim();
         if (!text) return;
-        this.suppressedAgentIds.add(agentId);
-        try {
-            await this.promptRuntime(runtime, text);
-        } finally {
-            this.suppressedAgentIds.delete(agentId);
-        }
+        await this.enqueueRuntimeOperation(runtime, async () => {
+            this.suppressedAgentIds.add(agentId);
+            try {
+                await this.configureSessionPermissions(runtime, runtime.session, runtime.mode);
+                await this.promptRuntime(runtime, text);
+            } finally {
+                this.suppressedAgentIds.delete(agentId);
+            }
+        });
     }
 
     private async promptRuntime(
         runtime: AgentRuntime,
         text: string,
         streamingBehavior?: SendAgentPromptInput["streamingBehavior"],
-        options?: { returnEarly?: boolean },
+        options?: { returnEarly?: boolean; onAccepted?: () => void },
     ): Promise<void> {
         runtime.tab.status = "running";
         runtime.tab.updatedAt = Date.now();
         runtime.isStreaming = true;
         this.emitState();
+        let failureHandled = false;
+        const handleFailureOnce = (error: unknown): void => {
+            if (failureHandled) return;
+            failureHandled = true;
+            this.handlePromptFailure(runtime, error);
+        };
         try {
             const promptPromise = Promise.resolve(runtime.session.session.prompt(
                 text,
@@ -174,20 +206,23 @@ export class AgentRuntimeRegistry {
                 return;
             }
             let returnedEarly = false;
-            void promptPromise.catch((error) => {
+            const trackedPrompt = promptPromise.catch((error) => {
                 if (returnedEarly) {
-                    this.handlePromptFailure(runtime, error);
+                    handleFailureOnce(error);
                 }
+                throw error;
             });
             await Promise.race([
-                promptPromise,
+                trackedPrompt,
                 new Promise<void>((resolve) => {
                     queueMicrotask(resolve);
                 }),
             ]);
             returnedEarly = true;
+            options.onAccepted?.();
+            await trackedPrompt;
         } catch (error) {
-            this.handlePromptFailure(runtime, error);
+            handleFailureOnce(error);
             throw error;
         }
     }
@@ -227,7 +262,8 @@ export class AgentRuntimeRegistry {
 
     async refreshWorkspace(workspaceId: string): Promise<void> {
         const targets = [...this.runtimes.values()].filter((runtime) => runtime.workspace.id === workspaceId);
-        await Promise.all(targets.map((runtime) => this.refreshRuntimeSession(runtime)));
+        await Promise.all(targets.map((runtime) =>
+            this.enqueueRuntimeOperation(runtime, () => this.refreshRuntimeSession(runtime))));
         this.emitState();
     }
 
@@ -351,6 +387,32 @@ export class AgentRuntimeRegistry {
             });
         }
         this.emitState();
+    }
+
+    async syncPermissions(agentId: string, modeOverride?: AgentMode): Promise<AgentPermissionSyncResult> {
+        const runtime = this.requireRuntime(agentId);
+        return this.enqueueRuntimeOperation(runtime, async () => {
+            const mode = modeOverride ?? runtime.mode;
+            return this.configureSessionPermissions(runtime, runtime.session, mode);
+        });
+    }
+
+    private configureSessionPermissions(
+        runtime: AgentRuntime,
+        targetSession: WorkspaceSession,
+        mode: AgentMode,
+    ): AgentPermissionSyncResult {
+        const policy = resolveRuntimePolicy({
+            mode,
+            workspacePermissions: this.getEffectiveToolPermissions(runtime.workspace.id, runtime.tab.sessionId),
+        });
+        const allTools = [...new Set(targetSession.session.getAllTools().map((tool) => tool.name))];
+        const activeTools = filterActiveTools(allTools, policy);
+        const activeSet = new Set(activeTools);
+        const deniedTools = allTools.filter((toolName) => !activeSet.has(toolName));
+        targetSession.session.setActiveToolsByName(activeTools);
+        runtime.policyController.setPolicy(policy);
+        return { activeTools, deniedTools };
     }
 
     private armWatchdog(runtime: AgentRuntime): void {
@@ -481,6 +543,7 @@ export class AgentRuntimeRegistry {
     private async createPrimarySession(
         workspace: Workspace,
         agentId: string,
+        policyController: RuntimePolicyController,
         sessionPath?: string,
     ): Promise<WorkspaceSession> {
         return createWorkspaceSession({
@@ -490,6 +553,7 @@ export class AgentRuntimeRegistry {
             sessionPath,
             desktopExtensions: this.buildDesktopExtensions(workspace.id),
             customTools: this.buildPrimaryCustomTools(workspace, agentId),
+            getRuntimePolicy: policyController.getPolicy,
             uiContext: createExtensionUiBridge(
                 workspace.id,
                 { agentId },
@@ -545,11 +609,19 @@ export class AgentRuntimeRegistry {
 
     private async refreshRuntimeSession(runtime: AgentRuntime): Promise<void> {
         const previous = runtime.session;
-        runtime.session = await this.createPrimarySession(
+        const candidate = await this.createPrimarySession(
             runtime.workspace,
             runtime.tab.id,
+            runtime.policyController,
             runtime.tab.sessionPath,
         );
+        try {
+            this.configureSessionPermissions(runtime, candidate, runtime.mode);
+        } catch (error) {
+            candidate.dispose();
+            throw error;
+        }
+        runtime.session = candidate;
         this.subscribe(runtime);
         runtime.tab.updatedAt = Date.now();
         try {
@@ -598,6 +670,19 @@ export class AgentRuntimeRegistry {
         const runtime = this.runtimes.get(agentId);
         if (!runtime) throw new Error(`Agent not found: ${agentId}`);
         return runtime;
+    }
+
+    private enqueueRuntimeOperation<T>(runtime: AgentRuntime, operation: () => Promise<T>): Promise<T> {
+        const result = runtime.operationTail.then(operation);
+        runtime.operationTail = result.then(
+            () => undefined,
+            () => undefined,
+        );
+        return result;
+    }
+
+    private getEffectiveToolPermissions(workspaceId: string, sessionId?: string): ToolPermissions {
+        return this.deps.getEffectiveToolPermissions?.(workspaceId, sessionId) ?? resolveStoredToolPermissions({});
     }
 
     private rememberRecentUserIntent(runtime: AgentRuntime, content: string, mode: AgentMode): void {

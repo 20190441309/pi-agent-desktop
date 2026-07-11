@@ -13,6 +13,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
 import { mkdir } from 'fs/promises';
 
 const TEST_TIMEOUT = 60_000;
@@ -30,24 +31,21 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
             PI_DESKTOP_CONFIG_DIR: configDir,
         },
     });
-    const page = await app.firstWindow();
+    await getWindowByUrl(app, "index.html");
+    const page = await getWindowByUrl(app, 'index.html');
     await page.waitForLoadState('domcontentloaded');
-
-    // Skip onboarding
-    const modalCount = await page.locator('[data-testid="onboarding-modal"]').count();
-    if (modalCount > 0) {
-        await page.getByRole('button', { name: '跳过引导' }).click({ timeout: 5000 });
-        await page.waitForFunction(
-            () => document.querySelector('[data-testid="onboarding-modal"]') === null,
-            { timeout: 5000 }
-        );
-    }
+    await page.evaluate(() => {
+        window.localStorage.setItem('pi-desktop:firstLaunchDone', 'true');
+        window.localStorage.setItem('pi-desktop.onboarding.completed', 'true');
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('button', { name: '打开设置' })).toBeVisible({ timeout: 10_000 });
     return { app, page };
 }
 
 async function openConfigWindow(app: ElectronApplication, page: Page): Promise<Page> {
     const settingsWindowPromise = app.waitForEvent('window');
-    await page.getByRole('tab', { name: '设置' }).click();
+    await page.getByRole('button', { name: '打开设置' }).click();
     const settingsWindow = await settingsWindowPromise;
     await settingsWindow.waitForLoadState('domcontentloaded');
     await settingsWindow.getByRole('tab', { name: '配置文件' }).click();

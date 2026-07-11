@@ -82,4 +82,27 @@ describe("TerminalPanel", () => {
         expect(disposeMock).toHaveBeenCalledTimes(1);
         expect(window.piAPI.closeTerminal).toHaveBeenCalledTimes(1);
     });
+
+    it("fills the workbench surface and hides the overlay close control when embedded", () => {
+        render(
+            <TerminalPanel
+                isOpen
+                workspacePath="C:/demo"
+                onClose={vi.fn()}
+                displayMode="embedded"
+            />,
+        );
+
+        const panel = screen.getByTestId("terminal-panel");
+        expect(panel.className).toContain("h-full");
+        expect(panel.className).not.toContain("h-64");
+        expect(screen.queryByTitle("收起终端")).toBeNull();
+    });
+
+    it("states that the user-controlled terminal keeps full local access", () => {
+        render(<TerminalPanel isOpen workspacePath="C:/demo" onClose={vi.fn()} />);
+
+        expect(screen.getByRole("note").textContent).toContain("终端由你直接控制，拥有本机完整权限；Agent 工具权限不会限制此终端");
+        expect(screen.getByRole("note").className).not.toContain("hidden");
+    });
 });

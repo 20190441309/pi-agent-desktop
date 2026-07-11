@@ -22,6 +22,7 @@ import type {
     PlanRecord,
     AgentMessage,
     AgentRuntimeState,
+    AgentPermissionSyncResult,
     AgentTab,
     CodexImportReport,
     CodexSessionSummary,
@@ -172,6 +173,8 @@ const piAPI: PiAPI = {
         ipcRenderer.invoke("agents:runtime-state", agentId) as Promise<AgentRuntimeState>,
     agentsSetThinking: (agentId, level) =>
         ipcRenderer.invoke("agents:set-thinking", agentId, level) as Promise<void>,
+    agentsSyncPermissions: (agentId) =>
+        ipcRenderer.invoke("agents:sync-permissions", agentId) as Promise<AgentPermissionSyncResult | IpcError>,
     onAgentsState: (cb) => subscribe<AgentTab[]>("agents:state", cb),
     onAgentMessages: (cb) =>
         subscribe<{ agentId: string; messages: AgentMessage[] }>("agents:message", cb),

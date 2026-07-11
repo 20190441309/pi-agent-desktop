@@ -11,6 +11,19 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { getWindowByUrl } from "./support/electron-windows";
+
+async function getMainWindow(app: ElectronApplication): Promise<Page> {
+    await getWindowByUrl(app, "index.html");
+    return getWindowByUrl(app, "index.html");
+}
+
+async function waitForPersistedSession(page: Page, sessionId: string): Promise<void> {
+    await expect.poll(async () => page.evaluate(async (id) => {
+        const sessions = await window.piAPI.listSessions();
+        return sessions.some((session) => session.id === id);
+    }, sessionId), { timeout: 10_000 }).toBe(true);
+}
 
 async function skipOnboarding(page: Page): Promise<void> {
     const modal = page.locator('[data-testid="onboarding-modal"]');
@@ -164,13 +177,13 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
-        page = await app.firstWindow();
+        page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
 
         // 跳过 onboarding: 走 React 自身的 onComplete 路径,避免破坏 portal ownership
         await skipOnboarding(page);
-        const subtitle = page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。');
-        await expect(subtitle).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('新对话', { exact: true })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。', { exact: true })).toBeVisible();
 
         // 确认旧 WelcomeScreen 假按钮串已清理
         await expect(page.getByText('创建 Team')).toHaveCount(0);
@@ -203,7 +216,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
-        page = await app.firstWindow();
+        page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
         await stubPromptIpc(app);
         await skipOnboarding(page);
@@ -265,7 +278,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
-        page = await app.firstWindow();
+        page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
         await app.evaluate(({ ipcMain }, selectedFile) => {
             ipcMain.removeHandler('files:select');
@@ -332,11 +345,11 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
-        page = await app.firstWindow();
+        page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
 
         await skipOnboarding(page);
-        await expect(page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="chat-input-shell"]')).toBeVisible({ timeout: 15_000 });
 
         await enablePlanMode(page);
 
@@ -356,10 +369,11 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
-        page = await app.firstWindow();
+        page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
 
         await seedLongPlanConversation(page, workspacePath);
+        await waitForPersistedSession(page, "chat-layout-regression-session");
         await app.close();
 
         app = await _electron.launch({
@@ -367,7 +381,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
-        page = await app.firstWindow();
+        page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
         await skipOnboarding(page);
 
@@ -413,7 +427,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
-        page = await app.firstWindow();
+        page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
         await page.evaluate(
             async ({ workspacePath, planContent }) => {
@@ -437,6 +451,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             },
             { workspacePath, planContent },
         );
+        await waitForPersistedSession(page, "plan-card-upgrade-session");
         await app.close();
 
         app = await _electron.launch({
@@ -444,7 +459,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
-        page = await app.firstWindow();
+        page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
         await skipOnboarding(page);
         const seededSessionButton = page.locator('button, [role="button"]').filter({ hasText: '计划升级回归' }).first();
@@ -532,7 +547,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
-        page = await app.firstWindow();
+        page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
         await page.evaluate(async ({ workspacePath }) => {
             window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
@@ -563,7 +578,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
-        page = await app.firstWindow();
+        page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
         await skipOnboarding(page);
         await app.evaluate(({ ipcMain }) => {
@@ -681,11 +696,11 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
             args: [`--user-data-dir=${userDataDir}`, electronMainEntry],
             env: { ...process.env, CI: '1' },
         });
-        page = await app.firstWindow();
+        page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
 
         await skipOnboarding(page);
-        await expect(page.getByText('输入消息后，Pi Agent 会在当前工作区开始运行。')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('[data-testid="chat-input-shell"]')).toBeVisible({ timeout: 15_000 });
 
         await app.evaluate(({ ipcMain }) => {
             const target = globalThis as typeof globalThis & {
