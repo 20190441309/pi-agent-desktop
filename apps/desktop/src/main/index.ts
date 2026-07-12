@@ -26,6 +26,7 @@ import { setupSettingsIpc } from './ipc/settings.ipc';
 import { setupSettingsWindowIpc } from './ipc/settings-window.ipc';
 import { setupDesktopOverlayIpc } from './ipc/desktop-overlay.ipc';
 import { setupUpdaterIpc } from './ipc/updater.ipc';
+import { setupDiagnosticsIpc } from './ipc/diagnostics.ipc';
 import { setupWindowIpc, setupWindowEvents } from './ipc/window.ipc';
 import { setupWorkspaceIpc } from './ipc/workspace.ipc';
 import { setupProjectShellIpc } from './ipc/project-shell.ipc';
@@ -61,9 +62,17 @@ import { DesktopOverlayWindowManager } from './services/desktop-overlay-window';
 import { createMainWindowLifecycleController, type MainWindowLifecycleController } from './services/window-lifecycle';
 import { resolveTrayIconPath } from './services/tray-icon';
 import { attachWebSecurityHandlers } from './services/web-security';
+import { configureProductionLogging } from './services/log-redaction';
+import { buildDiagnosticReport } from './services/diagnostics';
+import { attachCrashDiagnostics, attachRendererCrashDiagnostics } from './services/crash-diagnostics';
 import { resolveStoredToolPermissions } from './services/permission/runtime-policy';
 import { resolveNativeSessionPath } from './services/pi-session/session-path';
 import type { PiAgentConfig } from './types';
+
+const e2eLocale = process.env.PI_DESKTOP_E2E_LOCALE;
+if (e2eLocale) {
+  app.commandLine?.appendSwitch('lang', e2eLocale);
+}
 
 let mainWindow: BrowserWindow | null = null;
 let desktopOverlayWindowManager: DesktopOverlayWindowManager | null = null;
@@ -102,6 +111,9 @@ const planFileService = new PlanFileService();
 
 const PI_AGENT_DIR = process.env.PI_DESKTOP_CONFIG_DIR || join(homedir(), '.pi', 'agent');
 
+// Configure redaction and bounded file rotation before the first log entry.
+configureProductionLogging(log);
+attachCrashDiagnostics({ processEvents: process, appEvents: app, logger: log });
 // Startup banner for electron-log diagnostics
 log.info(`[Main] Pi Desktop starting (electron ${process.versions.electron}, node ${process.versions.node})`);
 
@@ -475,6 +487,7 @@ function createWindow(): void {
   // audit round 3, Task 2.2: attach window-open / will-navigate guards BEFORE
   // any renderer content loads so an early XSS payload can't race past them.
   attachWebSecurityHandlers(mainWindow);
+  attachRendererCrashDiagnostics({ webContents: mainWindow.webContents, logger: log });
 
   // Load the renderer
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -712,6 +725,26 @@ function setupIPC(updaterService: AppUpdaterService): void {
     setupDesktopOverlayIpc(desktopOverlayWindowManager);
   }
   setupUpdaterIpc(updaterService);
+  setupDiagnosticsIpc({
+    getMainWindow: () => mainWindow,
+    buildReport: () => buildDiagnosticReport({
+      appVersion: app.getVersion(),
+      userDataPath: app.getPath("userData"),
+      logPath: log.transports.file.getFile().path,
+      platform: process.platform,
+      versions: {
+        electron: process.versions.electron,
+        node: process.versions.node,
+        chrome: process.versions.chrome,
+      },
+      workspaces: store.get("workspaces"),
+      sessions: store.get("sessions"),
+      databaseHealth: memoryService?.getDatabase().checkHealth() ?? {
+        ok: false,
+        details: ["Long-horizon database is not initialized"],
+      },
+    }),
+  });
 
   // Terminal (node-pty)
   setupTerminalIpc();
