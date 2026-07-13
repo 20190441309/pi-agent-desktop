@@ -16,6 +16,7 @@ const {
     defaultResourceLoaderCreate,
     sessionManagerOpen,
     sessionSendUserMessage,
+    sessionSetModel,
     createAgentSessionMock,
     createGuardedBuiltinsMock,
     sdkMock,
@@ -32,6 +33,7 @@ const {
     defaultResourceLoaderCreate: vi.fn(),
     sessionManagerOpen: vi.fn((sessionPath?: string) => ({ sessionPath })),
     sessionSendUserMessage: vi.fn(async () => undefined),
+    sessionSetModel: vi.fn(async () => undefined),
     createAgentSessionMock: vi.fn().mockResolvedValue({
         session: {
             prompt: vi.fn(),
@@ -41,6 +43,7 @@ const {
             abort: vi.fn(),
             dispose: vi.fn(),
             bindExtensions: vi.fn().mockResolvedValue(undefined),
+            setModel: vi.fn(async () => undefined),
         },
         extensionsResult: { extensions: [] },
     }),
@@ -101,6 +104,8 @@ describe("createWorkspaceSession", () => {
         sessionManagerOpen.mockClear();
         sessionSendUserMessage.mockReset();
         sessionSendUserMessage.mockResolvedValue(undefined);
+        sessionSetModel.mockReset();
+        sessionSetModel.mockResolvedValue(undefined);
         createAgentSessionMock.mockClear();
         createGuardedBuiltinsMock.mockClear();
         createAgentSessionMock.mockResolvedValue({
@@ -112,6 +117,7 @@ describe("createWorkspaceSession", () => {
                 abort: vi.fn(),
                 dispose: vi.fn(),
                 bindExtensions: vi.fn().mockResolvedValue(undefined),
+                setModel: sessionSetModel,
             },
             extensionsResult: { extensions: [] },
         });
@@ -245,7 +251,7 @@ describe("createWorkspaceSession", () => {
                 ],
             }),
         );
-        expect(registerProvider).toHaveBeenCalledTimes(1);
+        expect(registerProvider).toHaveBeenCalledTimes(2);
         expect(findModel).toHaveBeenCalledWith("longcat", "LongCat-2.0-Preview");
         expect(createAgentSessionMock).toHaveBeenLastCalledWith(
             expect.objectContaining({
@@ -256,6 +262,33 @@ describe("createWorkspaceSession", () => {
                 settingsManager: expect.anything(),
             }),
         );
+    });
+
+    it("switches an existing session to another registered model without recreating it", async () => {
+        const nextModel = { provider: "xunfei", id: "spark-pro" };
+        findModel.mockImplementation((provider: string, modelId: string) =>
+            provider === "xunfei" && modelId === "spark-pro" ? nextModel : undefined,
+        );
+
+        const workspaceSession = await createWorkspaceSession({
+            workspaceId: "ws_switch",
+            workspacePath: "C:/repo",
+            piAgentConfig: {
+                providers: [
+                    {
+                        id: "xunfei",
+                        name: "Xunfei",
+                        baseUrl: "https://example.invalid",
+                        api: "openai-completions",
+                        models: [{ id: "spark-pro", name: "Spark Pro", provider: "xunfei", providerName: "Xunfei" }],
+                    },
+                ],
+            },
+        });
+
+        await expect(workspaceSession.setModel("xunfei", "spark-pro")).resolves.toBe(true);
+        expect(sessionSetModel).toHaveBeenCalledWith(nextModel);
+        expect(createAgentSessionMock).toHaveBeenCalledTimes(1);
     });
 
     it("registers configured providers with a provider apiKey env reference when auth storage has no key", async () => {

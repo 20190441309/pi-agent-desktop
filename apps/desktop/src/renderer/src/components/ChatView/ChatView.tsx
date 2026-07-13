@@ -297,7 +297,6 @@ export function ChatView({
   } = usePiStream(agentId);
   const { getCurrentSession, createSession, renameSession, setCurrentSession, continueSession } = useSessionStore();
   const updateMessage = useSessionStore((state) => state.updateMessage);
-  const sessions = useSessionStore((state) => state.sessions);
   const settings = useSettingsStore((state) => state.settings);
   const initAgents = useAgentStore((state) => state.init);
   const agentMessages = useAgentStore((state) => agentId ? state.messagesByAgent[agentId] ?? EMPTY_AGENT_MESSAGES : EMPTY_AGENT_MESSAGES);
@@ -456,10 +455,6 @@ export function ChatView({
       }
     };
   }, [focusMessageId, messages, onFocusMessageHandled]);
-  const workspaceSessions = sessions
-    .filter((session) => !session.archived && session.workspaceId === currentWorkspace?.id)
-    .slice()
-    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   const permissionLabel =
     settings.permissionLevel === "always"
       ? t("chatInput.permissions.always.label")
@@ -715,18 +710,51 @@ export function ChatView({
 
   return (
     <div data-testid="chat-view-root" className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-input)] text-[var(--mm-text-primary)]">
-      <div className="grid min-h-[42px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-4 text-[12px]">
-        <div className="flex min-w-0 items-center gap-4 overflow-hidden whitespace-nowrap text-[var(--mm-text-secondary)]">
-          <WorkspaceSwitcher variant="strip" />
-          <span className="inline-flex h-7 shrink-0 items-center gap-1 leading-none">
-            <span>{t("chatView.permissionPrefix")}</span>
-            <span className="text-[var(--mm-text-primary)]">{permissionLabel}</span>
-          </span>
-          <span className={`inline-flex h-7 shrink-0 items-center font-mono tabular-nums leading-none text-[var(--mm-text-primary)] ${isStreaming ? "animate-pulse" : ""}`}>{usageSummary}</span>
+      <div
+        data-testid="chat-conversation-header"
+        className="grid min-h-[44px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-4 text-[12px]"
+      >
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden text-[var(--mm-text-primary)]">
+          {messages.length > 0 ? (
+            <>
+              <svg className="h-4 w-4 shrink-0 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+              </svg>
+              {editingTitle ? (
+                <input
+                  value={titleDraft}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onBlur={commitTitle}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") commitTitle();
+                    if (event.key === "Escape") setEditingTitle(false);
+                  }}
+                  autoFocus
+                  className="h-7 min-w-0 max-w-[420px] flex-1 rounded-[4px] border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-2 text-[13px] font-medium text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)]"
+                  aria-label={t("chatView.session.renameAria")}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTitleDraft(currentSession?.title || t("chatView.session.untitled"));
+                    setEditingTitle(true);
+                  }}
+                  className="h-7 min-w-0 max-w-[420px] truncate rounded-[4px] px-1.5 text-left text-[13px] font-medium transition-colors hover:bg-[var(--mm-bg-hover)] active:scale-[0.96]"
+                  title={t("chatView.session.renameTitle")}
+                >
+                  {currentSession?.title || t("chatView.session.untitled")}
+                </button>
+              )}
+            </>
+          ) : null}
         </div>
-        <div className="pi-motion-status-pill flex h-7 shrink-0 items-center justify-end gap-2 text-[var(--mm-text-secondary)]" data-motion-state={isStreaming ? "running" : isConnected ? "connected" : "disconnected"}>
-          <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "pi-motion-running-dot bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />
-          <span key={connectionLabel} className="pi-motion-status-text inline-flex h-7 items-center leading-none" role="status" aria-label={connectionLabel}>{connectionLabel}</span>
+        <div className="pi-motion-status-pill flex h-7 shrink-0 items-center justify-end gap-3 text-[var(--mm-text-secondary)]" data-motion-state={isStreaming ? "running" : isConnected ? "connected" : "disconnected"}>
+          <span className={`inline-flex h-7 shrink-0 items-center font-mono tabular-nums leading-none text-[var(--mm-text-primary)] ${isStreaming ? "animate-pulse" : ""}`}>{usageSummary}</span>
+          <span className="inline-flex items-center gap-2">
+            <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "pi-motion-running-dot bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />
+            <span key={connectionLabel} className="pi-motion-status-text inline-flex h-7 items-center leading-none" role="status" aria-label={connectionLabel}>{connectionLabel}</span>
+          </span>
           {onToggleRightRail ? (
             <span className="inline-flex translate-y-[0.5px]">
               <button
@@ -742,55 +770,6 @@ export function ChatView({
           ) : null}
         </div>
       </div>
-      {messages.length > 0 && (
-        <div className="flex h-14 shrink-0 items-center justify-between px-4">
-          <div className="mx-auto flex w-full max-w-[770px] items-center gap-2 text-sm text-[var(--mm-text-primary)]">
-            <svg className="h-4 w-4 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-            </svg>
-            {editingTitle ? (
-              <input
-                value={titleDraft}
-                onChange={(event) => setTitleDraft(event.target.value)}
-                onBlur={commitTitle}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") commitTitle();
-                  if (event.key === "Escape") setEditingTitle(false);
-                }}
-                autoFocus
-                className="min-w-0 flex-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-2 py-1 text-sm font-medium text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)]"
-                aria-label={t("chatView.session.renameAria")}
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setTitleDraft(currentSession?.title || t("chatView.session.untitled"));
-                  setEditingTitle(true);
-                }}
-                className="min-w-0 truncate rounded-md px-1 py-1 text-left font-medium hover:bg-[var(--mm-bg-hover)]"
-                title={t("chatView.session.renameTitle")}
-              >
-                {currentSession?.title || t("chatView.session.untitled")}
-              </button>
-            )}
-            <select
-              value={currentSession?.id ?? ""}
-              onChange={(event) => {
-                if (event.target.value) setCurrentSession(event.target.value);
-              }}
-              className="max-w-[220px] rounded-md border border-transparent bg-transparent px-1 py-1 text-xs text-[var(--mm-text-secondary)] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)]"
-              aria-label={t("chatView.session.switchAria")}
-            >
-              {workspaceSessions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {session.title || t("chatView.session.untitled")}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
       {/* 消息区域 */}
       <div
         ref={scrollRegionRef}

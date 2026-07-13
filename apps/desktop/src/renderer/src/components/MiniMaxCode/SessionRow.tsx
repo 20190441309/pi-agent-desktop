@@ -1,13 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { Session } from "../../stores/session-store";
-
-export function IconMessage(): React.JSX.Element {
-  return (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h8M8 14h5m8-2a8 8 0 11-3.3-6.48L21 5l-1.05 3.15A7.96 7.96 0 0121 12z" />
-    </svg>
-  );
-}
 
 export function SmallActionButton({
   label,
@@ -27,7 +19,7 @@ export function SmallActionButton({
         event.stopPropagation();
         onClick();
       }}
-      className="pointer-events-none flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md text-[var(--mm-text-tertiary)] opacity-0 transition hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:pointer-events-auto focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+      className="pointer-events-none flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--mm-text-primary)] transition-[background-color,color,transform] duration-75 hover:bg-[var(--mm-bg-hover)] active:scale-[0.96] focus:pointer-events-auto group-hover:pointer-events-auto"
     >
       {children}
     </button>
@@ -95,6 +87,7 @@ export function SessionRow({
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(session.title);
+  const menuRef = useRef<HTMLDivElement>(null);
   const title = session.title || t("sidebar.sessions.unnamed");
   const baseClasses =
     "flex w-full items-center gap-2 rounded-[var(--mm-radius-sm)] py-0 pr-0 text-[13px] leading-relaxed transition-[background-color,color,box-shadow] focus:outline-none";
@@ -102,6 +95,29 @@ export function SessionRow({
     ? "bg-[var(--mm-bg-selected)] font-medium text-[var(--mm-text-primary)] shadow-[0_4px_14px_rgba(37,99,235,0.16)] hover:bg-[var(--mm-bg-selected)]"
     : "bg-transparent font-normal text-[var(--mm-text-primary)] shadow-none hover:bg-[var(--mm-bg-hover)]";
   const pinLabel = `${session.favorite ? t("sidebar.sessions.unpin") : t("sidebar.sessions.pin")} ${title}`;
+
+  useEffect(() => {
+    if (!contextMenuOpen) return;
+
+    const closeIfOutside = (event: MouseEvent): void => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
+      setContextMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setContextMenuOpen(false);
+    };
+    const closeMenu = (): void => setContextMenuOpen(false);
+
+    document.addEventListener("mousedown", closeIfOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("blur", closeMenu);
+
+    return () => {
+      document.removeEventListener("mousedown", closeIfOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("blur", closeMenu);
+    };
+  }, [contextMenuOpen]);
 
   const commitRename = (): void => {
     const trimmed = draftTitle.trim();
@@ -183,13 +199,10 @@ export function SessionRow({
         aria-current={active ? "page" : undefined}
         className={`${baseClasses} ${stateClasses} h-9 min-w-0 flex-1 pl-[10px]`}
       >
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true">
-          <IconMessage />
-        </span>
         <span className="min-w-0 flex-1 truncate text-left">{title}</span>
       </button>
       <div
-        className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+        className="pointer-events-none absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-0.5 opacity-0 shadow-[0_4px_12px_rgba(15,23,42,0.16)] transition-opacity duration-75 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
         data-session-actions={session.id}
       >
         {archived ? (
@@ -209,8 +222,9 @@ export function SessionRow({
       </div>
       {contextMenuOpen && (
         <div
+          ref={menuRef}
           role="menu"
-          className="absolute right-1 top-8 z-20 min-w-[132px] rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] py-1 text-[12px] shadow-[0_8px_24px_rgba(15,23,42,0.12)]"
+          className="absolute right-1 top-8 z-20 min-w-[104px] rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] py-1 text-[12px] shadow-[0_8px_24px_rgba(15,23,42,0.12)]"
         >
           <button
             type="button"
@@ -223,7 +237,7 @@ export function SessionRow({
             }}
             className="flex w-full items-center px-3 py-1.5 text-left text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
           >
-            {t("sidebar.sessions.rename")} {title}
+            {t("sidebar.sessions.rename")}
           </button>
           <button
             type="button"
@@ -235,7 +249,7 @@ export function SessionRow({
             }}
             className="flex w-full items-center px-3 py-1.5 text-left text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)]"
           >
-            {t("sidebar.sessions.delete")} {title}
+            {t("sidebar.sessions.delete")}
           </button>
         </div>
       )}

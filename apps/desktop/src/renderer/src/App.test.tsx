@@ -673,6 +673,23 @@ describe("App sidebar session navigation", () => {
         });
     });
 
+    it("keeps desktop interactions lightweight", () => {
+        const globalsCssPath = resolve(process.cwd(), "src/renderer/src/styles/globals.css");
+        const globalsCss = readFileSync(globalsCssPath, "utf8");
+        const overlayPaths = [
+            "src/renderer/src/components/CommandPalette/CommandPalette.tsx",
+            "src/renderer/src/components/Onboarding/Onboarding.tsx",
+            "src/renderer/src/components/ShortcutsCheatsheet/ShortcutsCheatsheet.tsx",
+            "src/renderer/src/components/Settings/tabs/ManagedModelsPanel.tsx",
+        ];
+
+        expect(globalsCss).not.toMatch(/\/\* 平滑过渡 \*\/[\s\S]*?\*\s*\{\s*transition-property:/);
+        expect(globalsCss).toContain("--transition-fast: 80ms");
+        expect(globalsCss).toContain("--transition-normal: 160ms");
+        for (const overlayPath of overlayPaths) {
+            expect(readFileSync(resolve(process.cwd(), overlayPath), "utf8")).not.toContain("backdrop-blur");
+        }
+    });
     it("does not keep a forced gray chat background override in globals.css", () => {
         const globalsCssPath = resolve(process.cwd(), "src/renderer/src/styles/globals.css");
         const globalsCss = readFileSync(globalsCssPath, "utf8");

@@ -268,7 +268,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
     ) : null;
 
     const deleteDialog = pendingDeleteModel ? (
-        <div className="settings-subdialog-backdrop fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-6 backdrop-blur-[1px]">
+        <div className="settings-subdialog-backdrop fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-6">
             <div
                 ref={deleteDialogRef}
                 role="dialog"

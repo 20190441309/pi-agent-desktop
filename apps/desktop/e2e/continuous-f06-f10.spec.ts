@@ -370,7 +370,7 @@ test.describe("continuous acceptance F06-F10 continuation", () => {
       }, "unpin-session");
       await record("F06-C08", "F06", "右键重命名会话写入 UI 和持久化", async () => {
         await page!.getByRole("button", { name: "验收置顶会话", exact: true }).click({ button: "right" });
-        await page!.getByRole("menuitem", { name: "重命名 验收置顶会话" }).click();
+        await page!.getByRole("menuitem", { name: "重命名", exact: true }).click();
         const input = page!.getByRole("textbox", { name: "重命名会话 验收置顶会话" });
         await input.fill("验收置顶会话已重命名");
         await input.press("Enter");
@@ -379,14 +379,14 @@ test.describe("continuous acceptance F06-F10 continuation", () => {
       }, "rename-session");
       await record("F06-C09", "F06", "删除确认取消保留会话", async () => {
         await page!.getByRole("button", { name: "验收删除会话", exact: true }).click({ button: "right" });
-        await page!.getByRole("menuitem", { name: "删除 验收删除会话" }).click();
+        await page!.getByRole("menuitem", { name: "删除", exact: true }).click();
         await page!.getByRole("button", { name: "取消" }).click();
         await expect(page!.getByRole("button", { name: "验收删除会话", exact: true })).toBeVisible();
         return "删除弹窗取消后会话仍可见。";
       }, "delete-cancel");
       await record("F06-C10", "F06", "删除确认移除会话并从持久化消失", async () => {
         await page!.getByRole("button", { name: "验收删除会话", exact: true }).click({ button: "right" });
-        await page!.getByRole("menuitem", { name: "删除 验收删除会话" }).click();
+        await page!.getByRole("menuitem", { name: "删除", exact: true }).click();
         await page!.getByRole("button", { name: "确认" }).click();
         await expect(page!.getByRole("button", { name: "验收删除会话", exact: true })).toHaveCount(0);
         await expect.poll(() => page!.evaluate(() => window.piAPI.listSessions().then((items) => items.some((item) => item.id === "f06-delete")))).toBe(false);

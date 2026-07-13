@@ -289,6 +289,19 @@ function promptFailureDetails(error: unknown): string {
         this.emitState();
     }
 
+    async setModelForAll(provider: string, modelId: string): Promise<void> {
+        const targets = [...this.runtimes.values()];
+        await Promise.all(targets.map((runtime) =>
+            this.enqueueRuntimeOperation(runtime, async () => {
+                const switched = await runtime.session.setModel(provider, modelId);
+                if (!switched) {
+                    log.warn("[agent-runtime] model not found for live session:", provider, modelId);
+                }
+                runtime.tab.updatedAt = Date.now();
+            })));
+        this.emitState();
+    }
+
     getMessages(agentId: string): AgentMessage[] {
         return [...this.requireRuntime(agentId).messages];
     }

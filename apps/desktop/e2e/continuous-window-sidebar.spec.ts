@@ -490,7 +490,7 @@ test.describe("continuous acceptance window, tabs, and sidebar", () => {
             await record("F04-C08", "F04", "右键重命名会话会更新 UI 和持久化标题", async () => {
                 if (!page) throw new Error("main page missing");
                 await sessionButton(page, "验收会话 Alpha").click({ button: "right" });
-                await page.getByRole("menuitem", { name: "重命名 验收会话 Alpha" }).click();
+                await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
                 const input = page.getByLabel("重命名会话 验收会话 Alpha");
                 await input.fill("验收会话 Alpha 已重命名");
                 await input.press("Enter");
@@ -506,7 +506,7 @@ test.describe("continuous acceptance window, tabs, and sidebar", () => {
             await record("F04-C09", "F04", "右键删除取消不会删除会话", async () => {
                 if (!page) throw new Error("main page missing");
                 await sessionButton(page, "验收会话 Alpha 已重命名").click({ button: "right" });
-                await page.getByRole("menuitem", { name: "删除 验收会话 Alpha 已重命名" }).click();
+                await page.getByRole("menuitem", { name: "删除", exact: true }).click();
                 const dialog = page.getByRole("dialog", { name: /确定删除/ });
                 await expect(dialog).toBeVisible();
                 await dialog.getByRole("button", { name: "取消" }).click();
@@ -517,7 +517,7 @@ test.describe("continuous acceptance window, tabs, and sidebar", () => {
             await record("F04-C10", "F04", "右键删除确认会删除会话并从持久化消失", async () => {
                 if (!page) throw new Error("main page missing");
                 await sessionButton(page, "验收会话 Alpha 已重命名").click({ button: "right" });
-                await page.getByRole("menuitem", { name: "删除 验收会话 Alpha 已重命名" }).click();
+                await page.getByRole("menuitem", { name: "删除", exact: true }).click();
                 const dialog = page.getByRole("dialog", { name: /确定删除/ });
                 await dialog.getByRole("button", { name: "确认" }).click();
                 await expect(sessionButton(page, "验收会话 Alpha 已重命名")).toHaveCount(0);

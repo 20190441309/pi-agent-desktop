@@ -16,6 +16,7 @@ const sessions: Array<{
     getAllTools: ReturnType<typeof vi.fn>;
     getActiveToolNames: ReturnType<typeof vi.fn>;
     setActiveToolsByName: ReturnType<typeof vi.fn>;
+    setModel: ReturnType<typeof vi.fn>;
 }> = [];
 const { interceptorHandleMock, sessionCreationState } = vi.hoisted(() => ({
     interceptorHandleMock: vi.fn(async () => undefined),
@@ -49,6 +50,7 @@ vi.mock("../../pi-session/factory", () => ({
             ]),
             getActiveToolNames: vi.fn(() => ["read", "write", "bash", "git_status", "fetch", "actor"]),
             setActiveToolsByName: vi.fn(),
+            setModel: vi.fn(async () => true),
         };
         if (sessionCreationState.nextActiveToolsError) {
             const error = sessionCreationState.nextActiveToolsError;
@@ -62,6 +64,7 @@ vi.mock("../../pi-session/factory", () => ({
             workspaceId: opts.workspaceId,
             session,
             dispose: session.dispose,
+            setModel: session.setModel,
         };
     }),
     resolveBundledDesktopExtensionPaths: vi.fn(() => []),
@@ -113,6 +116,17 @@ describe("AgentRuntimeRegistry", () => {
         expect(second.workspaceId).toBe("ws_1");
         expect(sessions).toHaveLength(2);
         expect(registry.list().map((agent) => agent.title)).toEqual(["A", "B"]);
+    });
+
+    it("switches live agent sessions in place without recreating them", async () => {
+        await registry.create({ workspaceId: "ws_1", title: "A" });
+        await registry.create({ workspaceId: "ws_1", title: "B" });
+
+        await registry.setModelForAll("mimo", "mimo-v2.5");
+
+        expect(sessions).toHaveLength(2);
+        expect(sessions[0].setModel).toHaveBeenCalledWith("mimo", "mimo-v2.5");
+        expect(sessions[1].setModel).toHaveBeenCalledWith("mimo", "mimo-v2.5");
     });
 
     it("scopes extension UI permission requests to the created agent", async () => {

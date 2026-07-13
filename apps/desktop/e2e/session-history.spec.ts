@@ -226,7 +226,7 @@ test.describe("Pi Desktop — session history navigation", () => {
 
         const deleteRow = sidebar.getByRole("button", { name: "待删除会话", exact: true });
         await deleteRow.click({ button: "right" });
-        await sidebar.getByRole("menuitem", { name: "删除 待删除会话" }).click();
+        await sidebar.getByRole("menuitem", { name: "删除", exact: true }).click();
         const confirmDialog = sidebar.getByRole("dialog", { name: "确定删除「待删除会话」？此操作不可恢复。" });
         await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
         await confirmDialog.getByRole("button", { name: "取消" }).click();
@@ -234,7 +234,7 @@ test.describe("Pi Desktop — session history navigation", () => {
         await expect(deleteRow).toBeVisible();
 
         await deleteRow.click({ button: "right" });
-        await sidebar.getByRole("menuitem", { name: "删除 待删除会话" }).click();
+        await sidebar.getByRole("menuitem", { name: "删除", exact: true }).click();
         await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
         await confirmDialog.getByRole("button", { name: "确认" }).click();
         await expect(sidebar.getByRole("button", { name: "待删除会话", exact: true })).toHaveCount(0, { timeout: 5_000 });
@@ -327,10 +327,13 @@ test.describe("Pi Desktop — session history navigation", () => {
 
         const renameRow = sidebar.getByRole("button", { name: "待重命名会话", exact: true });
         await renameRow.click({ button: "right" });
-        await expect(sidebar.getByRole("menuitem", { name: "重命名 待重命名会话" })).toBeVisible({ timeout: 5_000 });
-        await expect(sidebar.getByRole("menuitem", { name: "删除 待重命名会话" })).toBeVisible({ timeout: 5_000 });
+        await expect(sidebar.getByRole("menuitem", { name: "重命名", exact: true })).toBeVisible({ timeout: 5_000 });
+        await expect(sidebar.getByRole("menuitem", { name: "删除", exact: true })).toBeVisible({ timeout: 5_000 });
         await page.screenshot({ path: join(screenshotDir, "02-context-menu.png"), fullPage: true });
-        await sidebar.getByRole("menuitem", { name: "重命名 待重命名会话" }).click();
+        await page.getByRole("main").click({ position: { x: 20, y: 20 } });
+        await expect(sidebar.getByRole("menu")).toHaveCount(0);
+        await renameRow.click({ button: "right" });
+        await sidebar.getByRole("menuitem", { name: "重命名", exact: true }).click();
         const renameInput = sidebar.getByRole("textbox", { name: "重命名会话 待重命名会话" });
         await renameInput.fill("右键已重命名");
         await renameInput.press("Enter");
@@ -338,7 +341,7 @@ test.describe("Pi Desktop — session history navigation", () => {
 
         const contextDeleteRow = sidebar.getByRole("button", { name: "待右键删除会话", exact: true });
         await contextDeleteRow.click({ button: "right" });
-        await sidebar.getByRole("menuitem", { name: "删除 待右键删除会话" }).click();
+        await sidebar.getByRole("menuitem", { name: "删除", exact: true }).click();
         const deleteDialog = sidebar.getByRole("dialog", { name: "确定删除「待右键删除会话」？此操作不可恢复。" });
         await expect(deleteDialog).toBeVisible({ timeout: 5_000 });
         await deleteDialog.getByRole("button", { name: "确认" }).click();

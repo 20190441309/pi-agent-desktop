@@ -25,6 +25,7 @@ type RegisteredApi = RegisteredProviderConfig["api"];
 export interface WorkspaceSession {
     workspaceId: string;
     session: AgentSession;
+    setModel: (provider: string, modelId: string) => Promise<boolean>;
     dispose: () => void;
 }
 
@@ -58,7 +59,7 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
     const agentDir = opts.agentDir ?? sdk.getAgentDir();
     const authStorage = sdk.AuthStorage.create(join(agentDir, "auth.json"));
     const modelRegistry = sdk.ModelRegistry.create(authStorage, join(agentDir, "models.json"));
-    await registerConfiguredProviders(modelRegistry, authStorage, opts.piAgentConfig, opts.provider);
+    await registerConfiguredProviders(modelRegistry, authStorage, opts.piAgentConfig);
     const selectedModel = opts.provider && opts.modelId
         ? modelRegistry.find(opts.provider, opts.modelId)
         : undefined;
@@ -98,6 +99,12 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
     return {
         workspaceId: opts.workspaceId,
         session,
+        setModel: async (provider, modelId) => {
+            const model = modelRegistry.find(provider, modelId);
+            if (!model) return false;
+            await session.setModel(model);
+            return true;
+        },
         dispose: () => {
             try {
                 session.dispose();
@@ -177,10 +184,8 @@ async function registerConfiguredProviders(
     modelRegistry: ModelRegistry,
     authStorage: AuthStorage,
     config?: PiAgentConfig | null,
-    selectedProvider?: string,
 ): Promise<void> {
     for (const provider of config?.providers ?? []) {
-        if (selectedProvider && provider.id !== selectedProvider) continue;
         if (!provider.baseUrl || provider.models.length === 0) continue;
         const apiKey = await authStorage.getApiKey(provider.id) ?? resolveProviderApiKey(provider.apiKey);
         if (!apiKey) continue;

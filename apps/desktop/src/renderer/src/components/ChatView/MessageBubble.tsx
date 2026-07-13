@@ -286,7 +286,7 @@ function MessageBubbleImpl({
     isUser
       ? isExecutePlanCommand
         ? "rounded-lg border border-[var(--mm-border-strong)] bg-[var(--mm-bg-control)] px-3 py-3 text-[var(--mm-text-primary)] shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-        : "rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-4 py-3 text-[var(--mm-text-primary)]"
+        : "rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-4 py-2 text-[var(--mm-text-primary)]"
       : "rounded-lg px-1 py-1 text-[var(--mm-text-primary)]",
     isSearchTarget ? "ring-2 ring-[#f59e0b] ring-offset-2 ring-offset-[var(--mm-bg-main)]" : "",
   ].filter(Boolean).join(" ");
@@ -443,34 +443,35 @@ function MessageBubbleImpl({
               <ToolActivity toolCalls={message.toolCalls} />
             )}
 
-            {/* 底部栏: 复制 + 时间戳 */}
-            <div className={`flex items-center gap-2 mt-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
-              {!isUser && copyContent && (
-                <button
-                  type="button"
-                  onClick={() => void handleCopy()}
-                  className="text-[#aaa] hover:text-[var(--mm-text-secondary)] transition-colors"
-                  aria-label={copied ? "已复制" : "复制内容"}
-                  title={copied ? "已复制" : "复制"}
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    {copied ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    )}
-                  </svg>
-                </button>
-              )}
-              {copyError && (
-                <span className="text-[11px] text-[var(--color-error)]" role="alert">
-                  {copyError}
-                </span>
-              )}
-              <time dateTime={timeIso} className="sr-only">
-                {timeText}
-              </time>
-            </div>
+            {!isUser && (
+              <div className="mt-2 flex items-center justify-start gap-2" data-testid="message-footer">
+                {copyContent && (
+                  <button
+                    type="button"
+                    onClick={() => void handleCopy()}
+                    className="text-[#aaa] hover:text-[var(--mm-text-secondary)] transition-colors"
+                    aria-label={copied ? "已复制" : "复制内容"}
+                    title={copied ? "已复制" : "复制"}
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      {copied ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      )}
+                    </svg>
+                  </button>
+                )}
+                {copyError && (
+                  <span className="text-[11px] text-[var(--color-error)]" role="alert">
+                    {copyError}
+                  </span>
+                )}
+                <time dateTime={timeIso} className="sr-only">
+                  {timeText}
+                </time>
+              </div>
+            )}
           </div>
       </div>
     </article>

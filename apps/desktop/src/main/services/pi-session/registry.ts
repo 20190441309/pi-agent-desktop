@@ -139,6 +139,15 @@ export class WorkspaceRegistry {
         return this.entries.has(workspaceId);
     }
 
+    async setModelForAll(provider: string, modelId: string): Promise<void> {
+        await Promise.all([...this.entries.values()].map(async (entry) => {
+            const switched = await entry.session.setModel(provider, modelId);
+            if (!switched) {
+                log.warn("[WorkspaceRegistry] model not found for live session:", provider, modelId);
+            }
+        }));
+    }
+
     private async ensureSubscribed(
         entry: WorkspaceEntry,
         workspaceId: string,

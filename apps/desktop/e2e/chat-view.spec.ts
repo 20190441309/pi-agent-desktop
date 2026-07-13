@@ -201,6 +201,13 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         const userArticle = page.getByRole('article', { name: /你 ·/ });
         await expect(userArticle).toBeVisible({ timeout: 10_000 });
         await expect(userArticle).toContainText('test ping from v1.0.12 verification');
+        const conversationHeader = page.getByTestId('chat-conversation-header');
+        await expect(conversationHeader).toHaveCount(1);
+        await expect(conversationHeader).not.toContainText('工作区:');
+        await expect(conversationHeader).not.toContainText('权限:');
+        await expect(conversationHeader.locator('select')).toHaveCount(0);
+        await expect(page.getByLabel('切换会话')).toHaveCount(0);
+        await page.screenshot({ path: test.info().outputPath('chat-header-single-row.png') });
         await expectChatInputAnchored(page);
 
         // 运行中允许继续输入追加指令；发布级 smoke 只验证消息入栈和进度区出现。

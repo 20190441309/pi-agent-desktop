@@ -846,7 +846,7 @@ describe("ChatView", () => {
     expect(topStrip?.className ?? "").not.toContain("bg-[var(--mm-bg-main)]");
   });
 
-  it("normalizes the top strip items to a shared control height instead of mixing buttons with raw text lines", () => {
+  it("renders one conversation header without workspace, permission, or duplicate session controls", () => {
     mockedStreamError = null;
 
     render(
@@ -855,19 +855,14 @@ describe("ChatView", () => {
       </I18nProvider>,
     );
 
-    const permissionItem = screen.getByText("权限:").parentElement;
-    const tokenItem = screen.getByText(/Token:/);
-    const statusItem = screen.getByRole("status");
-
-    expect(permissionItem?.className ?? "").toContain("inline-flex");
-    expect(permissionItem?.className ?? "").toContain("h-7");
-    expect(permissionItem?.className ?? "").toContain("items-center");
-    expect(tokenItem.className).toContain("inline-flex");
-    expect(tokenItem.className).toContain("h-7");
-    expect(tokenItem.className).toContain("items-center");
-    expect(statusItem.className).toContain("inline-flex");
-    expect(statusItem.className).toContain("h-7");
-    expect(statusItem.className).toContain("items-center");
+    const header = screen.getByTestId("chat-conversation-header");
+    expect(header.textContent).toContain("Session 1");
+    expect(header.textContent).toContain("Token:");
+    expect(header.textContent).toContain("已连接");
+    expect(header.textContent).not.toContain("工作区:");
+    expect(header.textContent).not.toContain("权限:");
+    expect(header.querySelector("select")).toBeNull();
+    expect(screen.queryByLabelText("切换会话")).toBeNull();
   });
 
   it("auto-scrolls only the chat scroll region instead of the outer document", () => {

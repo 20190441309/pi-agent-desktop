@@ -328,12 +328,26 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(screen.queryByRole("button", { name: "删除 了解项目" })).toBeNull();
     });
 
+    it("点击右键菜单外部会关闭菜单", () => {
+        seedWorkspaceAndSessions();
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
+
+        fireEvent.contextMenu(screen.getByRole("button", { name: "了解项目" }));
+        expect(screen.getByRole("menu")).toBeTruthy();
+
+        fireEvent.mouseDown(screen.getByRole("button", { name: "了解项目" }));
+
+        expect(screen.queryByRole("menu")).toBeNull();
+    });
+
     it("右键菜单可以重命名会话", () => {
         seedWorkspaceAndSessions();
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         fireEvent.contextMenu(screen.getByRole("button", { name: "了解项目" }));
-        fireEvent.click(screen.getByRole("menuitem", { name: "重命名 了解项目" }));
+        const menu = screen.getByRole("menu");
+        expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["重命名", "删除"]);
+        fireEvent.click(screen.getByRole("menuitem", { name: "重命名" }));
         const input = screen.getByRole("textbox", { name: "重命名会话 了解项目" });
         fireEvent.change(input, { target: { value: "已重命名项目" } });
         fireEvent.keyDown(input, { key: "Enter" });
@@ -346,7 +360,7 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         fireEvent.contextMenu(screen.getByRole("button", { name: "了解项目" }));
-        fireEvent.click(screen.getByRole("menuitem", { name: "删除 了解项目" }));
+        fireEvent.click(screen.getByRole("menuitem", { name: "删除" }));
 
         const dialog = screen.getByRole("dialog");
         expect(dialog).toBeTruthy();
@@ -362,7 +376,7 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
         fireEvent.contextMenu(screen.getByRole("button", { name: "了解项目" }));
-        fireEvent.click(screen.getByRole("menuitem", { name: "删除 了解项目" }));
+        fireEvent.click(screen.getByRole("menuitem", { name: "删除" }));
 
         const dialog = screen.getByRole("dialog");
         fireEvent.click(within(dialog).getByText("确认"));

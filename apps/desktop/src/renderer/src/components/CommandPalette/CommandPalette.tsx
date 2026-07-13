@@ -453,7 +453,7 @@ export function CommandPalette({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-start justify-center pt-32 bg-black/30 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-start justify-center pt-32 bg-black/30"
             onClick={handleClose}
         >
             <div

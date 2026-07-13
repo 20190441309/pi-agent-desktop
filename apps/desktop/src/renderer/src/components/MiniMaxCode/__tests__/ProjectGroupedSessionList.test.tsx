@@ -105,8 +105,10 @@ describe("ProjectGroupedSessionList", () => {
     expect(actions?.className ?? "").toContain("group-focus-within:pointer-events-auto");
     expect(actions?.querySelector("button")?.className ?? "").toContain("pointer-events-none");
     expect(actions?.querySelector("button")?.className ?? "").toContain("group-hover:pointer-events-auto");
-    expect(actions?.querySelector("button")?.className ?? "").toContain("h-[26px]");
-    expect(actions?.querySelector("button")?.className ?? "").toContain("w-[26px]");
+    expect(actions?.className ?? "").toContain("bg-[var(--mm-bg-panel)]");
+    expect(actions?.className ?? "").toContain("shadow-");
+    expect(actions?.querySelector("button")?.className ?? "").toContain("h-7");
+    expect(actions?.querySelector("button")?.className ?? "").toContain("w-7");
   });
 
   it("marks the selected project session with shadow instead of reordering by lastOpenedAt", () => {

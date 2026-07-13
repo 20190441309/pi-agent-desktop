@@ -211,8 +211,28 @@ describe("DateGroupedSessionList", () => {
         expect(actions?.className ?? "").toContain("group-focus-within:pointer-events-auto");
         expect(actions?.querySelector("button")?.className ?? "").toContain("pointer-events-none");
         expect(actions?.querySelector("button")?.className ?? "").toContain("group-hover:pointer-events-auto");
-        expect(actions?.querySelector("button")?.className ?? "").toContain("h-[26px]");
-        expect(actions?.querySelector("button")?.className ?? "").toContain("w-[26px]");
+        expect(actions?.className ?? "").toContain("bg-[var(--mm-bg-panel)]");
+        expect(actions?.className ?? "").toContain("shadow-");
+        expect(actions?.querySelector("button")?.className ?? "").toContain("h-7");
+        expect(actions?.querySelector("button")?.className ?? "").toContain("w-7");
+        expect(actions?.querySelector("button")?.className ?? "").toContain("text-[var(--mm-text-primary)]");
+    });
+
+    it("会话标题前不显示消息图标", () => {
+        useSessionStore.setState({
+            sessions: [makeSession({ id: "s_plain", title: "纯文本会话", updatedAt: new Date() })],
+        });
+
+        renderWithI18n(
+            <DateGroupedSessionList
+                currentSessionId={null}
+                onSelectSession={() => undefined}
+                onArchiveSession={() => undefined}
+                onDeleteSession={() => undefined}
+            />,
+        );
+
+        expect(screen.getByRole("button", { name: "纯文本会话" }).querySelector("svg")).toBeNull();
     });
 
     it("会话行不显示相对时间", () => {

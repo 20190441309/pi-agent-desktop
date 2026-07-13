@@ -429,9 +429,10 @@ describe("MessageBubble", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByTestId("message-surface").className).toContain("py-3");
-    expect(screen.getByTestId("message-surface").className).not.toContain("pt-3 pb-4");
+    expect(screen.getByTestId("message-surface").className).toContain("py-2");
+    expect(screen.getByTestId("message-surface").className).not.toContain("py-3");
     expect(screen.getByTestId("message-surface").className).toContain("bg-[var(--mm-bg-sidebar)]");
+    expect(screen.queryByTestId("message-footer")).toBeNull();
 
     rerender(
       <I18nProvider>
@@ -441,6 +442,7 @@ describe("MessageBubble", () => {
 
     expect(screen.getByTestId("message-surface").className).not.toContain("bg-[var(--mm-bg-panel)]");
     expect(screen.getByTestId("message-surface").className).not.toContain("border-[var(--mm-border)]");
+    expect(screen.getByTestId("message-footer")).toBeTruthy();
   });
 
   it("shows custom card open-file string failures from Electron shell", async () => {

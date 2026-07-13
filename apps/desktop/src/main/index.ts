@@ -215,9 +215,7 @@ const sendToRenderer = (channel: string, payload: unknown) => {
 function shouldRefreshSessionsForSettingsChange(previous: AppSettings, next: AppSettings): boolean {
   const prevLongHorizon = previous.longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
   const nextLongHorizon = next.longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
-  return previous.provider !== next.provider
-    || previous.model !== next.model
-    || JSON.stringify(prevLongHorizon) !== JSON.stringify(nextLongHorizon);
+  return JSON.stringify(prevLongHorizon) !== JSON.stringify(nextLongHorizon);
 }
 
 /**
@@ -707,15 +705,23 @@ function setupIPC(updaterService: AppUpdaterService): void {
     reloadPiAgentConfig: () => refreshPiAgentConfig(configManager),
     piAgentDir: PI_AGENT_DIR,
     onSettingsChanged: (next, previous) => {
-      if (!shouldRefreshSessionsForSettingsChange(previous, next)) return;
-      const workspaceIds = [...new Set(agentRegistry.list().map((agent) => agent.workspaceId))];
-      for (const workspaceId of workspaceIds) {
-        void agentRegistry.refreshWorkspace(workspaceId).catch((error) => {
-          log.warn("[Main] failed to refresh workspace runtime after settings change:", workspaceId, error);
+      const modelChanged = previous.provider !== next.provider || previous.model !== next.model;
+      if (modelChanged && next.provider && next.model) {
+        void Promise.all([
+          agentRegistry.setModelForAll(next.provider, next.model),
+          piRegistry.setModelForAll(next.provider, next.model),
+        ]).catch((error) => {
+          log.warn("[Main] failed to switch live sessions after model change:", error);
         });
       }
-      for (const workspace of store.get('workspaces')) {
-        piRegistry.dispose(workspace.id);
+
+      if (shouldRefreshSessionsForSettingsChange(previous, next)) {
+        const workspaceIds = [...new Set(agentRegistry.list().map((agent) => agent.workspaceId))];
+        for (const workspaceId of workspaceIds) {
+          void agentRegistry.refreshWorkspace(workspaceId).catch((error) => {
+            log.warn("[Main] failed to refresh workspace runtime after settings change:", workspaceId, error);
+          });
+        }
       }
     },
   });

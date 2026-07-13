@@ -2,12 +2,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { WorkspaceRegistry } from "../registry";
 
 const subscribe = vi.fn();
+const setModel = vi.fn(async () => true);
 
 vi.mock("../factory", () => ({
     createWorkspaceSession: vi.fn(async (opts: any) => ({
         workspaceId: opts.workspaceId,
         session: { dispose: vi.fn(), subscribe },
         dispose: vi.fn(),
+        setModel,
     })),
 }));
 
@@ -16,6 +18,7 @@ describe("WorkspaceRegistry", () => {
 
     beforeEach(() => {
         subscribe.mockReset();
+        setModel.mockClear();
         reg = new WorkspaceRegistry();
     });
 
@@ -28,6 +31,17 @@ describe("WorkspaceRegistry", () => {
         const a = await reg.get("ws_1", "C:/tmp/a");
         const b = await reg.get("ws_1", "C:/tmp/a");
         expect(a).toBe(b);
+    });
+
+    it("switches all live workspace sessions in place", async () => {
+        await reg.get("ws_1", "C:/tmp/a");
+        await reg.get("ws_2", "C:/tmp/b");
+
+        await reg.setModelForAll("mimo", "mimo-v2.5");
+
+        expect(setModel).toHaveBeenCalledTimes(2);
+        expect(setModel).toHaveBeenNthCalledWith(1, "mimo", "mimo-v2.5");
+        expect(setModel).toHaveBeenNthCalledWith(2, "mimo", "mimo-v2.5");
     });
 
     it("invokes the latest onTurnEnd hook for sessions subscribed before hook registration", async () => {

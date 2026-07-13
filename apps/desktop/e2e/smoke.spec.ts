@@ -272,8 +272,14 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await modelTrigger.click();
         const modelMenu = page.getByRole('menu').filter({ hasText: '选择模型' });
         await expect(modelMenu).toBeVisible();
-        await page.keyboard.press('Escape');
+        const alternativeModel = modelMenu.locator('[role="menuitemradio"][aria-checked="false"]').first();
+        await expect(alternativeModel).toBeVisible();
+        await alternativeModel.click();
         await expect(modelMenu).toBeHidden();
+
+        const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="输入消息" i]').first();
+        await textarea.fill('model switch remains responsive', { timeout: 3_000 });
+        await expect(textarea).toHaveValue('model switch remains responsive');
 
         await thinkingTrigger.click();
         const thinkingMenu = page.getByRole('menu', { name: '思考强度' });
