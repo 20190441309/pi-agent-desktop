@@ -23,6 +23,9 @@
       "esbuild": "^0.28.1",
       "glob": "^10.5.0",
       "tar": "^7.5.10"
+    },
+    "patchedDependencies": {
+      "pi-openplan@1.3.0": "patches/pi-openplan@1.3.0.patch"
     }
   },
   "scripts": {

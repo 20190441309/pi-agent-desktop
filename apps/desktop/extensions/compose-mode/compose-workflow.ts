@@ -26,6 +26,7 @@ interface ExecuteComposeWorkflowOptions {
     ctx: ExtensionContext;
     store: WorkflowRunStore;
     onUpdate?: (message: string) => void;
+    deadline?: number;
 }
 
 interface ImplementTaskResult {
@@ -40,6 +41,16 @@ function summarizeText(value: string, max = 280): string {
     const text = value.replace(/\s+/g, " ").trim();
     if (!text) return "no output";
     return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+const COMPOSE_TIMEOUT_MESSAGE = "compose.timeout: Compose 工作流超时";
+
+export function clampWorkflowChildTimeout(deadline: number, requestedTimeoutMs: number, now = Date.now()): number {
+    const remainingMs = deadline - now;
+    if (remainingMs <= 0) {
+        throw new Error(COMPOSE_TIMEOUT_MESSAGE);
+    }
+    return Math.min(requestedTimeoutMs, remainingMs);
 }
 
 function extractSection(body: string, marker: string): string {
@@ -199,15 +210,21 @@ async function runChildStep(
 ): Promise<string> {
     throwIfCancelled(options.store, options.runId);
     const model = currentModelSelection(options.ctx);
+    const timeoutMs = options.deadline === undefined
+        ? input.timeoutMs
+        : clampWorkflowChildTimeout(options.deadline, input.timeoutMs ?? 5 * 60 * 1000);
     const result = await runChildAgent({
         label: input.label,
         cwd: input.cwd ?? options.ctx.cwd,
         prompt: input.prompt,
         provider: model.provider,
         modelId: model.modelId,
-        timeoutMs: input.timeoutMs,
+        timeoutMs,
         signal: options.store.abortSignal(options.runId),
     });
+    if (options.deadline !== undefined && Date.now() >= options.deadline) {
+        throw new Error(COMPOSE_TIMEOUT_MESSAGE);
+    }
     if (!result.ok) {
         throw new Error(result.text || result.stderr || `${input.label} failed`);
     }
@@ -510,9 +527,10 @@ export async function executeComposeWorkflow(
     const taskHistory: ImplementTaskResult[] = [];
     // Global deadline for the whole workflow. Default 1h.
     const deadline = Date.now() + (args.timeoutMs ?? 60 * 60 * 1000);
+    options.deadline = deadline;
     const assertBeforeDeadline = (): void => {
-        if (Date.now() > deadline) {
-            throw new Error("compose.timeout: Compose 工作流超时");
+        if (Date.now() >= deadline) {
+            throw new Error(COMPOSE_TIMEOUT_MESSAGE);
         }
     };
 

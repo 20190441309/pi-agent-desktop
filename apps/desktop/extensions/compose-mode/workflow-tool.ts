@@ -74,7 +74,7 @@ export function createWorkflowTool(store: WorkflowRunStore): ToolDefinition<type
     return defineTool({
         name: "workflow",
         label: "Workflow",
-        description: "Run the built-in Pi Desktop compose workflow and inspect its status.",
+        description: "Run the built-in Compose workflow only for complex multi-step implementation work. Do not use it for simple Q&A, web research, read-only exploration, explanations, or one small direct edit.",
         parameters: workflowSchema,
         async execute(_toolCallId, params, signal, onUpdate, ctx) {
             if (params.operation === "status") {

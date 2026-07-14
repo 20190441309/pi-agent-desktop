@@ -101,6 +101,10 @@ describe("agent modes", () => {
 
         expect(outbound).toContain("Compose workflow runtime is enabled.");
         expect(outbound).toContain("call the `workflow` tool");
+        expect(outbound).toContain("Compose mode alone is not a reason to start a workflow.");
+        expect(outbound).toContain("simple questions, explanations, web research, or read-only exploration");
+        expect(outbound).toContain("single small edit");
+        expect(outbound).toContain("multiple dependent implementation steps");
         expect(outbound).toContain("全面审查代码");
     });
 

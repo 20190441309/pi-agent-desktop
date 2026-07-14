@@ -24,6 +24,10 @@ export interface DesktopOverlayPermissionTarget {
     agentId?: string;
     source: "permission" | "plan" | "extension";
 }
+export interface DesktopOverlayWindowManagerOptions {
+    showWhenMainWindowHidden?: boolean;
+}
+
 
 export function computeDesktopOverlayBounds(
     workArea: { x: number; y: number; width: number; height: number },
@@ -48,7 +52,10 @@ export class DesktopOverlayWindowManager {
         height: DEFAULT_HEIGHT,
     };
 
-    constructor(private readonly getMainWindow: () => BrowserWindow | null) {}
+    constructor(
+        private readonly getMainWindow: () => BrowserWindow | null,
+        private readonly options: DesktopOverlayWindowManagerOptions = {},
+    ) {}
 
     ensureWindow(): BrowserWindow {
         if (this.overlayWindow && !this.overlayWindow.isDestroyed()) {
@@ -136,7 +143,10 @@ export class DesktopOverlayWindowManager {
 
     private applyWindowState(): void {
         const overlayWindow = this.ensureWindow();
-        if (!this.overlayState.visible || this.isMainWindowVisible()) {
+        const shouldShow = this.overlayState.visible
+            && !this.isMainWindowVisible()
+            && this.options.showWhenMainWindowHidden === true;
+        if (!shouldShow) {
             overlayWindow.hide();
             return;
         }

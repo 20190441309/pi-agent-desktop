@@ -1,6 +1,6 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdirSync, writeFileSync } from "fs";
-import { dirname, join } from "path";
+import { mkdirSync } from "fs";
+import { join } from "path";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { getWindowByUrl } from "./support/electron-windows";
@@ -136,24 +136,6 @@ async function inspectOverlayWindow(app: ElectronApplication): Promise<null | {
   });
 }
 
-async function captureOverlayWindow(app: ElectronApplication, targetPath: string): Promise<void> {
-  const pngBase64 = await app.evaluate(async ({ BrowserWindow }) => {
-    const overlay = BrowserWindow.getAllWindows().find((item) => {
-      try {
-        return !item.isDestroyed() && item.webContents.getURL().includes("overlay.html");
-      } catch {
-        return false;
-      }
-    });
-    if (!overlay) {
-      throw new Error("Overlay window not found for screenshot");
-    }
-    const image = await overlay.capturePage();
-    return image.toPNG().toString("base64");
-  });
-  mkdirSync(dirname(targetPath), { recursive: true });
-  writeFileSync(targetPath, Buffer.from(pngBase64, "base64"));
-}
 
 test.describe("Pi Desktop overlay anchors", () => {
   let app: ElectronApplication;
@@ -171,7 +153,7 @@ test.describe("Pi Desktop overlay anchors", () => {
     }
   });
 
-  test("routes permissions and progress to the main composer while visible, and keeps overlay only for hidden-window progress", async () => {
+  test("routes permissions and progress to the main composer while keeping hidden-window progress silent", async () => {
     const userDataDir = test.info().outputPath(`overlay-anchors-${Date.now()}`);
     const workspacePath = test.info().outputPath("overlay-anchor-workspace");
     ({ app, page } = await launchApp(userDataDir));
@@ -270,16 +252,50 @@ test.describe("Pi Desktop overlay anchors", () => {
 
     await expect.poll(async () => {
       const overlay = await inspectOverlayWindow(app);
+      return overlay?.visible ?? false;
+    }, { timeout: 10_000 }).toBe(false);
+  });
+
+  test("keeps the desktop progress reminder hidden after the main window closes", async () => {
+    const userDataDir = test.info().outputPath(`overlay-silent-${Date.now()}`);
+    const workspacePath = test.info().outputPath("overlay-silent-workspace");
+    ({ app, page } = await launchApp(userDataDir));
+    const { workspaceId } = await seedWorkspace(page, workspacePath);
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.locator('[data-testid="chat-input-shell"]')).toBeVisible({ timeout: 15_000 });
+
+    await app.evaluate(() => {
+      const target = globalThis as OverlayTestGlobals;
+      target.__PI_DESKTOP_TEST_SHELL__?.closeMainWindow();
+    });
+    await expect.poll(async () => {
+      return app.evaluate(() => {
+        const target = globalThis as OverlayTestGlobals;
+        return target.__PI_DESKTOP_TEST_SHELL__?.isMainWindowVisible() ?? true;
+      });
+    }, { timeout: 10_000 }).toBe(false);
+
+    await emitAgentsState(app, [
+      {
+        id: "silent_progress_agent",
+        workspaceId,
+        title: "Silent Progress Agent",
+        status: "running",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    ]);
+
+    await expect.poll(async () => {
+      const overlay = await inspectOverlayWindow(app);
       return overlay ? {
         visible: overlay.visible,
-        permissionVisible: overlay.dom.permissionVisible,
         reminderVisible: overlay.dom.reminderVisible,
       } : null;
     }, { timeout: 10_000 }).toMatchObject({
-      visible: true,
-      permissionVisible: false,
+      visible: false,
       reminderVisible: true,
     });
-    await captureOverlayWindow(app, test.info().outputPath("overlay-cluster-11-hidden-progress-overlay.png"));
   });
 });

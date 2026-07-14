@@ -359,7 +359,7 @@
       },
       "compose": {
         "label": "Compose",
-        "desc": "Orchestrate workflows and skills in the MiMo style"
+        "desc": "Orchestrate workflows and skills"
       }
     },
     "thinking": {

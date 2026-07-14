@@ -1,0 +1,65 @@
+diff --git a/extensions/plan-mode/question-prompt.ts b/extensions/plan-mode/question-prompt.ts
+index 160bdcf169fc01fbbe7f3f9dd0ecfc91bfd354ab..3209476576786526ce1fb6b87853179c5ec5852c 100644
+--- a/extensions/plan-mode/question-prompt.ts
++++ b/extensions/plan-mode/question-prompt.ts
+@@ -713,6 +713,60 @@ export function registerPlanQuestionTool(
+ 					};
+ 				}
+ 
++				// Desktop hosts may expose the full ExtensionUIContext shape while
++				// intentionally leaving TUI-only custom rendering unsupported. In
++				// that case custom() resolves undefined; use the portable select/input
++				// primitives instead of crashing when mapping the missing result.
++				if (result === undefined && ctx.ui.select) {
++					const answers: string[][] = [];
++					for (const question of input.questions) {
++						const title = `${question.header}\n${question.question}`;
++						const displayOptions = question.options.map(
++							(option) => `${option.label} - ${option.description}`,
++						);
++						if (question.custom !== false) displayOptions.push("Other...");
++
++						if (question.multiSelect && ctx.ui.input) {
++							const optionList = question.options.map((option) => option.label).join(", ");
++							const value = await ctx.ui.input(
++								`${title}\nOptions: ${optionList}`,
++								"Enter one or more choices, separated by commas",
++							);
++							answers.push(value?.trim()
++								? value.split(",").map((item) => item.trim()).filter(Boolean)
++								: []);
++							continue;
++						}
++
++						const selected = await ctx.ui.select(title, displayOptions);
++						if (!selected) {
++							answers.push([]);
++							continue;
++						}
++						if (selected === "Other..." && ctx.ui.input) {
++							const customAnswer = await ctx.ui.input(title, "Type your answer");
++							answers.push(customAnswer?.trim() ? [customAnswer.trim()] : []);
++							continue;
++						}
++						const matched = question.options.find(
++							(option) => selected === `${option.label} - ${option.description}`,
++						);
++						answers.push([matched?.label ?? selected]);
++					}
++
++					const answersResponse = answers
++						.map((answer, i) => {
++							const header = input.questions[i]?.header ?? `Q${i + 1}`;
++							return `${header}: ${answer.length > 0 ? answer.join(", ") : "(no preference)"}`;
++						})
++						.join("\n");
++					state.metrics.record("tool-response", answersResponse.length);
++					return {
++						content: [{ type: "text", text: `User answers received:\n${answersResponse}` }],
++						details: { answers },
++					};
++				}
++
+ 				const answersResponse = result
+ 					.map((answers, i) => {
+ 						const header = input.questions[i]?.header ?? `Q${i + 1}`;

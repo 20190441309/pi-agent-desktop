@@ -113,6 +113,23 @@ function summarizeToolCallEvent(event: AssistantMessageEvent): Record<string, un
     return summary;
 }
 
+
+function readToolExecutionProgress(event: PiEvent): unknown {
+    const partialResult = (event as { partialResult?: unknown }).partialResult;
+    if (!partialResult || typeof partialResult !== "object" || Array.isArray(partialResult)) {
+        return partialResult;
+    }
+    const content = (partialResult as { content?: unknown }).content;
+    if (!Array.isArray(content)) return partialResult;
+    const text = content
+        .flatMap((item) => item && typeof item === "object" && typeof (item as { text?: unknown }).text === "string"
+            ? [(item as { text: string }).text]
+            : [])
+        .join("\n")
+        .trim();
+    return text || partialResult;
+}
+
 function asNumber(value: unknown): number | undefined {
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
@@ -860,6 +877,32 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 break;
             }
 
+
+            case "tool_execution_update": {
+                const toolCallId = readToolCallId(event);
+                if (!toolCallId) {
+                    logger.warn("[usePiStream] skip tool_execution_update without canonical id", event);
+                    break;
+                }
+                const output = readToolExecutionProgress(event);
+                const tc = toolCallsRef.current.get(toolCallId);
+                if (tc && output !== undefined) {
+                    tc.result = output;
+                    toolCallsRef.current.set(toolCallId, tc);
+                    setToolCalls(new Map(toolCallsRef.current));
+                    if (sessionIdRef.current && messageIdRef.current) {
+                        useSessionStore.getState().updateToolCall(
+                            sessionIdRef.current,
+                            messageIdRef.current,
+                            toolCallId,
+                            { output },
+                            { persist: false },
+                        );
+                        scheduleStreamPersist();
+                    }
+                }
+                break;
+            }
             case "tool_execution_end": {
                 const toolCallId = readToolCallId(event);
                 if (!toolCallId) {

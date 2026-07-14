@@ -9,6 +9,7 @@ interface PermissionState {
   setMode: (mode: PermissionMode) => void;
   enqueue: (request: ExtensionUiRequest) => void;
   respond: (requestId: string, decision: PermissionDecision) => void;
+  respondValue: (requestId: string, value: string | boolean) => void;
   dismiss: (requestId: string) => void;
 }
 
@@ -40,6 +41,17 @@ export const usePermissionStore = create<PermissionState>((set, get) => ({
       window.piAPI?.permissionRespond(requestId, { requestId, decision });
     } catch (err) {
       logger.error("[permission-store] respond failed:", err);
+    }
+    get().dismiss(requestId);
+  },
+
+  respondValue: (requestId, value) => {
+    const request = get().pending.find((item) => item.requestId === requestId);
+    if (!request) return;
+    try {
+      window.piAPI?.permissionRespond(requestId, { requestId, value });
+    } catch (err) {
+      logger.error("[permission-store] value response failed:", err);
     }
     get().dismiss(requestId);
   },

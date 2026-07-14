@@ -357,6 +357,32 @@ describe("ChatInput", () => {
     expect(screen.queryByLabelText("compose 模式已启用")).toBeNull();
   });
 
+  it("keeps reference composer labels optically centered without an agent mode chevron", () => {
+    useAgentModeStore.setState({ byWorkspace: { ws1: "compose" } });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const agentModeButton = screen.getByRole("button", { name: "选择 Agent 模式" });
+    const modelButton = screen.getByRole("button", { name: /当前模型:/ });
+    const thinkingButton = screen.getByRole("button", { name: /思考强度:/ });
+
+    expect(agentModeButton.querySelector("svg")).toBeNull();
+    expect(modelButton.className).toContain("leading-none");
+    expect(thinkingButton.className).toContain("leading-none");
+  });
+
   it("allows changing permission mode from the reference composer", () => {
     render(
       <I18nProvider>

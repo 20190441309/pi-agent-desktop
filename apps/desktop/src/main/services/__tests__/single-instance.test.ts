@@ -11,6 +11,7 @@ function createFakeApp(lockAcquired: boolean) {
       if (event === "second-instance") secondInstanceListener = listener;
     }),
     quit: vi.fn(),
+    exit: vi.fn(),
     emitSecondInstance() {
       secondInstanceListener?.();
     },
@@ -38,7 +39,9 @@ describe("registerSingleInstance", () => {
     app.emitSecondInstance();
 
     expect(isPrimaryInstance).toBe(false);
-    expect(app.quit).toHaveBeenCalledOnce();
+    expect(app.exit).toHaveBeenCalledOnce();
+    expect(app.exit).toHaveBeenCalledWith(0);
+    expect(app.quit).not.toHaveBeenCalled();
     expect(restoreExistingWindow).not.toHaveBeenCalled();
   });
 });

@@ -144,4 +144,25 @@ describe("PermissionRequestStack", () => {
 
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
+
+  it("renders extension select options and returns the selected value", () => {
+    usePermissionStore.setState((state) => ({
+      pending: [{
+        ...state.pending[0],
+        requestId: "question_1",
+        source: "extension",
+        title: "下一步",
+        message: "当前目录为空，你希望怎么继续？",
+        options: ["提供 Git 地址", "使用其他路径"],
+      }],
+    }));
+
+    render(<PermissionRequestStack workspaceId="ws1" />);
+    fireEvent.click(screen.getByRole("button", { name: "提供 Git 地址" }));
+
+    expect(permissionRespond).toHaveBeenCalledWith("question_1", {
+      requestId: "question_1",
+      value: "提供 Git 地址",
+    });
+  });
 });

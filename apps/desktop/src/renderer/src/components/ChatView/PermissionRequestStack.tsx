@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMotionPresenceList } from "../../hooks/useMotionPresence";
 import { usePermissionStore } from "../../stores/permission-store";
@@ -32,7 +32,8 @@ export function PermissionRequestStack({
   agentId = null,
   displayMode = "composer",
 }: PermissionRequestStackProps): React.JSX.Element | null {
-  const { pending, respond } = usePermissionStore();
+  const { pending, respond, respondValue } = usePermissionStore();
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const visiblePending = useMemo(
     () => (displayMode === "desktop"
       ? []
@@ -44,12 +45,14 @@ export function PermissionRequestStack({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape" && visiblePending[0]) {
-        respond(visiblePending[0].requestId, "deny");
+        const request = visiblePending[0];
+        if (request.source === "permission") respond(request.requestId, "deny");
+        else respondValue(request.requestId, "");
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [visiblePending, respond]);
+  }, [visiblePending, respond, respondValue]);
 
   if (presentPending.length === 0) return null;
 
@@ -76,17 +79,22 @@ export function PermissionRequestStack({
       style={overlayStyle}
     >
       <div className="pointer-events-auto space-y-2">
-        {presentPending.map(({ item: request, state }, index) => (
+        {presentPending.map(({ item: request, state }, index) => {
+          const isPermission = request.source === "permission";
+          const isTextRequest = request.kind === "input" || request.kind === "editor";
+          return (
           <div
             key={request.requestId}
             className="pi-motion-permission rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-4 py-3 shadow-[0_18px_48px_rgba(15,23,42,0.16)]"
             data-motion-state={state}
             role="alertdialog"
-            aria-label={`权限请求 ${index + 1}`}
+            aria-label={`${isPermission ? "权限请求" : "交互请求"} ${index + 1}`}
           >
             <div className="mb-2 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-[var(--mm-text-primary)]">权限请求 {index + 1}</div>
+                <div className="text-sm font-semibold text-[var(--mm-text-primary)]">
+                  {isPermission ? "权限请求" : "需要你的选择"} {index + 1}
+                </div>
                 <div className="truncate text-xs text-[var(--mm-text-secondary)]">{request.title}</div>
               </div>
               <span className="rounded-md bg-[var(--mm-bg-panel)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)]">
@@ -98,22 +106,59 @@ export function PermissionRequestStack({
                 {request.message}
               </pre>
             )}
+            {!isPermission && request.kind === "select" && request.options && (
+              <div className="mb-3 grid gap-2">
+                {request.options.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => respondValue(request.requestId, option)}
+                    className="min-h-9 w-full rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-3 py-2 text-left text-xs leading-relaxed text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-panel)]"
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            )}
+            {!isPermission && isTextRequest && (
+              <form
+                className="mb-3 flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  respondValue(request.requestId, drafts[request.requestId]?.trim() ?? "");
+                }}
+              >
+                <input
+                  autoFocus
+                  value={drafts[request.requestId] ?? ""}
+                  onChange={(event) => setDrafts((current) => ({ ...current, [request.requestId]: event.target.value }))}
+                  placeholder={request.placeholder}
+                  className="h-9 min-w-0 flex-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-3 text-xs text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)]"
+                />
+                <button
+                  type="submit"
+                  className="h-9 rounded-md bg-[#262626] px-3 text-xs font-medium text-white hover:bg-[#111]"
+                >
+                  提交
+                </button>
+              </form>
+            )}
             <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => respond(request.requestId, "deny")}
+                onClick={() => isPermission ? respond(request.requestId, "deny") : respondValue(request.requestId, "")}
                 className="rounded-lg px-3 py-1.5 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)]"
               >
-                拒绝 Esc
+                {isPermission ? "拒绝 Esc" : "跳过 Esc"}
               </button>
-              <button
+              {isPermission && <button
                 type="button"
                 onClick={() => respond(request.requestId, "allow_session")}
                 className="rounded-lg bg-[#262626] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#111]"
               >
                 仅本对话
-              </button>
-              <Popover
+              </button>}
+              {isPermission && <Popover
                 align="end"
                 contentClassName="min-w-[132px]"
                 trigger={
@@ -150,10 +195,11 @@ export function PermissionRequestStack({
                     ))}
                   </div>
                 )}
-              </Popover>
+              </Popover>}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

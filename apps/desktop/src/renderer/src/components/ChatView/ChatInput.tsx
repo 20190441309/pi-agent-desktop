@@ -1090,13 +1090,10 @@ export function ChatInput({
                 align="start"
                 contentClassName="w-[246px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-popover)] p-1.5"
                 trigger={
-                  <button type="button" className="flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] hover:bg-[var(--mm-bg-hover)]" aria-label={t("chatInput.agentMode.aria")}>
+                  <button type="button" className="flex h-6 items-center rounded-[4px] px-1.5 text-[11px] hover:bg-[var(--mm-bg-hover)]" aria-label={t("chatInput.agentMode.aria")}>
                     <span className="font-medium text-[var(--mm-text-primary)]">
                       {agentModeOptions.find((mode) => mode.value === currentAgentMode)?.label ?? "Build"}
                     </span>
-                    <svg className="h-3 w-3 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
-                    </svg>
                   </button>
                 }
               >
@@ -1136,7 +1133,7 @@ export function ChatInput({
                 trigger={
                   <button
                     type="button"
-                    className="flex h-7 w-[150px] items-center gap-1.5 px-2 text-left text-[10px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
+                    className="flex h-7 w-[150px] items-center gap-1.5 px-2 text-left text-[10px] leading-none text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
                     aria-label={t("chatInput.model.current", { model: currentModelLabel })}
                   >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-accent-blue)]" aria-hidden />
@@ -1190,7 +1187,7 @@ export function ChatInput({
                 trigger={
                   <button
                     type="button"
-                    className="flex h-7 items-center gap-1 border-l border-[var(--mm-border)] px-2 text-[10px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
+                    className="flex h-7 items-center gap-1 border-l border-[var(--mm-border)] px-2 text-[10px] leading-none text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
                     aria-label={t("chatInput.thinking.aria", { label: currentThinkingLabel })}
                   >
                     <span className="font-medium text-[var(--mm-text-primary)]">{currentThinkingLabel}</span>

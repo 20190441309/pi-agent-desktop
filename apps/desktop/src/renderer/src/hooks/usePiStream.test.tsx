@@ -1483,6 +1483,42 @@ describe("usePiStream", () => {
         });
     });
 
+    it("surfaces tool execution updates while a long workflow is still running", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        const progress = {
+            content: [{ type: "text", text: "▶ Design" }],
+            details: { run: { currentPhase: "Design" } },
+        };
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "tool_execution_start",
+                toolCallId: "workflow_progress",
+                toolName: "workflow",
+                args: { operation: "run", name: "compose" },
+            });
+            emitPiEvent?.({
+                type: "tool_execution_update",
+                toolCallId: "workflow_progress",
+                toolName: "workflow",
+                args: { operation: "run", name: "compose" },
+                partialResult: progress,
+            });
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages[0].toolCalls?.[0]).toMatchObject({
+            id: "workflow_progress",
+            name: "workflow",
+            status: "running",
+            output: "▶ Design",
+        });
+    });
+
     it("updates execution status when toolcall_start arrives before tool_execution_start", async () => {
         await act(async () => {
             render(<HookHost />);

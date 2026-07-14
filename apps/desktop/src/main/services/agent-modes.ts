@@ -168,7 +168,11 @@ export function buildAgentModePrompt(mode: AgentMode, text: string, options: Age
     if (options.workflowEnabled && options.composeWorkflowEnabled) {
         return [
             "Compose workflow runtime is enabled.",
-            "For non-trivial compose work, call the `workflow` tool with `operation=\"run\"`, `name=\"compose\"`, and `args.task` set to the user request.",
+            "Compose mode alone is not a reason to start a workflow.",
+            "Do not start a workflow for simple questions, explanations, web research, or read-only exploration.",
+            "Do not start a workflow for a single small edit that can be implemented and verified directly.",
+            "Use the workflow only when the request genuinely requires multiple dependent implementation steps, coordinated parallel tasks, or long-horizon execution.",
+            "When that threshold is met, call the `workflow` tool with `operation=\"run\"`, `name=\"compose\"`, and `args.task` set to the user request.",
             "Use the workflow result instead of improvising a prompt-only compose flow.",
             "",
             content,
