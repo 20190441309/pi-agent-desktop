@@ -168,4 +168,20 @@ describe("files IPC", () => {
             ]));
         }
     });
+
+    it("returns an unloaded one-level tree for lazy directory expansion", async () => {
+        const workspace = makeWorkspace();
+        mkdirSync(join(workspace, "src", "nested"), { recursive: true });
+        writeFileSync(join(workspace, "src", "app.ts"), "export const app = true;", "utf-8");
+
+        const handler = handlers.get("files:getTree")!;
+        const result = await handler({}, workspace, { maxDepth: 1, maxEntries: 100 });
+
+        expect(isIpcError(result)).toBe(false);
+        if (!isIpcError(result)) {
+            const src = (result as { children?: Array<{ name: string; children?: unknown[] }> }).children
+                ?.find((child) => child.name === "src");
+            expect(src?.children).toBeUndefined();
+        }
+    });
 });

@@ -12,7 +12,7 @@ import { isIpcError } from "@shared";
 // (ipcMain.handle's wrapper), so it can stay as a regular const.
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 
-const { gitServiceMock, getProtectedPathReasonMock, execFileSyncMock } = vi.hoisted(() => ({
+const { gitServiceMock, getProtectedPathReasonMock, execFileMock, execFileSyncMock } = vi.hoisted(() => ({
     // Mocked git-service functions — each test configures return/reject behavior.
     gitServiceMock: {
         getGitStatus: vi.fn(),
@@ -28,7 +28,8 @@ const { gitServiceMock, getProtectedPathReasonMock, execFileSyncMock } = vi.hois
     },
     // Mocked protected-paths guard — tests can override per-test.
     getProtectedPathReasonMock: vi.fn(() => null),
-    // Mocked execFileSync — used by git:log, git:branches, git:checkout, git:create-branch.
+    execFileMock: vi.fn(),
+    // Guard against regressions back to blocking child-process APIs.
     execFileSyncMock: vi.fn(() => ""),
 }));
 
@@ -41,6 +42,7 @@ vi.mock("electron", () => ({
 }));
 
 vi.mock("child_process", () => ({
+    execFile: execFileMock,
     execFileSync: execFileSyncMock,
 }));
 
@@ -59,12 +61,37 @@ vi.mock("../../services/protected-paths", () => ({
 
 import { setupGitIpc } from "../git.ipc";
 
+function mockExecFileOutput(stdout: string): void {
+    execFileMock.mockImplementationOnce((
+        _file: string,
+        _args: string[],
+        _options: unknown,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+    ) => callback(null, stdout, ""));
+}
+
+function mockExecFileError(error: Error): void {
+    execFileMock.mockImplementationOnce((
+        _file: string,
+        _args: string[],
+        _options: unknown,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+    ) => callback(error, "", ""));
+}
+
 describe("git IPC", () => {
     beforeEach(() => {
         handlers.clear();
         Object.values(gitServiceMock).forEach((fn) => fn.mockReset());
         getProtectedPathReasonMock.mockReset();
         getProtectedPathReasonMock.mockReturnValue(null);
+        execFileMock.mockReset();
+        execFileMock.mockImplementation((
+            _file: string,
+            _args: string[],
+            _options: unknown,
+            callback: (error: Error | null, stdout: string, stderr: string) => void,
+        ) => callback(null, "", ""));
         execFileSyncMock.mockReset();
         execFileSyncMock.mockReturnValue("");
         setupGitIpc();
@@ -93,6 +120,23 @@ describe("git IPC", () => {
             if (isIpcError(result)) {
                 expect(result.code).toBe("ipcErrors.git.statusFailed");
             }
+        });
+
+        it("deduplicates identical in-flight status reads", async () => {
+            let resolveStatus!: (value: unknown) => void;
+            const pendingStatus = new Promise((resolve) => {
+                resolveStatus = resolve;
+            });
+            gitServiceMock.getGitStatus.mockReturnValue(pendingStatus);
+
+            const handler = handlers.get("git:status")!;
+            const first = handler({}, "C:/repo");
+            const second = handler({}, "C:/repo");
+
+            expect(gitServiceMock.getGitStatus).toHaveBeenCalledTimes(1);
+            resolveStatus({ branch: "main" });
+            await expect(first).resolves.toEqual({ branch: "main" });
+            await expect(second).resolves.toEqual({ branch: "main" });
         });
     });
 
@@ -223,7 +267,7 @@ describe("git IPC", () => {
     describe("git:checkout", () => {
         it("returns branch list on success", async () => {
             gitServiceMock.gitCheckout.mockResolvedValue(undefined);
-            execFileSyncMock.mockReturnValue("* main\n  develop\n  remotes/origin/main\n");
+            mockExecFileOutput("* main\n  develop\n  remotes/origin/main\n");
 
             const handler = handlers.get("git:checkout")!;
             const result = await handler({}, "C:/repo", "develop");
@@ -272,11 +316,11 @@ describe("git IPC", () => {
         });
     });
 
-    // ── git:log (protected path + execFileSync) ─────────────────────────
+    // ── git:log (protected path + async execFile) ───────────────────────
     describe("git:log", () => {
         it("returns commit log entries on success", async () => {
             // NUL-separated: hash, author, date, message, then record separator
-            execFileSyncMock.mockReturnValue("abc123\x00Author\x002026-01-01\x00fix: bug\x00def456\x00Dev\x002026-01-02\x00feat: add\x00");
+            mockExecFileOutput("abc123\x00Author\x002026-01-01\x00fix: bug\x00def456\x00Dev\x002026-01-02\x00feat: add\x00");
 
             const handler = handlers.get("git:log")!;
             const result = await handler({}, "C:/repo", 10);
@@ -286,6 +330,7 @@ describe("git IPC", () => {
             expect(entries).toHaveLength(2);
             expect(entries[0]).toMatchObject({ hash: "abc123", author: "Author", message: "fix: bug" });
             expect(entries[1]).toMatchObject({ hash: "def456", author: "Dev", message: "feat: add" });
+            expect(execFileSyncMock).not.toHaveBeenCalled();
         });
 
         it("returns ipcError for protected path", async () => {
@@ -300,10 +345,8 @@ describe("git IPC", () => {
             }
         });
 
-        it("returns ipcError when execFileSync throws", async () => {
-            execFileSyncMock.mockImplementation(() => {
-                throw new Error("git log failed");
-            });
+        it("returns ipcError when execFile throws", async () => {
+            mockExecFileError(new Error("git log failed"));
 
             const handler = handlers.get("git:log")!;
             const result = await handler({}, "C:/repo");
@@ -416,7 +459,7 @@ describe("git IPC", () => {
     describe("git:create-branch", () => {
         it("returns branch list on success", async () => {
             gitServiceMock.gitCreateBranch.mockResolvedValue(undefined);
-            execFileSyncMock.mockReturnValue("* main\n  new-branch\n");
+            mockExecFileOutput("* main\n  new-branch\n");
 
             const handler = handlers.get("git:create-branch")!;
             const result = await handler({}, "C:/repo", "new-branch");
@@ -453,10 +496,10 @@ describe("git IPC", () => {
         });
     });
 
-    // ── git:branches (protected path + execFileSync) ────────────────────
+    // ── git:branches (protected path + async execFile) ──────────────────
     describe("git:branches", () => {
         it("returns branch list on success", async () => {
-            execFileSyncMock.mockReturnValue("* main\n  develop\n");
+            mockExecFileOutput("* main\n  develop\n");
 
             const handler = handlers.get("git:branches")!;
             const result = await handler({}, "C:/repo");
@@ -465,6 +508,7 @@ describe("git IPC", () => {
             const branches = result as Array<{ name: string; isCurrent: boolean }>;
             expect(branches).toHaveLength(2);
             expect(branches[0]).toMatchObject({ name: "main", isCurrent: true });
+            expect(execFileSyncMock).not.toHaveBeenCalled();
         });
 
         it("returns ipcError for protected path", async () => {

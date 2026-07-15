@@ -44,7 +44,7 @@ function FileTreeRow({
 }): React.JSX.Element {
   const isDirectory = node.type === "directory";
   const isExpanded = isDirectory && expanded.has(node.path);
-  const hasChildren = (node.children?.length ?? 0) > 0;
+  const hasChildren = node.children === undefined || node.children.length > 0;
   const gitMark = !isDirectory ? gitMarks.get(normalizePath(relativeToWorkspace(node.path, workspacePath))) : undefined;
   return (
     <li>
@@ -134,6 +134,23 @@ function SearchResultRow({
   );
 }
 
+function updateTreeNode(
+  node: FileTreeNode,
+  path: string,
+  update: (current: FileTreeNode) => FileTreeNode,
+): FileTreeNode {
+  if (node.path === path) return update(node);
+  if (!node.children) return node;
+
+  let changed = false;
+  const children = node.children.map((child) => {
+    const next = updateTreeNode(child, path, update);
+    if (next !== child) changed = true;
+    return next;
+  });
+  return changed ? { ...node, children } : node;
+}
+
 export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: FileWorkspaceProps): React.JSX.Element {
   const [tree, setTree] = useState<FileTreeNode | null>(null);
   const [treeState, setTreeState] = useState<LoadState>("idle");
@@ -165,6 +182,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
   const fileReadReq = useLatestRequest();
   const diffReadReq = useLatestRequest();
   const lastAutoSaveAttemptRef = useRef<{ path: string | null; draft: string } | null>(null);
+  const directoryLoadsRef = useRef(new Map<string, Promise<boolean>>());
   const isDirtyRef = useRef(false);
   const autoSave = useSettingsStore((state) => state.settings.autoSave);
   const showLineNumbers = useSettingsStore((state) => state.settings.showLineNumbers);
@@ -186,7 +204,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
     setTreeState("loading");
     setError(null);
     try {
-      const result = await window.piAPI.filesGetTree(workspacePath, { maxDepth: 5, maxEntries: 1600 });
+      const result = await window.piAPI.filesGetTree(workspacePath, { maxDepth: 1, maxEntries: 1600 });
       if (!treeLoadReq.isLatest(requestId)) return;
       if (isIpcError(result)) {
         setTreeState("error");
@@ -194,7 +212,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
         return;
       }
       setTree(result);
-      setExpanded(new Set(flattenTree(result).filter((node) => node.type === "directory").map((node) => node.path)));
+      setExpanded(new Set(flattenTree(result).filter((node) => node.type === "directory" && node.children !== undefined).map((node) => node.path)));
       setTreeState("ready");
     } catch (err) {
       if (!treeLoadReq.isLatest(requestId)) return;
@@ -202,6 +220,40 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       setError(t("fileWorkspace.tree.loadFailed", { message: err instanceof Error ? err.message : String(err) }));
     }
   }, [t, treeLoadReq, workspacePath]);
+
+  const loadDirectory = useCallback((node: FileTreeNode): Promise<boolean> => {
+    const filesGetTree = window.piAPI?.filesGetTree;
+    if (!filesGetTree || node.type !== "directory") return Promise.resolve(false);
+    if (node.children !== undefined) return Promise.resolve(true);
+
+    const existing = directoryLoadsRef.current.get(node.path);
+    if (existing) return existing;
+
+    const pending = (async (): Promise<boolean> => {
+      try {
+        const result = await filesGetTree(node.path, { maxDepth: 1, maxEntries: 1600 });
+        if (isIpcError(result)) {
+          setActionError(result.fallback);
+          return false;
+        }
+        setTree((current) => {
+          if (!current || current.path !== workspacePath) return current;
+          return updateTreeNode(current, node.path, () => result);
+        });
+        setActionError(null);
+        return true;
+      } catch (err) {
+        setActionError(t("fileWorkspace.tree.loadFailed", { message: err instanceof Error ? err.message : String(err) }));
+        return false;
+      }
+    })();
+    directoryLoadsRef.current.set(node.path, pending);
+    const clear = (): void => {
+      if (directoryLoadsRef.current.get(node.path) === pending) directoryLoadsRef.current.delete(node.path);
+    };
+    void pending.then(clear, clear);
+    return pending;
+  }, [t, workspacePath]);
 
   const loadGitStatus = useCallback(async () => {
     if (!window.piAPI?.getGitStatus) return;
@@ -221,6 +273,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
     gitStatusReq.cancel();
     fileReadReq.cancel();
     diffReadReq.cancel();
+    directoryLoadsRef.current.clear();
     setSelectedPath(null);
     setContent(null);
     setDraft("");
@@ -422,6 +475,9 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       binary: false,
     };
     setContent(nextContent);
+    setTree((current) => current
+      ? updateTreeNode(current, selectedPath, (node) => ({ ...node, size: result.size }))
+      : current);
     lastAutoSaveAttemptRef.current = null;
     setSaveState("ready");
     setSaveError(null);
@@ -433,14 +489,8 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
         detail: { path: selectedPath, workspacePath, size: result.size, savedAt: result.savedAt },
       }),
     );
-    window.dispatchEvent(
-      new CustomEvent("workspace:git-changed", {
-        detail: { workspacePath, files: [selectedRelativePath], reason: "file-save" },
-      }),
-    );
-    void loadTree();
     void loadGitStatus();
-  }, [canEdit, content, draft, loadGitStatus, loadTree, selectedPath, selectedRelativePath, t, viewMode, workspacePath]);
+  }, [canEdit, content, draft, loadGitStatus, selectedPath, t, viewMode, workspacePath]);
 
   const handleAutoSave = useCallback((path: string, content: string) => {
     const lastAttempt = lastAutoSaveAttemptRef.current;
@@ -560,11 +610,17 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
 
   const toggleDirectory = (node: FileTreeNode): void => {
     if (node.type !== "directory") return;
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(node.path)) next.delete(node.path);
-      else next.add(node.path);
-      return next;
+    if (expanded.has(node.path)) {
+      setExpanded((current) => new Set([...current].filter((path) => path !== node.path)));
+      return;
+    }
+    if (node.children !== undefined) {
+      setExpanded((current) => new Set([...current, node.path]));
+      return;
+    }
+    void loadDirectory(node).then((loaded) => {
+      if (!loaded) return;
+      setExpanded((current) => new Set([...current, node.path]));
     });
   };
 
@@ -780,7 +836,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
               </button>
             </div>
           ) : tree ? (
-            allFiles.length === 0 ? (
+            (tree.children?.length ?? 0) === 0 ? (
               <div className="px-4 py-8 text-center text-xs text-[var(--mm-text-secondary)]">{t("fileWorkspace.emptyDirectory")}</div>
             ) : (
             <ul className="m-0 list-none p-2">

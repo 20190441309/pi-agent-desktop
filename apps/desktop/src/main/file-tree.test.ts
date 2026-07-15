@@ -1,8 +1,8 @@
-import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildFileTree } from "./file-tree";
+import { buildFileTree, listDirectory } from "./file-tree";
 
 let root: string | null = null;
 
@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("buildFileTree", () => {
-    it("recursively returns files while ignoring noisy generated directories", () => {
+    it("recursively returns files while ignoring noisy generated directories", async () => {
         const dir = makeRoot();
         mkdirSync(join(dir, "src"), { recursive: true });
         mkdirSync(join(dir, "node_modules", "pkg"), { recursive: true });
@@ -27,7 +27,7 @@ describe("buildFileTree", () => {
         writeFileSync(join(dir, "node_modules", "pkg", "index.js"), "module.exports = {};");
         writeFileSync(join(dir, ".git", "HEAD"), "ref: refs/heads/main");
 
-        const tree = buildFileTree(dir, { maxDepth: 4 });
+        const tree = await buildFileTree(dir, { maxDepth: 4 });
 
         expect(tree.type).toBe("directory");
         expect(tree.children?.some((child) => child.name === "src")).toBe(true);
@@ -41,12 +41,12 @@ describe("buildFileTree", () => {
         });
     });
 
-    it("marks deep directories as truncated when maxDepth is reached", () => {
+    it("marks deep directories as truncated when maxDepth is reached", async () => {
         const dir = makeRoot();
         mkdirSync(join(dir, "a", "b"), { recursive: true });
         writeFileSync(join(dir, "a", "b", "deep.txt"), "deep");
 
-        const tree = buildFileTree(dir, { maxDepth: 1 });
+        const tree = await buildFileTree(dir, { maxDepth: 1 });
         const a = tree.children?.find((child) => child.name === "a");
 
         expect(a?.type).toBe("directory");
@@ -54,7 +54,7 @@ describe("buildFileTree", () => {
         expect(a?.children).toEqual([]);
     });
 
-    it("omits protected credential files and directories from the tree", () => {
+    it("omits protected credential files and directories from the tree", async () => {
         const dir = makeRoot();
         mkdirSync(join(dir, "src"), { recursive: true });
         mkdirSync(join(dir, ".ssh"), { recursive: true });
@@ -64,7 +64,7 @@ describe("buildFileTree", () => {
         writeFileSync(join(dir, ".ssh", "id_ed25519"), "secret");
         writeFileSync(join(dir, ".kube", "config"), "secret");
 
-        const tree = buildFileTree(dir, { maxDepth: 4 });
+        const tree = await buildFileTree(dir, { maxDepth: 4 });
         const names = tree.children?.map((child) => child.name) ?? [];
         const src = tree.children?.find((child) => child.name === "src");
 
@@ -73,5 +73,28 @@ describe("buildFileTree", () => {
         expect(names).not.toContain(".env.local");
         expect(names).not.toContain(".ssh");
         expect(names).not.toContain(".kube");
+    });
+});
+
+describe("async file tree", () => {
+    it("lists only one directory level for lazy expansion", async () => {
+        const dir = makeRoot();
+        mkdirSync(join(dir, "src", "nested"), { recursive: true });
+        writeFileSync(join(dir, "src", "app.ts"), "export const app = true;");
+        writeFileSync(join(dir, "src", "nested", "deep.ts"), "export const deep = true;");
+
+        const listingPromise = listDirectory(dir);
+        expect(listingPromise).toBeInstanceOf(Promise);
+        const listing = await listingPromise;
+        const src = listing.children?.find((child) => child.name === "src");
+
+        expect(src).toMatchObject({ name: "src", type: "directory" });
+        expect(src?.children).toBeUndefined();
+    });
+
+    it("does not use synchronous filesystem calls in production tree building", () => {
+        const source = readFileSync(join(__dirname, "file-tree.ts"), "utf-8");
+
+        expect(source).not.toMatch(/\b(?:readdirSync|statSync)\b/);
     });
 });

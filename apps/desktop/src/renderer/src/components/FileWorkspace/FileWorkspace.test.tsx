@@ -1058,4 +1058,70 @@ describe("FileWorkspace", () => {
     expect(screen.getAllByText("文件过大且已截断，暂不允许保存").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "编辑" })).toBeNull();
   });
+
+  it("loads directory children only when the directory is expanded", async () => {
+    const rootListing = {
+      name: "repo",
+      path: "C:/repo",
+      type: "directory" as const,
+      children: [
+        {
+          name: "src",
+          path: "C:/repo/src",
+          type: "directory" as const,
+        },
+      ],
+    };
+    const srcListing = {
+      name: "src",
+      path: "C:/repo/src",
+      type: "directory" as const,
+      children: [
+        {
+          name: "app.ts",
+          path: "C:/repo/src/app.ts",
+          type: "file" as const,
+          extension: "ts",
+          size: 24,
+        },
+      ],
+    };
+    filesGetTree.mockImplementation(async (path: string) => path === "C:/repo/src" ? srcListing : rootListing);
+
+    render(<FileWorkspace workspacePath="C:/repo" />);
+
+    const src = await screen.findByRole("button", { name: /src/ });
+    expect(filesGetTree).toHaveBeenCalledWith("C:/repo", { maxDepth: 1, maxEntries: 1600 });
+    expect(screen.queryByRole("button", { name: /app\.ts/ })).toBeNull();
+
+    fireEvent.click(src);
+
+    expect(await screen.findByRole("button", { name: /app\.ts/ })).toBeTruthy();
+    expect(filesGetTree).toHaveBeenCalledWith("C:/repo/src", { maxDepth: 1, maxEntries: 1600 });
+  });
+
+  it("refreshes git once without rescanning the tree after save", async () => {
+    const gitChangedSpy = vi.fn();
+    window.addEventListener("workspace:git-changed", gitChangedSpy);
+
+    render(<FileWorkspace workspacePath="C:/repo" />);
+    fireEvent.click(await screen.findByRole("button", { name: /app\.ts/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "编辑文件内容" }), {
+      target: { value: "export const app = 1;" },
+    });
+    filesGetTree.mockClear();
+    getGitStatus.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(filesWriteTextFile).toHaveBeenCalledTimes(1);
+      expect(getGitStatus).toHaveBeenCalledTimes(1);
+    });
+    expect(filesGetTree).not.toHaveBeenCalled();
+    expect(gitChangedSpy).not.toHaveBeenCalled();
+
+    window.removeEventListener("workspace:git-changed", gitChangedSpy);
+  });
 });

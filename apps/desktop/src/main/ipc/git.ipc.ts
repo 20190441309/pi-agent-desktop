@@ -1,11 +1,64 @@
 import { ipcMain } from 'electron';
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
 import log from 'electron-log/main';
 import { ipcError } from '@shared';
 import { gitAdd, gitCommit, gitDiff, gitDiffStaged, getGitStatus, gitUnstage, gitCheckout, gitCreateBranch, gitOriginalContent, gitChangedFiles } from '../services/git-service';
 import { getProtectedPathReason } from '../services/protected-paths';
 import { gitAddSchema, gitCommitSchema, gitDiffSchema, gitDiffStagedSchema, gitCheckoutSchema, gitCreateBranchSchema, gitOriginalContentSchema, gitChangedFilesSchema, gitStatusSchema } from './schemas';
 
+
+interface GitBranchEntry {
+  name: string;
+  isCurrent: boolean;
+  isRemote: boolean;
+}
+
+const inFlightGitReads = new Map<string, Promise<unknown>>();
+
+function deduplicateGitRead<T>(key: string, read: () => Promise<T>): Promise<T> {
+  const existing = inFlightGitReads.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const pending = read();
+  inFlightGitReads.set(key, pending);
+  const clear = (): void => {
+    if (inFlightGitReads.get(key) === pending) inFlightGitReads.delete(key);
+  };
+  void pending.then(clear, clear);
+  return pending;
+}
+
+function gitReadKey(channel: string, ...args: unknown[]): string {
+  return JSON.stringify([channel, ...args]);
+}
+
+function runGit(workspacePath: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile('git', args, {
+      cwd: workspacePath,
+      encoding: 'utf-8',
+      timeout: 10_000,
+    }, (error, stdout) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+}
+
+function parseBranches(output: string): GitBranchEntry[] {
+  return output.split('\n').filter(line => line.trim()).map(line => ({
+    name: line.replace(/^\*?\s+/, '').trim(),
+    isCurrent: line.startsWith('*'),
+    isRemote: line.includes('remotes/'),
+  }));
+}
+
+async function listBranches(workspacePath: string): Promise<GitBranchEntry[]> {
+  return parseBranches(await runGit(workspacePath, ['branch', '-a']));
+}
 export function setupGitIpc(): void {
   ipcMain.handle('git:status', async (_, workspacePath: string) => {
     try {
@@ -19,7 +72,7 @@ export function setupGitIpc(): void {
       );
     }
     try {
-      return await getGitStatus(workspacePath);
+      return await deduplicateGitRead(gitReadKey('git:status', workspacePath), () => getGitStatus(workspacePath));
     } catch (err) {
       log.error("[git.ipc] git:status failed:", err);
       return ipcError(
@@ -42,7 +95,7 @@ export function setupGitIpc(): void {
       );
     }
     try {
-      return await gitDiff(workspacePath, filePath);
+      return await deduplicateGitRead(gitReadKey('git:diff', workspacePath, filePath), () => gitDiff(workspacePath, filePath));
     } catch (err) {
       log.error("[git.ipc] git:diff failed:", err);
       return ipcError(
@@ -65,7 +118,7 @@ export function setupGitIpc(): void {
     }
     try {
       // gitDiffStaged delegates to git with the standard ['diff', '--staged'] argv.
-      return await gitDiffStaged(workspacePath);
+      return await deduplicateGitRead(gitReadKey('git:diff-staged', workspacePath), () => gitDiffStaged(workspacePath));
     } catch (err) {
       log.error("[git.ipc] git:diff-staged failed:", err);
       return ipcError(
@@ -149,7 +202,7 @@ export function setupGitIpc(): void {
       // 用 NUL 分隔字段 + 行, 避免 %s commit message 含 " 或换行导致 JSON.parse 失败.
       // %x00 = NUL. 每条提交按 hash/author/date/message 顺序输出, NUL 分隔字段与记录.
       const format = '--pretty=format:%H%x00%an%x00%ai%x00%s%x00';
-      const output = execFileSync('git', ['log', format, '-n', String(count), '-z'], { cwd: workspacePath, encoding: 'utf-8', timeout: 10_000 });
+      const output = await deduplicateGitRead(gitReadKey('git:log', workspacePath, count), () => runGit(workspacePath, ['log', format, '-n', String(count), '-z']));
       // -z 用 NUL 分隔记录, format 内也用 NUL 分隔字段; 拆分后每 4 个一段为一条提交.
       const tokens = output.split('\x00');
       const entries: { hash: string; author: string; date: string; message: string }[] = [];
@@ -179,12 +232,7 @@ export function setupGitIpc(): void {
       return ipcError("ipcErrors.git.protectedPath", branchPathReason, { path: workspacePath });
     }
     try {
-      const output = execFileSync('git', ['branch', '-a'], { cwd: workspacePath, encoding: 'utf-8', timeout: 10_000 });
-      return output.split('\n').filter(l => l.trim()).map(l => ({
-        name: l.replace(/^\*?\s+/, '').trim(),
-        isCurrent: l.startsWith('*'),
-        isRemote: l.includes('remotes/')
-      }));
+      return await deduplicateGitRead(gitReadKey('git:branches', workspacePath), () => listBranches(workspacePath));
     } catch (err) {
       log.error("[git.ipc] git:branches failed:", err);
       return ipcError(
@@ -208,12 +256,7 @@ export function setupGitIpc(): void {
       const result = await gitCheckout(workspacePath, branch);
       if (result && typeof result === 'object' && 'code' in result) return result;
       // 重新获取分支列表
-      const output = execFileSync('git', ['branch', '-a'], { cwd: workspacePath, encoding: 'utf-8', timeout: 10_000 });
-      return output.split('\n').filter(l => l.trim()).map(l => ({
-        name: l.replace(/^\*?\s+/, '').trim(),
-        isCurrent: l.startsWith('*'),
-        isRemote: l.includes('remotes/')
-      }));
+      return await listBranches(workspacePath);
     } catch (err) {
       log.error("[git.ipc] git:checkout failed:", err);
       return ipcError("ipcErrors.git.checkoutFailed", `切换分支失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -233,12 +276,7 @@ export function setupGitIpc(): void {
     try {
       const result = await gitCreateBranch(workspacePath, branchName);
       if (result && typeof result === 'object' && 'code' in result) return result;
-      const output = execFileSync('git', ['branch', '-a'], { cwd: workspacePath, encoding: 'utf-8', timeout: 10_000 });
-      return output.split('\n').filter(l => l.trim()).map(l => ({
-        name: l.replace(/^\*?\s+/, '').trim(),
-        isCurrent: l.startsWith('*'),
-        isRemote: l.includes('remotes/')
-      }));
+      return await listBranches(workspacePath);
     } catch (err) {
       log.error("[git.ipc] git:create-branch failed:", err);
       return ipcError("ipcErrors.git.createBranchFailed", `创建分支失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -252,7 +290,7 @@ export function setupGitIpc(): void {
       return ipcError("ipcErrors.git.invalidArgs", `git original-content 参数无效: ${err instanceof Error ? err.message : String(err)}`);
     }
     try {
-      return await gitOriginalContent(workspacePath, filePath);
+      return await deduplicateGitRead(gitReadKey('git:original-content', workspacePath, filePath), () => gitOriginalContent(workspacePath, filePath));
     } catch (err) {
       log.error("[git.ipc] git:original-content failed:", err);
       return ipcError("ipcErrors.git.originalContentFailed", `读取 HEAD 原始内容失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -266,7 +304,7 @@ export function setupGitIpc(): void {
       return ipcError("ipcErrors.git.invalidArgs", `git changed-files 参数无效: ${err instanceof Error ? err.message : String(err)}`);
     }
     try {
-      return await gitChangedFiles(workspacePath);
+      return await deduplicateGitRead(gitReadKey('git:changed-files', workspacePath), () => gitChangedFiles(workspacePath));
     } catch (err) {
       log.error("[git.ipc] git:changed-files failed:", err);
       return ipcError("ipcErrors.git.changedFilesFailed", `读取改动文件列表失败: ${err instanceof Error ? err.message : String(err)}`);
