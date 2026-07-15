@@ -210,14 +210,12 @@ export function MiniMaxCodeLayout({
 
     return (
         <div
-            className={`flex h-screen w-screen overflow-hidden bg-transparent text-[var(--mm-text-primary)] ${
-                isMaximized ? "p-0" : "p-[6px]"
-            } ${className}`}
+            className={`flex h-screen w-screen overflow-hidden bg-transparent p-0 text-[var(--mm-text-primary)] ${className}`}
             data-mmcode-layout="root"
         >
             <div
                 className={`flex min-h-0 flex-1 flex-col overflow-hidden border border-[var(--mm-border)] bg-[var(--mm-bg-main)] ${
-                    isMaximized ? "rounded-none shadow-none" : "rounded-[var(--mm-window-radius)] shadow-[var(--mm-window-shadow)]"
+                    isMaximized ? "rounded-none shadow-none" : "rounded-[var(--mm-window-radius)] shadow-[var(--mm-main-window-shadow)]"
                 }`}
                 data-mmcode-layout="window-frame"
                 data-mm-window-kind="main"
