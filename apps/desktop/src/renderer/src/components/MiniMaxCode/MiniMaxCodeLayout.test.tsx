@@ -9,6 +9,23 @@ import { MiniMaxCodeLayout } from "./MiniMaxCodeLayout";
 import { MiniMaxCodeTitleBar } from "./MiniMaxCodeTitleBar";
 
 describe("MiniMaxCode window chrome interactivity", () => {
+    it("leaves a transparent gutter around the restored window so its frame shadow stays visible", () => {
+        render(
+            <MiniMaxCodeLayout
+                leftSlot={<div />}
+                centerSlot={<div />}
+                rightSlot={null}
+            />,
+        );
+
+        const root = document.querySelector('[data-mmcode-layout="root"]');
+        const frame = document.querySelector('[data-mmcode-layout="window-frame"]');
+
+        expect(root?.className ?? "").toContain("p-[6px]");
+        expect(root?.className ?? "").not.toContain("p-0");
+        expect(frame?.className ?? "").toContain("shadow-[var(--mm-window-shadow)]");
+    });
+
     it("keeps titlebar blank space draggable while top tabs stay clickable in Electron", () => {
         render(
             <I18nProvider>

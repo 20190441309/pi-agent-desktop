@@ -210,7 +210,9 @@ export function MiniMaxCodeLayout({
 
     return (
         <div
-            className={`flex h-screen w-screen overflow-hidden bg-transparent text-[var(--mm-text-primary)] p-0 ${className}`}
+            className={`flex h-screen w-screen overflow-hidden bg-transparent text-[var(--mm-text-primary)] ${
+                isMaximized ? "p-0" : "p-[6px]"
+            } ${className}`}
             data-mmcode-layout="root"
         >
             <div
