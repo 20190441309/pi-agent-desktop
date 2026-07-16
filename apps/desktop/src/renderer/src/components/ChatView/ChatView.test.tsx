@@ -663,9 +663,35 @@ describe("ChatView", () => {
     expect(scrollRegion.className).toContain("flex-1");
     expect(scrollRegion.className).toContain("min-h-0");
     expect(scrollRegion.className).toContain("overflow-y-auto");
+    expect(scrollRegion.className).not.toContain("--pi-global-composer-height");
     expect(log.className).not.toContain("justify-end");
     expect(scrollRegion.contains(inputShell)).toBe(false);
     expect(root.lastElementChild?.contains(inputShell)).toBe(true);
+  });
+
+  it("does not synchronously measure the full transcript on scroll", () => {
+    mockedStreamError = null;
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    const scrollRegion = screen.getByTestId("chat-scroll-region");
+    const scrollHeightRead = vi.fn(() => 1600);
+    const clientHeightRead = vi.fn(() => 600);
+    const scrollTopRead = vi.fn(() => 200);
+    Object.defineProperties(scrollRegion, {
+      scrollHeight: { configurable: true, get: scrollHeightRead },
+      clientHeight: { configurable: true, get: clientHeightRead },
+      scrollTop: { configurable: true, get: scrollTopRead },
+    });
+
+    fireEvent.scroll(scrollRegion);
+
+    expect(scrollHeightRead).not.toHaveBeenCalled();
+    expect(clientHeightRead).not.toHaveBeenCalled();
+    expect(scrollTopRead).not.toHaveBeenCalled();
   });
 
   it("does not render a second model selector outside the composer", () => {
@@ -811,7 +837,8 @@ describe("ChatView", () => {
     expect(rafCallbacks.length).toBeGreaterThan(0);
 
     act(() => {
-      rafCallbacks.shift()?.(performance.now() + 500);
+      const currentFrame = rafCallbacks.splice(0);
+      currentFrame.forEach((callback) => callback(performance.now() + 500));
     });
 
     expect(screen.getByText(/Token:/).textContent).toContain("2M");
@@ -878,12 +905,34 @@ describe("ChatView", () => {
     expect(screen.queryByLabelText("切换会话")).toBeNull();
   });
 
-  it("auto-scrolls only the chat scroll region instead of the outer document", () => {
+  it("frame-bounds near-bottom chat auto-scrolls without smooth behavior", () => {
     mockedStreamError = null;
+    const rafCallbacks: FrameRequestCallback[] = [];
+    const originalRaf = window.requestAnimationFrame;
+    const originalCancelRaf = window.cancelAnimationFrame;
+    const originalIntersectionObserver = window.IntersectionObserver;
+    let intersectionCallback: IntersectionObserverCallback | null = null;
     const scrollIntoView = vi.fn();
     const scrollTo = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
     window.HTMLElement.prototype.scrollTo = scrollTo;
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      rafCallbacks.push(callback);
+      return rafCallbacks.length;
+    });
+    window.cancelAnimationFrame = vi.fn();
+    window.IntersectionObserver = class {
+      constructor(callback: IntersectionObserverCallback) {
+        intersectionCallback = callback;
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+      takeRecords(): IntersectionObserverEntry[] { return []; }
+      readonly root = null;
+      readonly rootMargin = "0px";
+      readonly thresholds = [0];
+    };
 
     render(
       <I18nProvider>
@@ -892,7 +941,51 @@ describe("ChatView", () => {
     );
 
     expect(scrollIntoView).not.toHaveBeenCalled();
-    expect(scrollTo).toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(rafCallbacks).toHaveLength(1);
+
+    act(() => {
+      rafCallbacks.shift()?.(16);
+    });
+
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "auto" });
+    const scrollRegion = screen.getByTestId("chat-scroll-region");
+    Object.defineProperty(scrollRegion, "scrollHeight", { configurable: true, value: 1_000 });
+
+    act(() => {
+      intersectionCallback?.([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver);
+    });
+    act(() => {
+      useSessionStore.getState().addMessage("s1", {
+        id: "a-far",
+        role: "assistant",
+        content: "far update",
+        timestamp: new Date(1),
+      }, { persist: false });
+    });
+    expect(rafCallbacks).toHaveLength(0);
+
+    act(() => {
+      intersectionCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+    });
+    act(() => {
+      useSessionStore.getState().addMessage("s1", {
+        id: "a-near",
+        role: "assistant",
+        content: "near update",
+        timestamp: new Date(2),
+      }, { persist: false });
+    });
+    expect(rafCallbacks).toHaveLength(1);
+
+    act(() => {
+      rafCallbacks.shift()?.(32);
+    });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1_000, behavior: "auto" });
+
+    window.requestAnimationFrame = originalRaf;
+    window.cancelAnimationFrame = originalCancelRaf;
+    window.IntersectionObserver = originalIntersectionObserver;
   });
 
   it("does not create a session just by opening an empty draft", async () => {

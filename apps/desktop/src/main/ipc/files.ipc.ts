@@ -8,7 +8,7 @@ import { ipcError } from "@shared";
 import { basename } from "path";
 import { open, stat, writeFile } from "fs/promises";
 import { scanFiles } from "../services/search/file-scanner";
-import { buildFileTree } from "../file-tree";
+import { buildFileTree, listDirectory } from "../file-tree";
 import { getProtectedPathReason } from "../services/protected-paths";
 import { getFileTreeSchema, listFilesSchema, readTextFileSchema, searchFilesSchema, writeTextFileSchema } from "./schemas";
 
@@ -55,7 +55,10 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
             if (reason) {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: workspacePath });
             }
-            return buildFileTree(workspacePath, options ?? { maxDepth: 4 });
+            if (options?.maxDepth === 1) {
+                return await listDirectory(workspacePath, { maxEntries: options.maxEntries });
+            }
+            return await buildFileTree(workspacePath, options ?? { maxDepth: 4 });
         } catch (err) {
             log.error("[files.ipc] tree error:", err);
             return ipcError(

@@ -9,6 +9,23 @@ import { MiniMaxCodeLayout } from "./MiniMaxCodeLayout";
 import { MiniMaxCodeTitleBar } from "./MiniMaxCodeTitleBar";
 
 describe("MiniMaxCode window chrome interactivity", () => {
+    it("keeps the restored main window flush while using a contained frame shadow", () => {
+        render(
+            <MiniMaxCodeLayout
+                leftSlot={<div />}
+                centerSlot={<div />}
+                rightSlot={null}
+            />,
+        );
+
+        const root = document.querySelector('[data-mmcode-layout="root"]');
+        const frame = document.querySelector('[data-mmcode-layout="window-frame"]');
+
+        expect(root?.className ?? "").toContain("p-0");
+        expect(root?.className ?? "").not.toContain("p-[6px]");
+        expect(frame?.className ?? "").toContain("shadow-[var(--mm-main-window-shadow)]");
+    });
+
     it("keeps titlebar blank space draggable while top tabs stay clickable in Electron", () => {
         render(
             <I18nProvider>
@@ -28,7 +45,7 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(chatTab.className).toContain("app-region-no-drag");
     });
 
-    it("keeps the global composer root scoped to the center workspace", () => {
+    it("keeps the global composer root in the center workspace layout flow", () => {
         render(
             <MiniMaxCodeLayout
                 leftSlot={<div />}
@@ -38,9 +55,8 @@ describe("MiniMaxCode window chrome interactivity", () => {
         );
 
         expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("pointer-events-auto");
-        expect(document.getElementById("pi-global-composer-root")?.className ?? "").not.toContain("inset-x-0");
-        expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("left-0");
-        expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("right-0");
+        expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("shrink-0");
+        expect(document.getElementById("pi-global-composer-root")?.className ?? "").not.toContain("absolute");
         expect(document.querySelector('[data-mmcode-region="center"]')?.querySelector("#pi-global-composer-root")).toBeTruthy();
     });
 

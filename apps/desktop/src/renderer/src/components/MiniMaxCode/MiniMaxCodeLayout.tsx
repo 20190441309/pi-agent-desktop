@@ -210,12 +210,12 @@ export function MiniMaxCodeLayout({
 
     return (
         <div
-            className={`flex h-screen w-screen overflow-hidden bg-transparent text-[var(--mm-text-primary)] p-0 ${className}`}
+            className={`flex h-screen w-screen overflow-hidden bg-transparent p-0 text-[var(--mm-text-primary)] ${className}`}
             data-mmcode-layout="root"
         >
             <div
                 className={`flex min-h-0 flex-1 flex-col overflow-hidden border border-[var(--mm-border)] bg-[var(--mm-bg-main)] ${
-                    isMaximized ? "rounded-none shadow-none" : "rounded-[var(--mm-window-radius)] shadow-[var(--mm-window-shadow)]"
+                    isMaximized ? "rounded-none shadow-none" : "rounded-[var(--mm-window-radius)] shadow-[var(--mm-main-window-shadow)]"
                 }`}
                 data-mmcode-layout="window-frame"
                 data-mm-window-kind="main"
@@ -230,7 +230,7 @@ export function MiniMaxCodeLayout({
                 />
 
                 <div
-                    className="relative flex min-h-0 w-full flex-1 data-[has-global-composer=true]:pb-[var(--pi-global-composer-height,103px)]"
+                    className="relative flex min-h-0 w-full flex-1"
                     data-mmcode-region="body"
                 >
                     {leftCollapsed ? (
@@ -283,7 +283,7 @@ export function MiniMaxCodeLayout({
                         {centerSlot}
                         <div
                             id="pi-global-composer-root"
-                            className="pointer-events-auto absolute bottom-0 left-0 right-0 z-30"
+                            className="pointer-events-auto relative z-30 w-full shrink-0"
                             aria-live="polite"
                         />
                     </main>

@@ -270,6 +270,8 @@ export function ChatView({
 }: ChatViewProps = {}): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRegionRef = useRef<HTMLDivElement>(null);
+  const autoScrollFrameRef = useRef<number | null>(null);
+  const isNearBottomRef = useRef(true);
   const focusHandledTimerRef = useRef<number | null>(null);
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
   const agents = useAgentStore((state) => state.agents);
@@ -319,11 +321,32 @@ export function ChatView({
   const shouldUseSessionMessages = Boolean(currentSession);
 
   useEffect(() => {
-    if (focusMessageId) return;
-    const scrollRegion = scrollRegionRef.current;
-    if (!scrollRegion) return;
-    scrollRegion.scrollTo({ top: scrollRegion.scrollHeight, behavior: 'smooth' });
+    isNearBottomRef.current = true;
+  }, [agentId, currentSession?.id]);
+
+  useEffect(() => {
+    if (focusMessageId || !isNearBottomRef.current || autoScrollFrameRef.current !== null) return;
+    const scrollToBottom = (): void => {
+      autoScrollFrameRef.current = null;
+      const scrollRegion = scrollRegionRef.current;
+      if (!scrollRegion || !isNearBottomRef.current) return;
+      scrollRegion.scrollTo({ top: scrollRegion.scrollHeight, behavior: 'auto' });
+      isNearBottomRef.current = true;
+    };
+    if (typeof window.requestAnimationFrame !== "function") {
+      scrollToBottom();
+      return;
+    }
+    autoScrollFrameRef.current = window.requestAnimationFrame(scrollToBottom);
   }, [agentMessages, currentSession?.messages, focusMessageId]);
+
+  useEffect(() => {
+    return () => {
+      if (autoScrollFrameRef.current !== null && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(autoScrollFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     void initAgents();
@@ -435,6 +458,22 @@ export function ChatView({
       return !isEmpty;
     });
   }, [rawMessages, isStreaming, streamingMessageId]);
+
+  useEffect(() => {
+    const scrollRegion = scrollRegionRef.current;
+    const bottomSentinel = messagesEndRef.current;
+    if (!scrollRegion || !bottomSentinel || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      isNearBottomRef.current = entry?.isIntersecting ?? true;
+    }, {
+      root: scrollRegion,
+      rootMargin: "0px 0px 160px 0px",
+      threshold: 0,
+    });
+    observer.observe(bottomSentinel);
+    return () => observer.disconnect();
+  }, [agentId, currentSession?.id, messages.length]);
 
   useEffect(() => {
     if (focusHandledTimerRef.current !== null) {
@@ -776,7 +815,10 @@ export function ChatView({
       <div
         ref={scrollRegionRef}
         data-testid="chat-scroll-region"
-        className={`min-h-0 flex-1 overflow-y-auto ${shouldUseGlobalComposer ? "pb-[var(--pi-global-composer-height,103px)]" : ""}`}
+        onWheel={(event) => {
+          if (event.deltaY < 0) isNearBottomRef.current = false;
+        }}
+        className="min-h-0 flex-1 overflow-y-auto"
       >
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col px-0 pb-0 pt-0 text-center">
