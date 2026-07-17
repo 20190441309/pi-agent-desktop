@@ -8,6 +8,7 @@ import { useAgentModeStore } from "../../stores/agent-mode-store";
 import { usePlanStore } from "../../stores/plan-store";
 import { useRuntimeFeatureStore } from "../../stores/runtime-feature-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useAgentStore } from "../../stores/agent-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { ChatInput } from "./ChatInput";
 
@@ -41,7 +42,12 @@ describe("ChatInput", () => {
       value: {
         setSettings: vi.fn(async () => undefined),
         configSetDefaultModel: vi.fn(async () => ({ ok: true })),
-        agentsSetThinking: vi.fn(async () => undefined),
+        agentsSetThinking: vi.fn(async (agentId: string, level: string) => ({
+          agentId,
+          status: "idle",
+          isStreaming: false,
+          thinkingLevel: level,
+        })),
         permissionSetMode: vi.fn(async () => undefined),
         openSettingsWindow: vi.fn(async () => undefined),
       },
@@ -87,6 +93,7 @@ describe("ChatInput", () => {
         },
       ],
     });
+    useAgentStore.setState({ runtimeByAgent: {} });
     useRuntimeFeatureStore.setState({
       featureState: {
         primaryAgents: [],
@@ -574,11 +581,11 @@ describe("ChatInput", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "思考强度: 中" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /高/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "高" }));
 
-    expect(useSettingsStore.getState().settings.thinkingLevel).toBe("high");
     await waitFor(() => {
       expect(window.piAPI.agentsSetThinking).toHaveBeenCalledWith("agent-1", "high");
+      expect(useSettingsStore.getState().settings.thinkingLevel).toBe("high");
     });
   });
 

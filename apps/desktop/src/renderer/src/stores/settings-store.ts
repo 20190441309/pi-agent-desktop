@@ -66,6 +66,7 @@ const CURRENT_SCHEMA_VERSION = 1;
  */
 function migrateSettings(persisted: Partial<AppSettings>): AppSettings {
     const next = { ...defaultSettings, ...persisted };
+    if (next.thinkingLevel === "none") next.thinkingLevel = "off";
     // longHorizon 是嵌套对象: 浅合并会让 persisted 的部分 longHorizon 整体替换 default,
     // 丢失后续新增字段的默认值. 用 normalizeLongHorizonSettings 深合并保护.
     next.longHorizon = normalizeLongHorizonSettings(next.longHorizon);

@@ -39,7 +39,10 @@ afterEach(() => {
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function setupWithStore(seed: Session[] = []): SqliteSessionRepository {
+function setupWithStore(
+    seed: Session[] = [],
+    deps: Omit<Partial<SessionsIpcDeps>, "repository"> = {},
+): SqliteSessionRepository {
     const dir = mkdtempSync(join(tmpdir(), "pi-sessions-ipc-"));
     dirs.push(dir);
     const repository = new SqliteSessionRepository(dir);
@@ -62,7 +65,7 @@ function setupWithStore(seed: Session[] = []): SqliteSessionRepository {
         });
         for (const message of session.messages) void repository.appendMessage(session.id, message);
     }
-    setupSessionsIpc({ repository } as SessionsIpcDeps);
+    setupSessionsIpc({ repository, ...deps } as SessionsIpcDeps);
     return repository;
 }
 
@@ -156,11 +159,105 @@ describe("session:rename", () => {
         expect(result.title).toBe("new");
     });
 
+    it("同步更新 Pi 原生会话名称", async () => {
+        const renameNativeSession = vi.fn(async () => undefined);
+        const seed: Session[] = [
+            {
+                id: "s1",
+                workspaceId: "ws1",
+                title: "old",
+                messages: [],
+                createdAt: 1,
+                updatedAt: 1,
+            },
+        ];
+        setupWithStore(seed, { renameNativeSession });
+
+        const result = (await handlers.get("session:rename")?.({}, "s1", "native title")) as Session;
+
+        expect(result.title).toBe("native title");
+        expect(renameNativeSession).toHaveBeenCalledWith("s1", "native title");
+    });
+
     it("id 不存在返 IpcError", async () => {
         setupWithStore();
         const handler = handlers.get("session:rename")!;
         const result = (await handler({}, "ghost", "x")) as { code: string };
         expect(result.code).toBe("ipcErrors.session.renameFailed");
+    });
+});
+
+describe("session:fork-context", () => {
+    beforeEach(() => handlers.clear());
+
+    it("把源会话完整上下文交给 Pi 原生 fork 实现", async () => {
+        const forkNativeSession = vi.fn(async () => undefined);
+        const seed: Session[] = [
+            {
+                id: "source",
+                workspaceId: "ws1",
+                title: "source",
+                messages: [userMsg, asstMsg],
+                createdAt: 1,
+                updatedAt: 2,
+            },
+        ];
+        setupWithStore(seed, { forkNativeSession });
+
+        const result = await handlers.get("session:fork-context")?.(
+            {},
+            "source",
+            "target",
+            "ws1",
+            "m1",
+        );
+
+        expect(result).toBeUndefined();
+        expect(forkNativeSession).toHaveBeenCalledWith({
+            sourceSessionId: "source",
+            targetSessionId: "target",
+            workspaceId: "ws1",
+            fromMessageId: "m1",
+            messages: [
+                expect.objectContaining({
+                    id: "m1",
+                    role: "user",
+                    content: "hello",
+                    timestamp: "2026-06-06T10:00:00.000Z",
+                }),
+                expect.objectContaining({
+                    id: "m2",
+                    role: "assistant",
+                    content: "world",
+                    timestamp: "2026-06-06T10:00:01.000Z",
+                }),
+            ],
+        });
+    });
+
+    it("原生 fork 失败时返回结构化错误", async () => {
+        const forkNativeSession = vi.fn().mockRejectedValue(new Error("invalid native branch"));
+        const seed: Session[] = [
+            {
+                id: "source",
+                workspaceId: "ws1",
+                title: "source",
+                messages: [userMsg],
+                createdAt: 1,
+                updatedAt: 2,
+            },
+        ];
+        setupWithStore(seed, { forkNativeSession });
+
+        const result = (await handlers.get("session:fork-context")?.(
+            {},
+            "source",
+            "target",
+            "ws1",
+        )) as { code: string; fallback: string };
+
+        expect(result.code).toBe("ipcErrors.session.forkContextFailed");
+        expect(result.fallback).toContain("invalid native branch");
     });
 });
 
@@ -466,7 +563,7 @@ describe("session:update-tool-call", () => {
 // ── 防重复注册回归(no-duplicate-ipc.test.ts 已经扫过字面量) ─────────
 
 describe("IPC channel 名称字面量", () => {
-    it("注册了 12 个 session:* handler", () => {
+    it("注册了 13 个 session:* handler", () => {
         handlers.clear();
         setupWithStore();
         const sessionHandlers = Array.from(handlers.keys()).filter((k) =>
@@ -478,6 +575,7 @@ describe("IPC channel 名称字面量", () => {
                 "session:archive",
                 "session:create",
                 "session:delete",
+                "session:fork-context",
                 "session:get",
                 "session:list",
                 "session:list-summaries",

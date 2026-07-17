@@ -477,7 +477,13 @@ describe("RightRail", () => {
         },
       ],
     });
-    useQueueStore.getState().applyEvent({ type: "auto_retry_start" });
+    useQueueStore.getState().applyEvent({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 2000,
+      errorMessage: "429 Too Many Requests",
+    });
 
     renderWithI18n(<RightRail workspacePath="C:/repo" />);
 

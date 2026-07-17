@@ -13,6 +13,7 @@ import type {
     ModelRegistry,
     ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import type { PiThinkingLevel } from "@shared";
 import type { PiAgentConfig } from "../../types";
 import { createGuardedBuiltins } from "../permission/guarded-tools";
 import type { RuntimeToolPolicy } from "../permission/runtime-policy";
@@ -21,11 +22,13 @@ import { loadPiSdk } from "./sdk-runtime";
 const require = createRequire(__filename);
 type RegisteredProviderConfig = Parameters<ModelRegistry["registerProvider"]>[1];
 type RegisteredApi = RegisteredProviderConfig["api"];
+type RegisteredProviderModel = NonNullable<RegisteredProviderConfig["models"]>[number];
 
 export interface WorkspaceSession {
     workspaceId: string;
     session: AgentSession;
     setModel: (provider: string, modelId: string) => Promise<boolean>;
+    modelFallbackMessage?: string;
     dispose: () => void;
 }
 
@@ -42,6 +45,8 @@ export interface CreateSessionOpts {
     workspacePath: string;
     modelId?: string;
     provider?: string;
+    thinkingLevel?: PiThinkingLevel;
+    autoCompactionEnabled?: boolean;
     agentDir?: string;
     piAgentConfig?: PiAgentConfig | null;
     sessionPath?: string;
@@ -61,6 +66,7 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
     const authStorage = sdk.AuthStorage.create(join(agentDir, "auth.json"));
     const modelRegistry = sdk.ModelRegistry.create(authStorage, join(agentDir, "models.json"));
     await registerConfiguredProviders(modelRegistry, authStorage, opts.piAgentConfig);
+    await assertSelectedModelHasCredentials(authStorage, opts);
     const selectedModel = opts.provider && opts.modelId
         ? modelRegistry.find(opts.provider, opts.modelId)
         : undefined;
@@ -79,13 +85,14 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
         ? [...(opts.customTools ?? []), ...createGuardedBuiltins(opts.workspacePath, opts.getRuntimePolicy)]
         : opts.customTools;
 
-    const { session } = await sdk.createAgentSession({
+    const { session, modelFallbackMessage } = await sdk.createAgentSession({
         cwd: opts.workspacePath,
         agentDir,
         authStorage,
         modelRegistry,
         settingsManager,
         model: selectedModel,
+        thinkingLevel: opts.thinkingLevel,
         tools: opts.tools,
         noTools: opts.noTools,
         customTools,
@@ -93,6 +100,9 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
         sessionManager: opts.sessionPath ? sdk.SessionManager.open(opts.sessionPath) : undefined,
     });
     patchExtensionSendUserMessage(session);
+    if (opts.autoCompactionEnabled !== undefined) {
+        session.setAutoCompactionEnabled(opts.autoCompactionEnabled);
+    }
     if (opts.uiContext) {
         await session.bindExtensions({ uiContext: opts.uiContext });
     }
@@ -100,6 +110,7 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
     return {
         workspaceId: opts.workspaceId,
         session,
+        modelFallbackMessage,
         setModel: async (provider, modelId) => {
             const model = modelRegistry.find(provider, modelId);
             if (!model) return false;
@@ -209,25 +220,84 @@ async function registerConfiguredProviders(
 ): Promise<void> {
     for (const provider of config?.providers ?? []) {
         if (!provider.baseUrl || provider.models.length === 0) continue;
-        const apiKey = await authStorage.getApiKey(provider.id) ?? resolveProviderApiKey(provider.apiKey);
+        const apiKey = await resolveConfiguredProviderApiKey(authStorage, provider, config);
         if (!apiKey) continue;
         modelRegistry.registerProvider(provider.id, {
             name: provider.name,
             baseUrl: provider.baseUrl,
             apiKey,
             api: toApi(provider.api),
+            headers: provider.headers,
+            authHeader: provider.authHeader,
             models: provider.models.map((model) => ({
                 id: model.id,
                 name: model.name,
-                api: toApi(provider.api),
+                api: toApi(model.api ?? provider.api),
+                baseUrl: model.baseUrl,
                 reasoning: model.reasoning ?? false,
+                thinkingLevelMap: model.thinkingLevelMap,
                 input: normalizeModelInput(model.input),
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                cost: normalizeModelCost(model.cost),
                 contextWindow: model.contextWindow ?? 128000,
                 maxTokens: model.maxTokens ?? 16384,
+                headers: model.headers,
+                compat: model.compat as RegisteredProviderModel["compat"],
             })),
         });
     }
+}
+
+function normalizeModelCost(cost?: PiAgentConfig["providers"][number]["models"][number]["cost"]): RegisteredProviderModel["cost"] {
+    return {
+        input: cost?.input ?? 0,
+        output: cost?.output ?? 0,
+        cacheRead: cost?.cacheRead ?? 0,
+        cacheWrite: cost?.cacheWrite ?? 0,
+    };
+}
+
+async function assertSelectedModelHasCredentials(
+    authStorage: AuthStorage,
+    opts: Pick<CreateSessionOpts, "provider" | "modelId" | "piAgentConfig">,
+): Promise<void> {
+    if (!opts.provider || !opts.modelId) return;
+    const provider = opts.piAgentConfig?.providers.find((candidate) => candidate.id === opts.provider);
+    if (!provider?.models.some((model) => model.id === opts.modelId)) return;
+    const apiKey = await resolveConfiguredProviderApiKey(authStorage, provider, opts.piAgentConfig);
+    if (apiKey) return;
+    throw new Error(
+        `模型 ${provider.id} / ${opts.modelId} 未配置 API Key，请在设置 > 模型中补充凭据后重试。`,
+    );
+}
+
+async function resolveConfiguredProviderApiKey(
+    authStorage: AuthStorage,
+    provider: NonNullable<PiAgentConfig["providers"]>[number],
+    config?: PiAgentConfig | null,
+): Promise<string | undefined> {
+    const direct = await authStorage.getApiKey(provider.id) ?? resolveProviderApiKey(provider.apiKey);
+    if (direct || !provider.baseUrl) return direct;
+
+    const normalizedBaseUrl = normalizeBaseUrl(provider.baseUrl);
+    const renameRemnants = (config?.providers ?? []).filter((candidate) =>
+        candidate.id !== provider.id
+        && candidate.models.length === 0
+        && Boolean(candidate.baseUrl)
+        && normalizeBaseUrl(candidate.baseUrl ?? "") === normalizedBaseUrl,
+    );
+    for (const candidate of renameRemnants) {
+        const inherited = await authStorage.getApiKey(candidate.id) ?? resolveProviderApiKey(candidate.apiKey);
+        if (!inherited) continue;
+        log.warn(
+            `[factory] recovering API key for renamed provider ${provider.id} from orphaned provider ${candidate.id}`,
+        );
+        return inherited;
+    }
+    return undefined;
+}
+
+function normalizeBaseUrl(baseUrl: string): string {
+    return baseUrl.trim().replace(/\/+$/, "").toLowerCase();
 }
 
 function resolveProviderApiKey(apiKey?: string): string | undefined {

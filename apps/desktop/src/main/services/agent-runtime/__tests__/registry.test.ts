@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_LONG_HORIZON_SETTINGS, type ToolPermissions } from "@shared";
+import { DEFAULT_LONG_HORIZON_SETTINGS, type PiThinkingLevel, type ToolPermissions } from "@shared";
 import { AgentRuntimeRegistry, formatPromptFailureMessage } from "../registry";
 import { PendingEdits } from "../../approval/pending-edits";
 import { createExtensionUiBridge } from "../../extensions/extension-ui-bridge";
@@ -17,6 +17,12 @@ const sessions: Array<{
     getActiveToolNames: ReturnType<typeof vi.fn>;
     setActiveToolsByName: ReturnType<typeof vi.fn>;
     setModel: ReturnType<typeof vi.fn>;
+    setThinkingLevel: ReturnType<typeof vi.fn>;
+    getAvailableThinkingLevels: ReturnType<typeof vi.fn>;
+    supportsThinking: ReturnType<typeof vi.fn>;
+    getSessionStats: ReturnType<typeof vi.fn>;
+    thinkingLevel: PiThinkingLevel;
+    model: { provider: string; id: string; name: string };
 }> = [];
 const { interceptorHandleMock, sessionCreationState } = vi.hoisted(() => ({
     interceptorHandleMock: vi.fn(async () => undefined),
@@ -51,6 +57,16 @@ vi.mock("../../pi-session/factory", () => ({
             getActiveToolNames: vi.fn(() => ["read", "write", "bash", "git_status", "fetch", "actor"]),
             setActiveToolsByName: vi.fn(),
             setModel: vi.fn(async () => true),
+            thinkingLevel: "medium" as PiThinkingLevel,
+            model: { provider: "mimo", id: "mimo-v2.5", name: "MiMo v2.5" },
+            setThinkingLevel: vi.fn((level: PiThinkingLevel) => {
+                session.thinkingLevel = level;
+            }),
+            getAvailableThinkingLevels: vi.fn(() => ["off", "low", "medium", "high", "xhigh"] as PiThinkingLevel[]),
+            supportsThinking: vi.fn(() => true),
+            getSessionStats: vi.fn(() => ({
+                tokens: { input: 12, output: 8, cacheRead: 0, cacheWrite: 0, total: 20 },
+            })),
         };
         if (sessionCreationState.nextActiveToolsError) {
             const error = sessionCreationState.nextActiveToolsError;
@@ -861,6 +877,62 @@ describe("AgentRuntimeRegistry", () => {
             );
 
             await vi.advanceTimersByTimeAsync((3 * 60 * 1000) + 1);
+
+            expect(registry.getRuntimeState(agent.id)).toMatchObject({
+                status: "error",
+                isStreaming: false,
+            });
+            expect(sessions[0].abort).toHaveBeenCalledOnce();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("sets the real Pi thinking level and exposes the authoritative runtime snapshot", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+
+        const state = registry.setThinking(agent.id, "xhigh");
+
+        expect(sessions[0].setThinkingLevel).toHaveBeenCalledWith("xhigh");
+        expect(state).toMatchObject({
+            modelProvider: "mimo",
+            modelId: "mimo-v2.5",
+            thinkingLevel: "xhigh",
+            availableThinkingLevels: ["off", "low", "medium", "high", "xhigh"],
+            supportsThinking: true,
+            tokenUsage: { input: 12, output: 8, total: 20 },
+        });
+    });
+
+    it("starts the watchdog when prompt is submitted before the SDK emits agent_start", async () => {
+        vi.useFakeTimers();
+        try {
+            const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+            sessions[0].prompt.mockReturnValueOnce(new Promise(() => undefined));
+
+            await registry.prompt({ agentId: agent.id, message: "hello" });
+            await vi.advanceTimersByTimeAsync((5 * 60 * 1000) + 1);
+
+            expect(registry.getRuntimeState(agent.id)).toMatchObject({
+                status: "error",
+                isStreaming: false,
+            });
+            expect(sessions[0].abort).toHaveBeenCalledOnce();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("does not let automatic retry events postpone the watchdog", async () => {
+        vi.useFakeTimers();
+        try {
+            const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+            const subscribed = sessions[0].subscribe.mock.calls[0][0];
+
+            await subscribed({ type: "agent_start" });
+            await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+            await subscribed({ type: "auto_retry_start" });
+            await vi.advanceTimersByTimeAsync((60 * 1000) + 1);
 
             expect(registry.getRuntimeState(agent.id)).toMatchObject({
                 status: "error",

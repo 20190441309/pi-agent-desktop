@@ -38,6 +38,13 @@ export function GeneralTab(): React.JSX.Element {
                         onChange={() => updateSettings({ generatedUiEnabled: settings.generatedUiEnabled === false })}
                     />
                 </FieldRow>
+                <FieldRow anchorId="general-auto-compaction" label={t('settings.autoCompaction.label')} description={t('settings.autoCompaction.description')}>
+                    <SwitchControl
+                        checked={settings.autoCompactionEnabled === true}
+                        label={t('settings.autoCompaction.label')}
+                        onChange={() => updateSettings({ autoCompactionEnabled: settings.autoCompactionEnabled !== true })}
+                    />
+                </FieldRow>
                 <FieldRow anchorId="general-notifications" label={t('settings.general.notifications.heading')} description={t('settings.general.notifications.description')}>
                     <div className="space-y-3">
                         <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-3">

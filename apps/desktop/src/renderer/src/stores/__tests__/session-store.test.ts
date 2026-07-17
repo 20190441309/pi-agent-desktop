@@ -26,6 +26,7 @@ function makePiAPI() {
             updatedAt: Date.now(),
         })),
         deleteSession: vi.fn(async () => undefined),
+        forkSessionContext: vi.fn(async () => undefined),
         // 2026-06-06 hotfix: 3 个新增 messages 持久化 API
         appendMessage: vi.fn(async () => undefined),
         updateMessage: vi.fn(async () => undefined),
@@ -391,6 +392,7 @@ describe("session-store: session forks", () => {
         expect(stored.messages[1].content).toBe("middle");
         expect(stored.toolPermissions?.fileRead).toBe(true);
         await new Promise((r) => setTimeout(r, 0));
+        expect(piAPI.forkSessionContext).toHaveBeenCalledWith("source", stored.id, "ws-1", "m2");
         expect(piAPI.appendMessage).toHaveBeenCalledTimes(2);
         expect(piAPI.updateSessionMetadata).toHaveBeenCalledWith(
             stored.id,

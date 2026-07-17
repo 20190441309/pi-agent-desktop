@@ -34,6 +34,14 @@ export interface SessionsIpcDeps {
     repository: SessionRepository;
     onSessionUpdated?: (session: Session) => void;
     onSessionDeleted?: (sessionId: string) => void;
+    renameNativeSession?: (sessionId: string, title: string) => Promise<void>;
+    forkNativeSession?: (input: {
+        sourceSessionId: string;
+        targetSessionId: string;
+        workspaceId: string;
+        fromMessageId?: string;
+        messages: Message[];
+    }) => Promise<void>;
 }
 
 function toMessage(raw: unknown): Message {
@@ -104,10 +112,38 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
     );
 
     ipcMain.handle(
+        "session:fork-context",
+        async (_event, sourceSessionId: string, targetSessionId: string, workspaceId: string, fromMessageId?: string) => {
+            if (!sourceSessionId || !targetSessionId || !workspaceId || !deps.forkNativeSession) {
+                return ipcError("ipcErrors.session.forkContextInvalid", "续接会话参数无效");
+            }
+            try {
+                const source = await repository.getSession(sourceSessionId);
+                if (!source) return ipcError("ipcErrors.session.notFound", `会话不存在: ${sourceSessionId}`);
+                await deps.forkNativeSession({
+                    sourceSessionId,
+                    targetSessionId,
+                    workspaceId,
+                    fromMessageId,
+                    messages: source.messages,
+                });
+                return undefined;
+            } catch (error) {
+                log.error("[sessions.ipc] session:fork-context failed:", error);
+                return ipcError(
+                    "ipcErrors.session.forkContextFailed",
+                    error instanceof Error ? error.message : String(error),
+                );
+            }
+        },
+    );
+
+    ipcMain.handle(
         "session:rename",
         async (_event, id: string, title: string) => {
             try {
                 const session = await repository.renameSession(id, title);
+                await deps.renameNativeSession?.(id, title);
                 deps.onSessionUpdated?.(session);
                 return session;
             } catch (err) {

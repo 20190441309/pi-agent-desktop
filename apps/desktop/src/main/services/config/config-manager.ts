@@ -76,8 +76,10 @@ export class ConfigManager {
                             name?: string;
                             baseUrl?: string;
                             apiKey?: string;
-                            apiType?: string;
-                            api?: string;
+                             apiType?: string;
+                             api?: string;
+                             headers?: Record<string, unknown>;
+                             authHeader?: boolean;
                             models?: Array<Record<string, unknown>>;
                             _piDesktopDeletedModels?: string[];
                         };
@@ -86,12 +88,18 @@ export class ConfigManager {
                             .map((m) => ({
                                 id: m.id as string,
                                 name: typeof m.name === "string" ? m.name : (m.id as string),
-                                provider: providerId,
-                                providerName: pd.name || providerId,
-                                contextWindow: typeof m.contextWindow === "number" ? m.contextWindow : undefined,
-                                maxTokens: typeof m.maxTokens === "number" ? m.maxTokens : undefined,
-                                reasoning: Boolean(m.reasoning),
-                                input: Array.isArray(m.input) ? (m.input as string[]) : undefined,
+                                 provider: providerId,
+                                 providerName: pd.name || providerId,
+                                 api: typeof m.api === "string" ? this.apiFromApiType(m.api) : undefined,
+                                 baseUrl: typeof m.baseUrl === "string" ? m.baseUrl : undefined,
+                                 contextWindow: typeof m.contextWindow === "number" ? m.contextWindow : undefined,
+                                 maxTokens: typeof m.maxTokens === "number" ? m.maxTokens : undefined,
+                                 reasoning: Boolean(m.reasoning),
+                                 input: Array.isArray(m.input) ? (m.input as string[]) : undefined,
+                                 thinkingLevelMap: this.thinkingLevelMap(m.thinkingLevelMap),
+                                 headers: this.stringRecord(m.headers),
+                                 compat: this.isPlainObject(m.compat) ? m.compat : undefined,
+                                 cost: this.modelCost(m.cost),
                             }));
                         providers.push({
                             id: providerId,
@@ -99,7 +107,9 @@ export class ConfigManager {
                             baseUrl: pd.baseUrl,
                             apiKey: this.getAuthValue(authData[providerId]) ?? pd.apiKey,
                             apiType: pd.apiType,
-                            api: this.apiFromApiType(pd.api ?? pd.apiType),
+                             api: this.apiFromApiType(pd.api ?? pd.apiType),
+                             headers: this.stringRecord(pd.headers),
+                             authHeader: typeof pd.authHeader === "boolean" ? pd.authHeader : undefined,
                             _piDesktopDeletedModels: Array.isArray(pd._piDesktopDeletedModels) ? pd._piDesktopDeletedModels : undefined,
                             models,
                         });
@@ -146,7 +156,9 @@ export class ConfigManager {
                 baseUrl?: string;
                 apiKey?: string;
                 apiType?: string;
-                api?: string;
+                 api?: string;
+                 headers?: Record<string, unknown>;
+                 authHeader?: boolean;
                 _piDesktopDeletedModels?: string[];
                 models?: Array<Record<string, unknown>>;
             };
@@ -158,12 +170,18 @@ export class ConfigManager {
                       .map((m) => ({
                           id: m.id as string,
                           name: typeof m.name === "string" ? m.name : (m.id as string),
-                          provider: providerId,
-                          providerName: typeof pd.name === "string" ? pd.name : providerId,
-                          contextWindow: typeof m.contextWindow === "number" ? m.contextWindow : undefined,
-                          maxTokens: typeof m.maxTokens === "number" ? m.maxTokens : undefined,
-                          reasoning: Boolean(m.reasoning),
-                          input: Array.isArray(m.input) ? (m.input as string[]) : undefined,
+                           provider: providerId,
+                           providerName: typeof pd.name === "string" ? pd.name : providerId,
+                           api: typeof m.api === "string" ? this.apiFromApiType(m.api) : undefined,
+                           baseUrl: typeof m.baseUrl === "string" ? m.baseUrl : undefined,
+                           contextWindow: typeof m.contextWindow === "number" ? m.contextWindow : undefined,
+                           maxTokens: typeof m.maxTokens === "number" ? m.maxTokens : undefined,
+                           reasoning: Boolean(m.reasoning),
+                           input: Array.isArray(m.input) ? (m.input as string[]) : undefined,
+                           thinkingLevelMap: this.thinkingLevelMap(m.thinkingLevelMap),
+                           headers: this.stringRecord(m.headers),
+                           compat: this.isPlainObject(m.compat) ? m.compat : undefined,
+                           cost: this.modelCost(m.cost),
                       }))
                 : [];
 
@@ -173,7 +191,9 @@ export class ConfigManager {
                 baseUrl: typeof pd.baseUrl === "string" ? pd.baseUrl : undefined,
                 apiKey: typeof pd.apiKey === "string" ? pd.apiKey : undefined,
                 apiType: typeof pd.apiType === "string" ? pd.apiType : undefined,
-                api: this.apiFromApiType(typeof pd.api === "string" ? pd.api : typeof pd.apiType === "string" ? pd.apiType : undefined),
+                 api: this.apiFromApiType(typeof pd.api === "string" ? pd.api : typeof pd.apiType === "string" ? pd.apiType : undefined),
+                 headers: this.stringRecord(pd.headers),
+                 authHeader: typeof pd.authHeader === "boolean" ? pd.authHeader : undefined,
                 _piDesktopDeletedModels: Array.isArray(pd._piDesktopDeletedModels)
                     ? pd._piDesktopDeletedModels.filter((id): id is string => typeof id === "string")
                     : undefined,
@@ -281,8 +301,9 @@ export class ConfigManager {
 
         const originalProviderId = input.originalProviderId?.trim() || providerId;
         const originalModelId = input.originalModelId?.trim() || modelId;
+        const originalProvider = modelsFile.providers[originalProviderId];
+        const originalAuthValue = this.getAuthValue(authFile[originalProviderId]) ?? originalProvider?.apiKey;
         if (originalProviderId !== providerId || originalModelId !== modelId) {
-            const originalProvider = modelsFile.providers[originalProviderId];
             if (originalProvider?.models) {
                 originalProvider.models = originalProvider.models.filter((model) => model.id !== originalModelId);
             }
@@ -309,6 +330,7 @@ export class ConfigManager {
         if (input.contextWindow != null) nextModel.contextWindow = input.contextWindow;
         if (input.maxTokens != null) nextModel.maxTokens = input.maxTokens;
         if (input.reasoning != null) nextModel.reasoning = input.reasoning;
+        if (input.thinkingLevelMap != null) nextModel.thinkingLevelMap = input.thinkingLevelMap;
         if (input.input) nextModel.input = input.input;
         if (input.api) nextModel.api = input.api;
 
@@ -326,8 +348,18 @@ export class ConfigManager {
             authFile[providerId] = { type: "api_key", key: apiKey };
             nextProvider.apiKey = apiKey;
         } else {
-            const existingAuthValue = this.getAuthValue(authFile[providerId]) ?? existingProvider.apiKey;
+            const existingAuthValue = this.getAuthValue(authFile[providerId])
+                ?? existingProvider.apiKey
+                ?? (originalProviderId !== providerId ? originalAuthValue : undefined);
             if (existingAuthValue) nextProvider.apiKey = existingAuthValue;
+            if (existingAuthValue && originalProviderId !== providerId) {
+                authFile[providerId] = { type: "api_key", key: existingAuthValue };
+            }
+        }
+
+        if (originalProviderId !== providerId && (originalProvider?.models?.length ?? 0) === 0) {
+            delete modelsFile.providers[originalProviderId];
+            delete authFile[originalProviderId];
         }
 
         await this.saveModelsConfig(modelsFile);
@@ -808,6 +840,7 @@ export class ConfigManager {
             contextWindow: model.contextWindow,
             maxTokens: model.maxTokens,
             reasoning: model.reasoning,
+            thinkingLevelMap: this.thinkingLevelMap(model.thinkingLevelMap),
             input: model.input,
             source,
             isDefault:
@@ -950,6 +983,25 @@ export class ConfigManager {
 
     private trimBaseUrl(baseUrl: string): string {
         return baseUrl.replace(/\/+$/, "");
+    }
+
+    private thinkingLevelMap(value: unknown): PiAgentModel["thinkingLevelMap"] {
+        if (!this.isPlainObject(value)) return undefined;
+        const result: NonNullable<PiAgentModel["thinkingLevelMap"]> = {};
+        for (const level of ["off", "minimal", "low", "medium", "high", "xhigh"] as const) {
+            const mapped = value[level];
+            if (typeof mapped === "string" || mapped === null) result[level] = mapped;
+        }
+        return Object.keys(result).length > 0 ? result : undefined;
+    }
+
+    private modelCost(value: unknown): PiAgentModel["cost"] {
+        if (!this.isPlainObject(value)) return undefined;
+        const result: NonNullable<PiAgentModel["cost"]> = {};
+        for (const field of ["input", "output", "cacheRead", "cacheWrite"] as const) {
+            if (typeof value[field] === "number") result[field] = value[field];
+        }
+        return Object.keys(result).length > 0 ? result : undefined;
     }
 
     private anthropicMessagesUrl(baseUrl: string): string {

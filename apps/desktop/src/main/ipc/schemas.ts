@@ -94,7 +94,7 @@ const appSettingsSchema = z
         visionProvider: z.string().optional(),
         visionModel: z.string().optional(),
         showThinking: z.boolean().optional(),
-        thinkingLevel: z.enum(["none", "low", "medium", "high"]).optional(),
+        thinkingLevel: z.enum(["none", "off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
         shortcutOverrides: z.array(shortcutOverrideSchema).max(200).optional(),
         workspaceToolDefaults: z.record(z.string(), z.record(z.enum([
             "fileRead",
@@ -449,7 +449,7 @@ export const agentsIdSchema = z.tuple([
 
 export const agentsSetThinkingSchema = z.tuple([
     z.string().min(1, "agentId must be a non-empty string"),
-    z.enum(["none", "low", "medium", "high"]),
+    z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]),
 ]);
 
 // ── Codex session import schemas ──────────────────────────

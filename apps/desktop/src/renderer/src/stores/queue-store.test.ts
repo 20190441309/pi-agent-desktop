@@ -59,13 +59,19 @@ describe("queue-store", () => {
   });
 
   it("tracks auto retry lifecycle as running activity", () => {
-    useQueueStore.getState().applyEvent({ type: "auto_retry_start" });
+    useQueueStore.getState().applyEvent({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 2000,
+      errorMessage: "429 Too Many Requests",
+    });
 
     expect(useQueueStore.getState().running).toBe(true);
     expect(useQueueStore.getState().autoRetrying).toBe(true);
     expect(useQueueStore.getState().lastActivity).toBe("自动重试中");
 
-    useQueueStore.getState().applyEvent({ type: "auto_retry_end" });
+    useQueueStore.getState().applyEvent({ type: "auto_retry_end", success: true, attempt: 1 });
 
     expect(useQueueStore.getState().autoRetrying).toBe(false);
     expect(useQueueStore.getState().lastActivity).toBe("自动重试结束");

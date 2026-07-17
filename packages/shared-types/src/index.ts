@@ -5,6 +5,7 @@
 
 export * from "./events";
 export * from "./command-risk";
+import type { PiThinkingLevel } from "./events";
 import type { ApprovalRequest, DeferredEdit, FileReview } from "./approval";
 export type { ApprovalRequest, DeferredEdit, FileReview };
 // 上面 re-export approval.ts 的具体类型 (解决: 后面 PiAPI 用到的 ApprovalRequest 等)
@@ -119,7 +120,10 @@ export interface AgentRuntimeState {
     modelProvider?: string;
     modelId?: string;
     modelName?: string;
-    thinkingLevel?: string;
+    sessionName?: string;
+    thinkingLevel?: PiThinkingLevel;
+    availableThinkingLevels?: PiThinkingLevel[];
+    supportsThinking?: boolean;
     tokenUsage?: {
         input?: number;
         output?: number;
@@ -573,6 +577,7 @@ export interface ManagedModelEntry {
     contextWindow?: number;
     maxTokens?: number;
     reasoning?: boolean;
+    thinkingLevelMap?: Partial<Record<PiThinkingLevel, string | null>>;
     input?: string[];
     source: ManagedModelSource;
     isDefault: boolean;
@@ -604,6 +609,7 @@ export interface ManagedModelSaveInput {
     contextWindow?: number;
     maxTokens?: number;
     reasoning?: boolean;
+    thinkingLevelMap?: Partial<Record<PiThinkingLevel, string | null>>;
     input?: string[];
     setDefault?: boolean;
 }
@@ -652,8 +658,8 @@ export interface AppSettings {
     visionModel?: string;
     /** 是否展示 agent 思考过程 */
     showThinking?: boolean;
-    /** 思考级别: none / low / medium / high */
-    thinkingLevel?: "none" | "low" | "medium" | "high";
+    /** 思考级别。`none` 仅用于迁移旧版持久化数据。 */
+    thinkingLevel?: PiThinkingLevel | "none";
     /** 用户自定义快捷键覆盖。 */
     shortcutOverrides?: ShortcutOverride[];
     /** 长程能力：MiMoCode 风格 mode/goal/memory/checkpoint/task/max 适配层 */
@@ -1404,6 +1410,7 @@ export interface PiAPI {
     getSession(id: string): Promise<Session | IpcError>;
     searchSessionMessages(input: SessionSearchInput): Promise<SessionSearchResult[] | IpcError>;
     createSession(workspaceId: string, title?: string, id?: string): Promise<Session>;
+    forkSessionContext(sourceSessionId: string, targetSessionId: string, workspaceId: string, fromMessageId?: string): Promise<void | IpcError>;
     renameSession(id: string, title: string): Promise<Session>;
     deleteSession(id: string): Promise<void>;
     archiveSession(id: string, archived: boolean): Promise<Session | IpcError>;
@@ -1455,9 +1462,10 @@ export interface PiAPI {
     agentsRestart(agentId: string): Promise<AgentTab>;
     agentsMessages(agentId: string): Promise<AgentMessage[]>;
     agentsRuntimeState(agentId: string): Promise<AgentRuntimeState>;
-    agentsSetThinking(agentId: string, level: "none" | "low" | "medium" | "high"): Promise<void>;
+    agentsSetThinking(agentId: string, level: PiThinkingLevel): Promise<AgentRuntimeState | IpcError>;
     agentsSyncPermissions(agentId: string): Promise<AgentPermissionSyncResult | IpcError>;
     onAgentsState(cb: (agents: AgentTab[]) => void): Unsubscribe;
+    onAgentRuntimeState(cb: (states: AgentRuntimeState[]) => void): Unsubscribe;
     onAgentMessages(cb: (payload: { agentId: string; messages: AgentMessage[] }) => void): Unsubscribe;
     onAgentEvent(cb: (payload: { agentId: string; workspaceId: string; event: PiEvent }) => void): Unsubscribe;
 

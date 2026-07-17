@@ -1,7 +1,7 @@
 // Electron Main Process Entry Point
 
 import { app, BrowserWindow, Menu, Tray, nativeImage } from 'electron';
-import { mkdirSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { is } from '@electron-toolkit/utils';
 import { homedir } from 'os';
@@ -67,6 +67,8 @@ import { buildDiagnosticReport } from './services/diagnostics';
 import { attachCrashDiagnostics, attachRendererCrashDiagnostics } from './services/crash-diagnostics';
 import { resolveStoredToolPermissions } from './services/permission/runtime-policy';
 import { resolveNativeSessionPath } from './services/pi-session/session-path';
+import { forkNativeSession } from './services/pi-session/native-session-fork';
+import { loadPiSdk } from './services/pi-session/sdk-runtime';
 import { registerSingleInstance } from './services/single-instance';
 import { SqliteSessionRepository } from './services/sqlite-session-repository';
 import type { PiAgentConfig } from './types';
@@ -80,6 +82,7 @@ let mainWindow: BrowserWindow | null = null;
 let desktopOverlayWindowManager: DesktopOverlayWindowManager | null = null;
 let mainWindowLifecycle: MainWindowLifecycleController | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
+let modelConfigRefreshTail: Promise<void> = Promise.resolve();
 let piDriver: PiDriver | null = null;
 
 const MAIN_WINDOW_WIDTH = 896;
@@ -263,6 +266,7 @@ function shouldRefreshSessionsForSettingsChange(previous: AppSettings, next: App
   const prevLongHorizon = previous.longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
   const nextLongHorizon = next.longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
   return previous.generatedUiEnabled !== next.generatedUiEnabled ||
+    previous.autoCompactionEnabled !== next.autoCompactionEnabled ||
     JSON.stringify(prevLongHorizon) !== JSON.stringify(nextLongHorizon);
 }
 
@@ -368,6 +372,8 @@ const subagentSessionFactory: SubagentSessionFactory = async (opts) => {
     agentDir: PI_AGENT_DIR,
     tools: opts.toolAllowlist,
     customTools: opts.customTools,
+    thinkingLevel: settings.thinkingLevel === 'none' ? 'off' : settings.thinkingLevel,
+    autoCompactionEnabled: settings.autoCompactionEnabled,
   });
   return result.session;
 };
@@ -714,6 +720,14 @@ function setupIPC(updaterService: AppUpdaterService): void {
           model: piAgentConfig.defaultModel,
         });
       }
+      modelConfigRefreshTail = modelConfigRefreshTail.catch(() => undefined).then(async () => {
+        const workspaceIds = [...new Set(agentRegistry.list().map((agent) => agent.workspaceId))];
+        await Promise.all(workspaceIds.map((workspaceId) => agentRegistry.refreshWorkspace(workspaceId)));
+        piRegistry.disposeAll();
+      });
+      void modelConfigRefreshTail.catch((error) => {
+        log.error("[Main] failed to refresh live model registries after config change:", error);
+      });
     },
   });
   setupCodexSessionsIpc(codexSessionImporter);
@@ -745,6 +759,31 @@ function setupIPC(updaterService: AppUpdaterService): void {
   // Session management (delegated to sessions.ipc.ts)
   setupSessionsIpc({
     repository: sessions,
+    renameNativeSession: async (sessionId, title) => {
+      const activeAgent = agentRegistry.list().find((agent) => agent.sessionId === sessionId);
+      if (activeAgent) {
+        agentRegistry.getWorkspaceSession(activeAgent.id).session.setSessionName(title);
+        return;
+      }
+      const sessionPath = resolveNativeSessionPath(app.getPath('userData'), sessionId);
+      if (!existsSync(sessionPath)) return;
+      const sdk = await loadPiSdk();
+      sdk.SessionManager.open(sessionPath).appendSessionInfo(title);
+    },
+    forkNativeSession: async ({ sourceSessionId, targetSessionId, workspaceId, fromMessageId, messages }) => {
+      const workspace = store.get('workspaces').find((candidate) => candidate.id === workspaceId);
+      if (!workspace) throw new Error(`工作区不存在: ${workspaceId}`);
+      const settings = store.get('settings');
+      await forkNativeSession({
+        sourcePath: resolveNativeSessionPath(app.getPath('userData'), sourceSessionId),
+        targetPath: resolveNativeSessionPath(app.getPath('userData'), targetSessionId),
+        targetCwd: workspace.path,
+        messages,
+        fromMessageId,
+        provider: settings.provider,
+        model: settings.model,
+      });
+    },
     onSessionUpdated: (session) => {
       if (session.toolPermissions) sessionToolPermissions.set(session.id, session.toolPermissions);
       else sessionToolPermissions.delete(session.id);
@@ -762,15 +801,14 @@ function setupIPC(updaterService: AppUpdaterService): void {
     getPiAgentConfig: () => piAgentConfig,
     reloadPiAgentConfig: () => refreshPiAgentConfig(configManager),
     piAgentDir: PI_AGENT_DIR,
-    onSettingsChanged: (next, previous) => {
+    onSettingsChanged: async (next, previous) => {
       const modelChanged = previous.provider !== next.provider || previous.model !== next.model;
       if (modelChanged && next.provider && next.model) {
-        void Promise.all([
+        await modelConfigRefreshTail;
+        await Promise.all([
           agentRegistry.setModelForAll(next.provider, next.model),
           piRegistry.setModelForAll(next.provider, next.model),
-        ]).catch((error) => {
-          log.warn("[Main] failed to switch live sessions after model change:", error);
-        });
+        ]);
       }
 
       if ((previous.generatedUiEnabled !== false) !== (next.generatedUiEnabled !== false)) {

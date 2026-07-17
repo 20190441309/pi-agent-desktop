@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { ipcError, type CreateAgentInput, type SendAgentPromptInput } from "@shared";
+import { ipcError, type CreateAgentInput, type PiThinkingLevel, type SendAgentPromptInput } from "@shared";
 import type { AgentRuntimeRegistry } from "../services/agent-runtime/registry";
 import { agentsCreateSchema, agentsPromptSchema, agentsIdSchema, agentsSetThinkingSchema } from "./schemas";
 
@@ -33,9 +33,19 @@ export function setupAgentsIpc(registry: AgentRuntimeRegistry): void {
         agentsIdSchema.parse([agentId]);
         return registry.getRuntimeState(agentId);
     });
-    ipcMain.handle("agents:set-thinking", async (_event, agentId: string, level: "none" | "low" | "medium" | "high") => {
-        agentsSetThinkingSchema.parse([agentId, level]);
-        registry.setThinking(agentId, level);
+    ipcMain.handle("agents:set-thinking", async (_event, agentId: string, level: PiThinkingLevel) => {
+        const parsed = agentsSetThinkingSchema.safeParse([agentId, level]);
+        if (!parsed.success) {
+            return ipcError("ipcErrors.agents.invalidThinkingLevel", "无效的思考强度");
+        }
+        try {
+            return registry.setThinking(agentId, level);
+        } catch (error) {
+            return ipcError(
+                "ipcErrors.agents.setThinkingFailed",
+                error instanceof Error ? error.message : String(error),
+            );
+        }
     });
     ipcMain.handle("agents:sync-permissions", async (_event, agentId: string) => {
         const parsed = agentsIdSchema.safeParse([agentId]);

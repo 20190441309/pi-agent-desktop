@@ -18,6 +18,7 @@ const {
     sessionManagerOpen,
     sessionSendUserMessage,
     sessionSetModel,
+    sessionSetAutoCompactionEnabled,
     createAgentSessionMock,
     createGuardedBuiltinsMock,
     sdkMock,
@@ -35,6 +36,7 @@ const {
     sessionManagerOpen: vi.fn((sessionPath?: string) => ({ sessionPath })),
     sessionSendUserMessage: vi.fn(async () => undefined),
     sessionSetModel: vi.fn(async () => undefined),
+    sessionSetAutoCompactionEnabled: vi.fn(),
     createAgentSessionMock: vi.fn().mockResolvedValue({
         session: {
             prompt: vi.fn(),
@@ -45,6 +47,7 @@ const {
             dispose: vi.fn(),
             bindExtensions: vi.fn().mockResolvedValue(undefined),
             setModel: vi.fn(async () => undefined),
+            setAutoCompactionEnabled: vi.fn(),
         },
         extensionsResult: { extensions: [] },
     }),
@@ -107,6 +110,7 @@ describe("createWorkspaceSession", () => {
         sessionSendUserMessage.mockResolvedValue(undefined);
         sessionSetModel.mockReset();
         sessionSetModel.mockResolvedValue(undefined);
+        sessionSetAutoCompactionEnabled.mockReset();
         createAgentSessionMock.mockClear();
         createGuardedBuiltinsMock.mockClear();
         createAgentSessionMock.mockResolvedValue({
@@ -119,6 +123,7 @@ describe("createWorkspaceSession", () => {
                 dispose: vi.fn(),
                 bindExtensions: vi.fn().mockResolvedValue(undefined),
                 setModel: sessionSetModel,
+                setAutoCompactionEnabled: sessionSetAutoCompactionEnabled,
             },
             extensionsResult: { extensions: [] },
         });
@@ -335,6 +340,135 @@ describe("createWorkspaceSession", () => {
                 apiKey: "sk-provider-env",
             }),
         );
+    });
+
+    it("applies the desktop auto-compaction setting to the real Pi session", async () => {
+        await createWorkspaceSession({
+            workspaceId: "ws_compaction",
+            workspacePath: "C:/repo",
+            autoCompactionEnabled: true,
+        });
+
+        expect(sessionSetAutoCompactionEnabled).toHaveBeenCalledWith(true);
+    });
+
+    it("forwards the complete custom model runtime contract to Pi", async () => {
+        await createWorkspaceSession({
+            workspaceId: "ws_runtime_fields",
+            workspacePath: "C:/repo",
+            provider: "custom",
+            modelId: "reasoner",
+            piAgentConfig: {
+                defaultProvider: "custom",
+                defaultModel: "reasoner",
+                providers: [{
+                    id: "custom",
+                    name: "Custom",
+                    baseUrl: "https://api.example.com/v1",
+                    api: "openai-completions",
+                    headers: { "X-Provider": "desktop" },
+                    authHeader: false,
+                    models: [{
+                        id: "reasoner",
+                        name: "Reasoner",
+                        provider: "custom",
+                        providerName: "Custom",
+                        api: "openai-responses",
+                        baseUrl: "https://model.example.com/v1",
+                        reasoning: true,
+                        thinkingLevelMap: { minimal: null, high: "high", xhigh: "max" },
+                        headers: { "X-Model": "reasoner" },
+                        compat: { supportsDeveloperRole: false },
+                        cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2 },
+                    }],
+                }],
+            },
+        });
+
+        expect(registerProvider).toHaveBeenCalledWith("custom", expect.objectContaining({
+            headers: { "X-Provider": "desktop" },
+            authHeader: false,
+            models: [expect.objectContaining({
+                api: "openai-responses",
+                baseUrl: "https://model.example.com/v1",
+                thinkingLevelMap: { minimal: null, high: "high", xhigh: "max" },
+                headers: { "X-Model": "reasoner" },
+                compat: { supportsDeveloperRole: false },
+                cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2 },
+            })],
+        }));
+    });
+
+    it("rejects a selected managed model when its provider has no API key", async () => {
+        authStorageGetApiKey.mockResolvedValue(undefined);
+
+        await expect(createWorkspaceSession({
+            workspaceId: "ws_missing_key",
+            workspacePath: "C:/repo",
+            provider: "openai",
+            modelId: "gpt-custom",
+            piAgentConfig: {
+                defaultProvider: "openai",
+                defaultModel: "gpt-custom",
+                providers: [{
+                    id: "openai",
+                    name: "OpenAI compatible",
+                    baseUrl: "https://api.example.com/v1",
+                    api: "openai-completions",
+                    models: [{
+                        id: "gpt-custom",
+                        name: "GPT Custom",
+                        provider: "openai",
+                        providerName: "OpenAI compatible",
+                    }],
+                }],
+            },
+        })).rejects.toThrow("openai / gpt-custom 未配置 API Key");
+        expect(createAgentSessionMock).not.toHaveBeenCalled();
+    });
+
+    it("recovers credentials from an orphaned provider left behind by a provider id rename", async () => {
+        authStorageGetApiKey.mockImplementation(async (providerId: string) =>
+            providerId === "openai_legacy" ? "sk-existing" : undefined,
+        );
+
+        await createWorkspaceSession({
+            workspaceId: "ws_renamed_provider",
+            workspacePath: "C:/repo",
+            provider: "openai",
+            modelId: "gpt-custom",
+            piAgentConfig: {
+                defaultProvider: "openai",
+                defaultModel: "gpt-custom",
+                providers: [
+                    {
+                        id: "openai_legacy",
+                        name: "OpenAI legacy",
+                        baseUrl: "https://api.example.com/v1/",
+                        api: "openai-completions",
+                        models: [],
+                    },
+                    {
+                        id: "openai",
+                        name: "OpenAI",
+                        baseUrl: "https://api.example.com/v1",
+                        api: "openai-completions",
+                        models: [{
+                            id: "gpt-custom",
+                            name: "GPT Custom",
+                            provider: "openai",
+                            providerName: "OpenAI",
+                        }],
+                    },
+                ],
+            },
+        });
+
+        expect(registerProvider).toHaveBeenCalledWith(
+            "openai",
+            expect.objectContaining({ apiKey: "sk-existing" }),
+        );
+        expect(createAgentSessionMock).toHaveBeenCalledOnce();
     });
 
     it("forwards noTools/tools to the SDK and merges explicit desktop extension bundles", async () => {

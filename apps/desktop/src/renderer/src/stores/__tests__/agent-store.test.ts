@@ -27,6 +27,7 @@ const api = {
     agentsSyncPermissions: vi.fn(async () => ({ activeTools: ["read", "edit"], deniedTools: ["bash"] })),
     onAgentsState: vi.fn(() => () => undefined),
     onAgentMessages: vi.fn(() => () => undefined),
+    onAgentRuntimeState: vi.fn(() => () => undefined),
 };
 
 describe("agent-store", () => {

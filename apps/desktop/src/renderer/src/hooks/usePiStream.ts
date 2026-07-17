@@ -994,6 +994,11 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 break;
             }
 
+            case "thinking_level_changed":
+            case "session_info_changed":
+            case "turn_start":
+                break;
+
             case "compaction_start":
                 updateCurrentUsage({ compactionStatus: "running" });
                 break;

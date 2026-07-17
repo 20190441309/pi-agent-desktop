@@ -258,7 +258,7 @@ function MessageBubbleImpl({
     .filter((part): part is string => Boolean(part))
   const thinkingContent = thinkingParts.join("\n\n");
   const showThinking = useSettingsStore((state) =>
-    state.settings.showThinking !== false && state.settings.thinkingLevel !== "none"
+    state.settings.showThinking !== false && state.settings.thinkingLevel !== "none" && state.settings.thinkingLevel !== "off"
   );
   const thinkingCount = (message.thinkingCount ?? (message.thinking?.trim() ? 1 : 0)) + inlineThinking.count;
   const visibleContent = inlineThinking.content;

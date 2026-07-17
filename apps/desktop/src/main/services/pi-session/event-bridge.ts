@@ -3,7 +3,12 @@
 // Pi 事件文档: node_modules/@earendil-works/pi-coding-agent/docs/rpc.md
 
 import log from "electron-log/main";
-import type { PiEvent } from "@shared/events";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { PiEvent, PiEventType } from "@shared/events";
+
+type MissingSdkEventTypes = Exclude<AgentSessionEvent["type"], PiEventType>;
+const SDK_EVENT_TYPES_ARE_COVERED: MissingSdkEventTypes extends never ? true : never = true;
+void SDK_EVENT_TYPES_ARE_COVERED;
 
 export type IpcSender = (channel: string, workspaceId: string, payload: unknown) => void;
 
@@ -53,6 +58,7 @@ export function createEventBridge(workspaceId: string, send: IpcSender, deps?: E
                     break;
 
                 case "agent_start":
+                case "turn_start":
                 case "message_start":
                 case "message_update":
                 case "message_end":
@@ -62,6 +68,10 @@ export function createEventBridge(workspaceId: string, send: IpcSender, deps?: E
                 case "agent_end":
                 case "compaction_start":
                 case "compaction_end":
+                case "auto_retry_start":
+                case "auto_retry_end":
+                case "session_info_changed":
+                case "thinking_level_changed":
                 case "usage_update":
                 case "context_update":
                 case "custom_message":
@@ -71,8 +81,10 @@ export function createEventBridge(workspaceId: string, send: IpcSender, deps?: E
                     break;
 
                 default:
-                    // 未知事件忽略 (auto_retry_* 等暂未接入 renderer 的诊断事件)
-                    log.warn(`[event-bridge] unknown Pi event type: ${(forwardedEvent as { type?: string })?.type ?? "(unknown)"}`);
+                    {
+                        const exhaustiveEvent: never = forwardedEvent;
+                        log.warn(`[event-bridge] unknown Pi event type: ${(exhaustiveEvent as { type?: string })?.type ?? "(unknown)"}`);
+                    }
                     break;
             }
         },

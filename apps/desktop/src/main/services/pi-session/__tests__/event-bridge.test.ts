@@ -144,10 +144,53 @@ describe("EventBridge", () => {
         expect(send).toHaveBeenCalledWith("pi:event", "ws_1", event);
     });
 
+    it("forwards automatic retry diagnostics", () => {
+        const send = vi.fn();
+        const bridge = createEventBridge("ws_1", send);
+        const event = {
+            type: "auto_retry_start",
+            attempt: 1,
+            maxAttempts: 3,
+            delayMs: 2000,
+            errorMessage: "429 Too Many Requests",
+        } as const;
+        bridge.handleEvent(event);
+        expect(send).toHaveBeenCalledWith("pi:event", "ws_1", event);
+    });
+
+    it("forwards SDK session and thinking state changes", () => {
+        const send = vi.fn();
+        const bridge = createEventBridge("ws_1", send);
+
+        bridge.handleEvent({ type: "turn_start" });
+        bridge.handleEvent({ type: "thinking_level_changed", level: "xhigh" });
+        bridge.handleEvent({ type: "session_info_changed", name: "Release audit" });
+
+        expect(send).toHaveBeenNthCalledWith(1, "pi:event", "ws_1", { type: "turn_start" });
+        expect(send).toHaveBeenNthCalledWith(2, "pi:event", "ws_1", { type: "thinking_level_changed", level: "xhigh" });
+        expect(send).toHaveBeenNthCalledWith(3, "pi:event", "ws_1", { type: "session_info_changed", name: "Release audit" });
+    });
+
+    it("preserves the complete compaction result payload", () => {
+        const send = vi.fn();
+        const bridge = createEventBridge("ws_1", send);
+        const event = {
+            type: "compaction_end",
+            reason: "overflow",
+            result: { summary: "kept" },
+            aborted: false,
+            willRetry: true,
+        } as const;
+
+        bridge.handleEvent(event);
+
+        expect(send).toHaveBeenCalledWith("pi:event", "ws_1", event);
+    });
+
     it("ignores unknown events", () => {
         const send = vi.fn();
         const bridge = createEventBridge("ws_1", send);
-        bridge.handleEvent({ type: "auto_retry_start" } as any);
+        bridge.handleEvent({ type: "future_sdk_event" } as any);
         expect(send).not.toHaveBeenCalled();
     });
 });

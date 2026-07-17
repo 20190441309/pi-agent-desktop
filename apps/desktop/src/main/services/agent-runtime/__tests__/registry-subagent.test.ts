@@ -13,6 +13,7 @@
  *    session creation survives with an empty `customTools` array.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PiThinkingLevel } from "@shared";
 import { AgentRuntimeRegistry } from "../registry";
 import { PendingEdits } from "../../approval/pending-edits";
 
@@ -22,6 +23,13 @@ const sessions: Array<{
     dispose: ReturnType<typeof vi.fn>;
     subscribe: ReturnType<typeof vi.fn>;
     subscribers: Array<(event: unknown) => void | Promise<void>>;
+    setModel: ReturnType<typeof vi.fn>;
+    setThinkingLevel: ReturnType<typeof vi.fn>;
+    getAvailableThinkingLevels: ReturnType<typeof vi.fn>;
+    supportsThinking: ReturnType<typeof vi.fn>;
+    getSessionStats: ReturnType<typeof vi.fn>;
+    thinkingLevel: PiThinkingLevel;
+    model: { provider: string; id: string; name: string };
 }> = [];
 
 // Track the opts passed to `createWorkspaceSession` so we can assert on
@@ -46,12 +54,24 @@ vi.mock("../../pi-session/factory", () => ({
                 subscribers.push(subscriber);
             }),
             subscribers,
+            setModel: vi.fn(async () => true),
+            thinkingLevel: "medium" as PiThinkingLevel,
+            model: { provider: "mimo", id: "mimo-v2.5", name: "MiMo v2.5" },
+            setThinkingLevel: vi.fn((level: PiThinkingLevel) => {
+                session.thinkingLevel = level;
+            }),
+            getAvailableThinkingLevels: vi.fn(() => ["off", "low", "medium", "high", "xhigh"] as PiThinkingLevel[]),
+            supportsThinking: vi.fn(() => true),
+            getSessionStats: vi.fn(() => ({
+                tokens: { input: 12, output: 8, cacheRead: 0, cacheWrite: 0, total: 20 },
+            })),
         };
         sessions.push(session);
         return {
             workspaceId: opts.workspaceId,
             session,
             dispose: session.dispose,
+            setModel: session.setModel,
         };
     }),
     resolveBundledDesktopExtensionPaths: vi.fn(() => []),

@@ -367,9 +367,12 @@
       "menu": "Thinking strength",
       "heading": "Reasoning",
       "none": "Off",
+      "off": "Off",
+      "minimal": "Minimal",
       "low": "Low",
       "medium": "Medium",
-      "high": "High"
+      "high": "High",
+      "xhigh": "Maximum"
     },
     "model": {
       "current": "Current model: {{model}}",
@@ -988,6 +991,10 @@
     },
     "autoSave": {
       "label": "Auto-save"
+    },
+    "autoCompaction": {
+      "label": "Automatic context compaction",
+      "description": "Let Pi compact the native session when it reaches the model context threshold."
     },
     "showLineNumbers": {
       "label": "Show line numbers"

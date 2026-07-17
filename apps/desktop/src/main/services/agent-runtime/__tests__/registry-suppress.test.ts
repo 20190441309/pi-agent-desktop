@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PiThinkingLevel } from "@shared";
 import { AgentRuntimeRegistry } from "../registry";
 import { PendingEdits } from "../../approval/pending-edits";
 
@@ -10,6 +11,13 @@ interface MockSession {
     getAllTools: ReturnType<typeof vi.fn>;
     getActiveToolNames: ReturnType<typeof vi.fn>;
     setActiveToolsByName: ReturnType<typeof vi.fn>;
+    setModel: ReturnType<typeof vi.fn>;
+    setThinkingLevel: ReturnType<typeof vi.fn>;
+    getAvailableThinkingLevels: ReturnType<typeof vi.fn>;
+    supportsThinking: ReturnType<typeof vi.fn>;
+    getSessionStats: ReturnType<typeof vi.fn>;
+    thinkingLevel: PiThinkingLevel;
+    model: { provider: string; id: string; name: string };
     subscribers: Array<(event: unknown) => void | Promise<void>>;
 }
 
@@ -36,6 +44,17 @@ vi.mock("../../pi-session/factory", () => ({
             setActiveToolsByName: vi.fn((names: string[]) => {
                 activeToolNames = [...names];
             }),
+            setModel: vi.fn(async () => true),
+            thinkingLevel: "medium" as PiThinkingLevel,
+            model: { provider: "mimo", id: "mimo-v2.5", name: "MiMo v2.5" },
+            setThinkingLevel: vi.fn((level: PiThinkingLevel) => {
+                session.thinkingLevel = level;
+            }),
+            getAvailableThinkingLevels: vi.fn(() => ["off", "low", "medium", "high", "xhigh"] as PiThinkingLevel[]),
+            supportsThinking: vi.fn(() => true),
+            getSessionStats: vi.fn(() => ({
+                tokens: { input: 12, output: 8, cacheRead: 0, cacheWrite: 0, total: 20 },
+            })),
         };
         sessions.push({
             prompt: session.prompt,
@@ -45,12 +64,20 @@ vi.mock("../../pi-session/factory", () => ({
             getAllTools: session.getAllTools,
             getActiveToolNames: session.getActiveToolNames,
             setActiveToolsByName: session.setActiveToolsByName,
+            setModel: session.setModel,
+            setThinkingLevel: session.setThinkingLevel,
+            getAvailableThinkingLevels: session.getAvailableThinkingLevels,
+            supportsThinking: session.supportsThinking,
+            getSessionStats: session.getSessionStats,
+            thinkingLevel: session.thinkingLevel,
+            model: session.model,
             subscribers,
         });
         return {
             workspaceId: opts.workspaceId,
             session,
             dispose: session.dispose,
+            setModel: session.setModel,
         };
     }),
     resolveBundledDesktopExtensionPaths: vi.fn(() => []),

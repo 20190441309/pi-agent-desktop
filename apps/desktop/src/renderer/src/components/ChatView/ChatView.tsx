@@ -305,6 +305,7 @@ export function ChatView({
   const settings = useSettingsStore((state) => state.settings);
   const initAgents = useAgentStore((state) => state.init);
   const agentMessages = useAgentStore((state) => agentId ? state.messagesByAgent[agentId] ?? EMPTY_AGENT_MESSAGES : EMPTY_AGENT_MESSAGES);
+  const runtimeState = useAgentStore((state) => agentId ? state.runtimeByAgent[agentId] : undefined);
   const { t } = useI18n();
   const currentSession = getCurrentSession();
   const [sendError, setSendError] = useState<string | null>(null);
@@ -509,15 +510,11 @@ export function ChatView({
       : settings.permissionLevel === "ask"
         ? t("chatInput.permissions.ask.label")
         : t("chatInput.permissions.smart.label");
-  const thinkingLabel =
-    settings.thinkingLevel === "high"
-      ? t("chatInput.thinking.high")
-      : settings.thinkingLevel === "low"
-        ? t("chatInput.thinking.low")
-        : settings.thinkingLevel === "none"
-          ? t("chatInput.thinking.none")
-          : t("chatInput.thinking.medium");
-  const modelSummary = [settings.provider, settings.model].filter(Boolean).join(" / ") || t("chatInput.model.notConfigured");
+  const effectiveThinking = runtimeState?.thinkingLevel ?? (settings.thinkingLevel === "none" ? "off" : settings.thinkingLevel ?? "medium");
+  const thinkingLabel = t(`chatInput.thinking.${effectiveThinking}`);
+  const modelSummary = runtimeState?.modelId
+    ? [runtimeState.modelProvider, runtimeState.modelName ?? runtimeState.modelId].filter(Boolean).join(" / ")
+    : [settings.provider, settings.model].filter(Boolean).join(" / ") || t("chatInput.model.notConfigured");
   const workspaceControl = <WorkspaceSwitcher variant="inline" />;
   const totalTokens = resolveTotalTokens(currentSession?.usage);
   const toggleRightRailLabel = rightRailCollapsed ? t("chatView.rightRail.expand") : t("chatView.rightRail.collapse");

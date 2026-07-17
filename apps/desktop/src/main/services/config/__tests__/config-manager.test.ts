@@ -135,6 +135,106 @@ describe("ConfigManager", () => {
         });
     });
 
+    it("preserves Pi model runtime fields when loading the desktop config", async () => {
+        await writeFile(
+            join(dir, "models.json"),
+            JSON.stringify({
+                providers: {
+                    custom: {
+                        name: "Custom",
+                        baseUrl: "https://api.example.com/v1",
+                        api: "openai-completions",
+                        headers: { "X-Provider": "desktop" },
+                        authHeader: false,
+                        models: [{
+                            id: "reasoner",
+                            name: "Reasoner",
+                            api: "openai-responses",
+                            baseUrl: "https://model.example.com/v1",
+                            reasoning: true,
+                            thinkingLevelMap: { minimal: null, high: "high", xhigh: "max" },
+                            headers: { "X-Model": "reasoner" },
+                            compat: { supportsDeveloperRole: false },
+                            cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2 },
+                        }],
+                    },
+                },
+            }),
+            "utf8",
+        );
+        await writeFile(join(dir, "auth.json"), JSON.stringify({ custom: { key: "sk-test" } }), "utf8");
+
+        expect(manager.loadPiAgentConfig()).toMatchObject({
+            providers: [{
+                id: "custom",
+                headers: { "X-Provider": "desktop" },
+                authHeader: false,
+                models: [{
+                    id: "reasoner",
+                    api: "openai-responses",
+                    baseUrl: "https://model.example.com/v1",
+                    thinkingLevelMap: { minimal: null, high: "high", xhigh: "max" },
+                    headers: { "X-Model": "reasoner" },
+                    compat: { supportsDeveloperRole: false },
+                    cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2 },
+                }],
+            }],
+        });
+    });
+
+    it("moves the existing API key when a provider id is renamed with a blank key field", async () => {
+        await manager.saveModelsConfig({
+            providers: {
+                openai_legacy: {
+                    name: "OpenAI legacy",
+                    baseUrl: "https://api.example.com/v1",
+                    api: "openai-completions",
+                    apiKey: "sk-existing",
+                    models: [{ id: "gpt-custom", name: "GPT Custom" }],
+                },
+            },
+        });
+        await manager.saveAuthConfig({
+            openai_legacy: { type: "api_key", key: "sk-existing" },
+        });
+        await manager.saveSettingsConfig({
+            defaultProvider: "openai_legacy",
+            defaultModel: "gpt-custom",
+        });
+
+        const result = await manager.saveManagedModel({
+            originalProviderId: "openai_legacy",
+            originalModelId: "gpt-custom",
+            providerId: "openai",
+            providerName: "OpenAI",
+            baseUrl: "https://api.example.com/v1",
+            api: "openai-completions",
+            modelId: "gpt-custom",
+            modelName: "GPT Custom",
+            setDefault: true,
+        });
+
+        expect(result.valid).toBe(true);
+        await expect(manager.getModelsConfig()).resolves.toMatchObject({
+            parsed: {
+                providers: {
+                    openai: expect.objectContaining({
+                        apiKey: "sk-existing",
+                        models: [expect.objectContaining({ id: "gpt-custom" })],
+                    }),
+                },
+            },
+        });
+        expect((await manager.getModelsConfig()).parsed.providers).not.toHaveProperty("openai_legacy");
+        await expect(manager.getAuthConfig()).resolves.toMatchObject({
+            parsed: { openai: { type: "api_key", key: "sk-existing" } },
+        });
+        expect((await manager.getAuthConfig()).parsed).not.toHaveProperty("openai_legacy");
+        await expect(manager.getSettingsConfig()).resolves.toMatchObject({
+            parsed: { defaultProvider: "openai", defaultModel: "gpt-custom" },
+        });
+    });
+
     it("deletes a default model and falls back to the next available model", async () => {
         await manager.saveModelsConfig({
             providers: {

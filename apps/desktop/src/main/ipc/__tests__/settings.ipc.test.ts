@@ -236,6 +236,45 @@ describe("setupSettingsIpc", () => {
         );
     });
 
+    it("rolls persisted settings back when applying them to live runtimes fails", async () => {
+        const store = createStore({ provider: "mimo", model: "mimo-v2.5" });
+        const onSettingsChanged = vi.fn().mockRejectedValue(new Error("live model switch rejected"));
+
+        setupSettingsIpc({
+            store,
+            getPiAgentConfig: () => null,
+            piAgentDir: "C:/Users/demo/.pi/agent",
+            onSettingsChanged,
+        } as never);
+
+        const setSettings = handlers.get("settings:set");
+        const result = await setSettings?.({}, { provider: "openai", model: "gpt-5.6" });
+
+        expect(isIpcError(result)).toBe(true);
+        if (isIpcError(result)) {
+            expect(result.code).toBe("ipcErrors.settings.runtimeApplyFailed");
+            expect(result.fallback).toContain("live model switch rejected");
+        }
+        expect(store.get("settings")).toMatchObject({
+            provider: "mimo",
+            model: "mimo-v2.5",
+        });
+        expect(store.set).toHaveBeenNthCalledWith(
+            1,
+            "settings",
+            expect.objectContaining({ provider: "openai", model: "gpt-5.6" }),
+        );
+        expect(store.set).toHaveBeenNthCalledWith(
+            2,
+            "settings",
+            expect.objectContaining({ provider: "mimo", model: "mimo-v2.5" }),
+        );
+        expect(webContentsSend).toHaveBeenCalledWith(
+            "settings:changed",
+            expect.objectContaining({ provider: "mimo", model: "mimo-v2.5" }),
+        );
+    });
+
     it("falls back to the most recently active workspace for pi:list-skills when the renderer does not provide a workspace id", async () => {
         const store = createStore();
         const workspaces: Workspace[] = [

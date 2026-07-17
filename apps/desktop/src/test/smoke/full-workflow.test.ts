@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { describe, it, expect, vi } from "vitest";
-import type { PiModelsFile } from "@shared";
+import type { PiModelsFile, PiThinkingLevel } from "@shared";
 import { PendingEdits } from "../../main/services/approval/pending-edits";
 
 // Mock SDK + Electron (same pattern as registry.test.ts)
@@ -25,11 +25,23 @@ vi.mock("../../main/services/pi-session/factory", () => ({
       setActiveToolsByName: vi.fn((names: string[]) => {
         activeToolNames = [...names];
       }),
+      setModel: vi.fn(async () => true),
+      model: { provider: "openai", id: "gpt-4o", name: "GPT-4o" },
+      thinkingLevel: "medium" as PiThinkingLevel,
+      setThinkingLevel: vi.fn((level: PiThinkingLevel) => {
+        session.thinkingLevel = level;
+      }),
+      getAvailableThinkingLevels: vi.fn(() => ["off", "low", "medium", "high", "xhigh"] as PiThinkingLevel[]),
+      supportsThinking: vi.fn(() => true),
+      getSessionStats: vi.fn(() => ({
+        tokens: { input: 12, output: 8, cacheRead: 0, cacheWrite: 0, total: 20 },
+      })),
     };
     return {
       workspaceId: opts.workspaceId,
       session,
       dispose: session.dispose,
+      setModel: session.setModel,
     };
   }),
 }));

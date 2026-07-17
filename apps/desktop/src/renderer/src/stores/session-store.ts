@@ -547,6 +547,18 @@ export const useSessionStore = create<SessionState>((set, get) => {
       ? source.messages.slice(0, forkIndex + 1).map(cloneMessageForFork)
       : [];
     const next = await get().createSession(source.workspaceId);
+    const piAPI = getPiAPI();
+    if (piAPI?.forkSessionContext) {
+      const forkResult = await piAPI.forkSessionContext(source.id, next.id, source.workspaceId, fromMessageId);
+      if (isIpcError(forkResult)) {
+        await piAPI.deleteSession(next.id);
+        set((state) => ({
+          sessions: state.sessions.filter((session) => session.id !== next.id),
+          currentSessionId: state.currentSessionId === next.id ? source.id : state.currentSessionId,
+        }));
+        throw new Error(forkResult.fallback);
+      }
+    }
     get().renameSession(next.id, `${source.title} 继续`);
     get().updateSessionMetadata(next.id, {
       summary: source.summary || `Continued from ${source.title}`,

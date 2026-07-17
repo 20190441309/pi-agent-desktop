@@ -47,6 +47,7 @@ export function buildSettingsNavigation(t: Translate): SettingsNavSection[] {
         t("settings.general.description"),
         [
             field("general-language", t("settings.language.label"), t("settings.language.description")),
+            field("general-auto-compaction", t("settings.autoCompaction.label"), t("settings.autoCompaction.description")),
             field(
                 "general-notifications",
                 t("settings.general.notifications.heading"),

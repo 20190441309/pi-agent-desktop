@@ -145,7 +145,7 @@ export class WorkspaceRegistry {
         await Promise.all([...this.entries.values()].map(async (entry) => {
             const switched = await entry.session.setModel(provider, modelId);
             if (!switched) {
-                log.warn("[WorkspaceRegistry] model not found for live session:", provider, modelId);
+                throw new Error(`实时工作区会话找不到模型 ${provider} / ${modelId}`);
             }
         }));
     }
@@ -189,7 +189,7 @@ export class WorkspaceRegistry {
                     watchdog = setTimeout(() => {
                         watchdog = null;
                         const idle = Date.now() - (entry.lastActivity ?? entry.createdAt);
-                        if (idle > WATCHDOG_MS) {
+                        if (idle >= WATCHDOG_MS) {
                             log.error("[WorkspaceRegistry] session watchdog fired (stuck running):", workspaceId);
                             const stuckEvent = {
                                 type: "extension_error",
@@ -215,8 +215,10 @@ export class WorkspaceRegistry {
                 // 这里把它当 PiEvent 用 (类型安全)
                 entry.session.session.subscribe(async (rawEvent) => {
                     const event = rawEvent as unknown as PiEvent;
-                    // 任何事件都视为活动, 更新最后活动时间
-                    entry.lastActivity = Date.now();
+                    const isRetryDiagnostic = event?.type === "auto_retry_start" || event?.type === "auto_retry_end";
+                    if (!isRetryDiagnostic) {
+                        entry.lastActivity = Date.now();
+                    }
                     try {
                         await interceptor.handleEvent(event);
                     } catch (err) {
@@ -236,7 +238,10 @@ export class WorkspaceRegistry {
                         event?.type === "extension_error"
                     ) {
                         disarmWatchdog();
-                    } else if (watchdog) {
+                    } else if (
+                        watchdog
+                        && !isRetryDiagnostic
+                    ) {
                         // 已 arm 状态下, 任何中间事件都重置计时器 (持续活动不卡死)
                         armWatchdog();
                     }

@@ -367,9 +367,12 @@
       "menu": "思考强度",
       "heading": "推理",
       "none": "关闭",
+      "off": "关闭",
+      "minimal": "极低",
       "low": "低",
       "medium": "中",
-      "high": "高"
+      "high": "高",
+      "xhigh": "最高"
     },
     "model": {
       "current": "当前模型: {{model}}",
@@ -988,6 +991,10 @@
     },
     "autoSave": {
       "label": "自动保存"
+    },
+    "autoCompaction": {
+      "label": "自动压缩上下文",
+      "description": "达到模型上下文阈值时，由 Pi 自动压缩当前原生会话。"
     },
     "showLineNumbers": {
       "label": "显示行号"

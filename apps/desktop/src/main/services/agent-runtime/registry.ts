@@ -12,6 +12,7 @@ import {
     type AgentMode,
     type AgentPermissionSyncResult,
     type ToolPermissions,
+    type PiThinkingLevel,
 } from "@shared";
 import type { PiEvent } from "@shared/events";
 import {
@@ -84,7 +85,6 @@ interface AgentRuntime {
     sessionMode: AgentMode;
     policyController: RuntimePolicyController;
     operationTail: Promise<void>;
-    thinkingLevel?: "none" | "low" | "medium" | "high";
     /** 卡死看门狗: running 期间计时, 超时未结束则合成 extension_error 翻转状态 */
     watchdog?: NodeJS.Timeout;
 }
@@ -159,6 +159,9 @@ function promptFailureDetails(error: unknown): string {
         };
         this.runtimes.set(id, runtime);
         this.subscribe(runtime);
+        if (session.modelFallbackMessage) {
+            this.addMessage(runtime, "system", session.modelFallbackMessage, { warning: true, source: "pi-model-fallback" });
+        }
         runtime.tab.status = "idle";
         runtime.tab.updatedAt = Date.now();
         this.emitState();
@@ -213,6 +216,7 @@ function promptFailureDetails(error: unknown): string {
         runtime.tab.status = "running";
         runtime.tab.updatedAt = Date.now();
         runtime.isStreaming = true;
+        this.armWatchdog(runtime);
         this.emitState();
         let failureHandled = false;
         const handleFailureOnce = (error: unknown): void => {
@@ -297,7 +301,7 @@ function promptFailureDetails(error: unknown): string {
             this.enqueueRuntimeOperation(runtime, async () => {
                 const switched = await runtime.session.setModel(provider, modelId);
                 if (!switched) {
-                    log.warn("[agent-runtime] model not found for live session:", provider, modelId);
+                    throw new Error(`实时会话找不到模型 ${provider} / ${modelId}`);
                 }
                 runtime.tab.updatedAt = Date.now();
             })));
@@ -310,18 +314,36 @@ function promptFailureDetails(error: unknown): string {
 
     getRuntimeState(agentId: string): AgentRuntimeState {
         const runtime = this.requireRuntime(agentId);
+        const session = runtime.session.session;
+        const model = session.model;
+        const stats = session.getSessionStats();
         return {
             agentId,
             status: runtime.tab.status,
             isStreaming: runtime.isStreaming,
             sessionPath: runtime.tab.sessionPath,
-            thinkingLevel: runtime.thinkingLevel,
+            modelProvider: model?.provider,
+            modelId: model?.id,
+            modelName: model?.name,
+            sessionName: session.sessionName,
+            thinkingLevel: session.thinkingLevel,
+            availableThinkingLevels: session.getAvailableThinkingLevels(),
+            supportsThinking: session.supportsThinking(),
+            tokenUsage: {
+                input: stats.tokens.input,
+                output: stats.tokens.output,
+                total: stats.tokens.total,
+            },
         };
     }
 
-    setThinking(agentId: string, level: "none" | "low" | "medium" | "high"): void {
+    setThinking(agentId: string, level: PiThinkingLevel): AgentRuntimeState {
         const runtime = this.requireRuntime(agentId);
-        runtime.thinkingLevel = level;
+        runtime.session.session.setThinkingLevel(level);
+        runtime.tab.updatedAt = Date.now();
+        const state = this.getRuntimeState(agentId);
+        this.emitRuntimeStates();
+        return state;
     }
 
     getWorkspaceSession(agentId: string): WorkspaceSession {
@@ -410,11 +432,16 @@ function promptFailureDetails(error: unknown): string {
             && event.type !== "agent_end"
             && event.type !== "turn_end"
             && event.type !== "extension_error"
+            && event.type !== "auto_retry_start"
+            && event.type !== "auto_retry_end"
         ) {
             this.armWatchdog(runtime);
         }
         if (event.type === "turn_end") {
             this.notifyTurnEnd(runtime);
+        }
+        if (event.type === "thinking_level_changed" || event.type === "session_info_changed") {
+            this.emitRuntimeStates();
         }
         if (!this.suppressedAgentIds.has(runtime.tab.id)) {
             this.deps.send("agents:event", {
@@ -553,6 +580,14 @@ function promptFailureDetails(error: unknown): string {
 
     private emitState(): void {
         this.deps.send("agents:state", this.list());
+        this.emitRuntimeStates();
+    }
+
+    private emitRuntimeStates(): void {
+        this.deps.send(
+            "agents:runtime-state-changed",
+            [...this.runtimes.keys()].map((agentId) => this.getRuntimeState(agentId)),
+        );
     }
 
     private currentModelSelection(): {
@@ -560,14 +595,19 @@ function promptFailureDetails(error: unknown): string {
         provider?: string;
         modelId?: string;
         piAgentConfig?: PiAgentConfig | null;
+        thinkingLevel?: PiThinkingLevel;
+        autoCompactionEnabled?: boolean;
     } {
         const settings = this.deps.getSettings?.();
         const config = this.deps.getPiAgentConfig?.() ?? null;
+        const configuredThinking = settings?.thinkingLevel === "none" ? "off" : settings?.thinkingLevel;
         return {
             agentDir: this.deps.agentDir,
             provider: settings?.provider || config?.defaultProvider || undefined,
             modelId: settings?.model || config?.defaultModel || undefined,
             piAgentConfig: config,
+            thinkingLevel: configuredThinking,
+            autoCompactionEnabled: settings?.autoCompactionEnabled,
         };
     }
 

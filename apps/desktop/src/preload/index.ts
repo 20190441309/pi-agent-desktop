@@ -151,6 +151,8 @@ const piAPI: PiAPI = {
     searchSessionMessages: (input: SessionSearchInput) =>
         ipcRenderer.invoke("session:search", input) as Promise<SessionSearchResult[] | IpcError>,
     createSession: (workspaceId, title, id) => ipcRenderer.invoke("session:create", workspaceId, title, id) as Promise<Session>,
+    forkSessionContext: (sourceSessionId, targetSessionId, workspaceId, fromMessageId) =>
+        ipcRenderer.invoke("session:fork-context", sourceSessionId, targetSessionId, workspaceId, fromMessageId) as Promise<void | IpcError>,
     renameSession: (id, title) => ipcRenderer.invoke("session:rename", id, title) as Promise<Session>,
     deleteSession: (id) => ipcRenderer.invoke("session:delete", id) as Promise<void>,
     archiveSession: (id, archived) => ipcRenderer.invoke("session:archive", id, archived) as Promise<Session | IpcError>,
@@ -182,10 +184,11 @@ const piAPI: PiAPI = {
     agentsRuntimeState: (agentId) =>
         ipcRenderer.invoke("agents:runtime-state", agentId) as Promise<AgentRuntimeState>,
     agentsSetThinking: (agentId, level) =>
-        ipcRenderer.invoke("agents:set-thinking", agentId, level) as Promise<void>,
+        ipcRenderer.invoke("agents:set-thinking", agentId, level) as Promise<AgentRuntimeState | IpcError>,
     agentsSyncPermissions: (agentId) =>
         ipcRenderer.invoke("agents:sync-permissions", agentId) as Promise<AgentPermissionSyncResult | IpcError>,
     onAgentsState: (cb) => subscribe<AgentTab[]>("agents:state", cb),
+    onAgentRuntimeState: (cb) => subscribe<AgentRuntimeState[]>("agents:runtime-state-changed", cb),
     onAgentMessages: (cb) =>
         subscribe<{ agentId: string; messages: AgentMessage[] }>("agents:message", cb),
     onAgentEvent: (cb) =>

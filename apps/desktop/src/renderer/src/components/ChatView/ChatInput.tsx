@@ -13,8 +13,9 @@ import { useAgentModeStore } from "../../stores/agent-mode-store";
 import { usePermissionStore } from "../../stores/permission-store";
 import { useRuntimeFeatureStore, clampAgentModeByRuntime, supportedAgentModes } from "../../stores/runtime-feature-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
+import { useAgentStore } from "../../stores/agent-store";
 import { logger } from "../../utils/logger";
-import { isIpcError, type AgentMode, type PermissionMode } from "@shared";
+import { isIpcError, type AgentMode, type PermissionMode, type PiThinkingLevel } from "@shared";
 import { useInputText } from "./hooks/useInputText";
 import { usePrefillConsumer } from "./hooks/usePrefillConsumer";
 import { useInputShortcuts } from "./hooks/useInputShortcuts";
@@ -48,13 +49,15 @@ const AGENT_MODE_OPTIONS: Array<{ value: AgentMode; labelKey: string; descKey: s
 ];
 
 const THINKING_OPTIONS = [
-  { value: "none", labelKey: "chatInput.thinking.none" },
+  { value: "off", labelKey: "chatInput.thinking.off" },
+  { value: "minimal", labelKey: "chatInput.thinking.minimal" },
   { value: "low", labelKey: "chatInput.thinking.low" },
   { value: "medium", labelKey: "chatInput.thinking.medium" },
   { value: "high", labelKey: "chatInput.thinking.high" },
+  { value: "xhigh", labelKey: "chatInput.thinking.xhigh" },
 ] as const;
 
-type ThinkingLevel = typeof THINKING_OPTIONS[number]["value"];
+type ThinkingLevel = PiThinkingLevel;
 
 const COMPOSER_MIN_HEIGHT = 95;
 const COMPOSER_MAX_HEIGHT = 240;
@@ -191,6 +194,7 @@ export function ChatInput({
     setCursorPos(textarea.selectionStart ?? textarea.value.length);
   }, []);
   const { settings, updateSettings, piModels } = useSettingsStore();
+  const runtimeState = useAgentStore((state) => agentId ? state.runtimeByAgent[agentId] : undefined);
   const permissionStore = usePermissionStore();
   const runtimeFeatureState = useRuntimeFeatureStore((state) => state.featureState);
   const refreshRuntimeFeatureState = useRuntimeFeatureStore((state) => state.refresh);
@@ -212,11 +216,16 @@ export function ChatInput({
     [t],
   );
   const thinkingOptions = useMemo(
-    () => THINKING_OPTIONS.map((option) => ({
-      ...option,
-      label: t(option.labelKey),
-    })),
-    [t],
+    () => {
+      const available = runtimeState?.availableThinkingLevels;
+      return THINKING_OPTIONS
+        .filter((option) => !available || available.includes(option.value))
+        .map((option) => ({
+          ...option,
+          label: t(option.labelKey),
+        }));
+    },
+    [runtimeState?.availableThinkingLevels, t],
   );
   const longHorizon = settings.longHorizon;
   const longHorizonEnabled = longHorizon?.enabled ?? true;
@@ -553,10 +562,19 @@ export function ChatInput({
   }, []);
   const handleThinkingSelect = useCallback(
     (level: ThinkingLevel) => {
-      updateSettings({ thinkingLevel: level });
-      if (agentId && window.piAPI?.agentsSetThinking) {
-        void window.piAPI.agentsSetThinking(agentId, level).catch(() => undefined);
+      if (!agentId || !window.piAPI?.agentsSetThinking) {
+        updateSettings({ thinkingLevel: level });
+        return;
       }
+      void window.piAPI.agentsSetThinking(agentId, level)
+        .then((result) => {
+          if (isIpcError(result)) {
+            setSendError(result.fallback);
+            return;
+          }
+          updateSettings({ thinkingLevel: result.thinkingLevel ?? level });
+        })
+        .catch((error) => setSendError(error instanceof Error ? error.message : String(error)));
     },
     [agentId, updateSettings],
   );
@@ -698,9 +716,11 @@ export function ChatInput({
   const canSend = inputValue.trim().length > 0 && isConnected && !isSending && (hasValidModel || isSlashCommandDraft);
   const currentPermissionLabel = permissionOptions.find((p) => p.value === currentPermission)?.label ?? t("chatInput.permissions.smart.label");
   const currentModelLabel = [settings.provider, currentModel].filter(Boolean).join(" / ") || t("chatInput.model.notConfigured");
-  const currentThinking = thinkingOptions.some((option) => option.value === settings.thinkingLevel)
-    ? settings.thinkingLevel as ThinkingLevel
-    : "medium";
+  const configuredThinking = settings.thinkingLevel === "none" ? "off" : settings.thinkingLevel;
+  const effectiveThinking = runtimeState?.thinkingLevel ?? configuredThinking;
+  const currentThinking = thinkingOptions.some((option) => option.value === effectiveThinking)
+    ? effectiveThinking as ThinkingLevel
+    : thinkingOptions[0]?.value ?? "off";
   const currentThinkingLabel = thinkingOptions.find((option) => option.value === currentThinking)?.label ?? t("chatInput.thinking.medium");
   const inputPlaceholder = needsModelConfiguration
     ? t("chatInput.placeholder.modelRequired")

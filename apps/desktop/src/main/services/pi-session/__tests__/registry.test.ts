@@ -121,15 +121,7 @@ describe("WorkspaceRegistry watchdog", () => {
         // agent_start arms the watchdog (5 min timeout)
         await subscribed({ type: "agent_start" });
 
-        // The watchdog callback checks `idle > WATCHDOG_MS`. With fake timers,
-        // advancing exactly WATCHDOG_MS makes Date.now() == lastActivity +
-        // WATCHDOG_MS, so `idle > WATCHDOG_MS` is false (off-by-one). To make
-        // the check pass, we bump the system clock past the deadline BEFORE
-        // firing the timer, so Date.now() inside the callback is clearly past
-        // the 5-minute mark.
-        const armTime = Date.now();
-        vi.setSystemTime(armTime + 5 * 60 * 1000 + 100);
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
 
         const errorCall = send.mock.calls.find(
             ([channel, , payload]) =>
@@ -170,5 +162,24 @@ describe("WorkspaceRegistry watchdog", () => {
                 (payload as { type?: string })?.type === "extension_error",
         );
         expect(errorCall).toBeUndefined();
+    });
+
+    it("does not let automatic retry events postpone the watchdog", async () => {
+        const send = vi.fn();
+        const pendingEdits = { autoApprove: false } as any;
+        await reg.get("ws_1", "C:/tmp/a", pendingEdits, send);
+        const subscribed = subscribe.mock.calls[0]?.[0];
+        expect(subscribed).toBeTypeOf("function");
+
+        await subscribed({ type: "agent_start" });
+        await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+        await subscribed({ type: "auto_retry_start" });
+        await vi.advanceTimersByTimeAsync(60 * 1000);
+
+        expect(send).toHaveBeenCalledWith(
+            "pi:event",
+            "ws_1",
+            expect.objectContaining({ type: "extension_error" }),
+        );
     });
 });

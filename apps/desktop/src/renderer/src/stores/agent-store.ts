@@ -25,6 +25,7 @@ interface AgentStore {
 }
 let unsubscribeState: (() => void) | undefined;
 let unsubscribeMessages: (() => void) | undefined;
+let unsubscribeRuntimeState: (() => void) | undefined;
 
 function hasSameVisibleMessage(left: AgentMessage, right: AgentMessage): boolean {
     return left.role === right.role && left.content === right.content;
@@ -68,6 +69,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         });
         unsubscribeState?.();
         unsubscribeMessages?.();
+        unsubscribeRuntimeState?.();
         unsubscribeState = window.piAPI.onAgentsState((nextAgents) => {
             set((state) => ({
                 agents: nextAgents,
@@ -79,6 +81,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         });
         unsubscribeMessages = window.piAPI.onAgentMessages(({ agentId, messages }) => {
             get().setAgentMessages(agentId, messages);
+        });
+        unsubscribeRuntimeState = window.piAPI.onAgentRuntimeState((states) => {
+            set({ runtimeByAgent: Object.fromEntries(states.map((runtime) => [runtime.agentId, runtime])) });
         });
         await Promise.all(agents.map(async (agent) => {
             try {

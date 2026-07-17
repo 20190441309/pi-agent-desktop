@@ -17,10 +17,14 @@ export type PiEventType =
     | "compaction_end"
     | "auto_retry_start"
     | "auto_retry_end"
+    | "session_info_changed"
+    | "thinking_level_changed"
     | "usage_update"
     | "context_update"
     | "custom_message"
     | "extension_error";
+
+export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 /** message_update 时的子类型 (assistantMessageEvent.type) */
 export type MessageUpdateSubtype =
@@ -144,11 +148,14 @@ export interface PiToolExecutionEnd {
 
 export interface PiTurnEnd {
     type: "turn_end";
+    message?: unknown;
+    toolResults?: unknown[];
 }
 
 export interface PiAgentEnd {
     type: "agent_end";
     messages?: unknown[];
+    willRetry?: boolean;
 }
 
 export interface PiQueueUpdate {
@@ -157,27 +164,53 @@ export interface PiQueueUpdate {
     followUp: readonly string[];
 }
 
+export interface PiAutoRetryStart {
+    type: "auto_retry_start";
+    attempt: number;
+    maxAttempts: number;
+    delayMs: number;
+    errorMessage: string;
+}
+
+export interface PiAutoRetryEnd {
+    type: "auto_retry_end";
+    success: boolean;
+    attempt: number;
+    finalError?: string;
+}
+
+export interface PiCompactionEnd {
+    type: "compaction_end";
+    reason?: "manual" | "threshold" | "overflow";
+    result?: unknown;
+    aborted?: boolean;
+    willRetry?: boolean;
+    errorMessage?: string;
+}
+
 /** Pi 事件的 union 类型 (M1 关心的子集) */
 export type PiEvent =
     | { type: "agent_start" }
     | PiAgentEnd
     | { type: "turn_start" }
     | PiTurnEnd
-    | { type: "message_start" }
+    | { type: "message_start"; message?: unknown }
     | PiMessageUpdateSdk
     | PiTextDeltaEvent
     | PiThinkingDeltaEvent
     | PiToolStartEvent
     | PiToolEndEvent
-    | { type: "message_end" }
+    | { type: "message_end"; message?: unknown }
     | PiToolExecutionStart
     | PiToolExecutionUpdate
     | PiToolExecutionEnd
     | PiQueueUpdate
     | { type: "compaction_start"; reason: "manual" | "threshold" | "overflow" }
-    | { type: "compaction_end" }
-    | { type: "auto_retry_start" }
-    | { type: "auto_retry_end" }
+    | PiCompactionEnd
+    | PiAutoRetryStart
+    | PiAutoRetryEnd
+    | { type: "session_info_changed"; name: string | undefined }
+    | { type: "thinking_level_changed"; level: PiThinkingLevel }
     | { type: "usage_update"; [key: string]: unknown }
     | { type: "context_update"; [key: string]: unknown }
     | { type: "custom_message"; [key: string]: unknown }

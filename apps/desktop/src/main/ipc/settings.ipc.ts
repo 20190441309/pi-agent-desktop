@@ -14,7 +14,7 @@ export function setupSettingsIpc(opts: {
   getPiAgentConfig: () => PiAgentConfig | null;
   reloadPiAgentConfig?: () => PiAgentConfig | null;
   piAgentDir: string;
-  onSettingsChanged?: (next: AppSettings, previous: AppSettings) => void;
+  onSettingsChanged?: (next: AppSettings, previous: AppSettings) => void | Promise<void>;
 }): void {
   const { store, getPiAgentConfig, reloadPiAgentConfig, piAgentDir, onSettingsChanged } = opts;
 
@@ -62,9 +62,19 @@ export function setupSettingsIpc(opts: {
     const previous = { ...current };
     const updated = { ...current, ...settings };
     store.set('settings', updated);
-    onSettingsChanged?.(updated, previous);
-    broadcastSettingsChanged(updated);
-    return updated;
+    try {
+      await onSettingsChanged?.(updated, previous);
+      broadcastSettingsChanged(updated);
+      return updated;
+    } catch (error) {
+      store.set('settings', previous);
+      broadcastSettingsChanged(previous);
+      log.error("[settings.ipc] failed to apply settings to live runtime:", error);
+      return ipcError(
+        "ipcErrors.settings.runtimeApplyFailed",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   });
 
   ipcMain.handle('settings:load-pi-config', async () => {

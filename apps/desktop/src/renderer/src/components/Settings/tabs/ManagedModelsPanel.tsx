@@ -22,6 +22,7 @@ type ModelFormState = {
     contextWindow: string;
     maxTokens: string;
     reasoning: boolean;
+    thinkingLevelMap: string;
     setDefault: boolean;
 };
 
@@ -36,6 +37,7 @@ const emptyModelForm: ModelFormState = {
     contextWindow: '',
     maxTokens: '',
     reasoning: false,
+    thinkingLevelMap: '',
     setDefault: false,
 };
 
@@ -72,6 +74,7 @@ function modelToForm(model: ManagedModelEntry): ModelFormState {
         contextWindow: model.contextWindow ? String(model.contextWindow) : '',
         maxTokens: model.maxTokens ? String(model.maxTokens) : '',
         reasoning: Boolean(model.reasoning),
+        thinkingLevelMap: model.thinkingLevelMap ? JSON.stringify(model.thinkingLevelMap) : '',
         setDefault: model.isDefault,
     };
 }
@@ -80,6 +83,25 @@ function parseOptionalInteger(value: string): number | undefined {
     if (!value.trim()) return undefined;
     const parsed = Number.parseInt(value, 10);
     return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseThinkingLevelMap(value: string): ManagedModelSaveInput["thinkingLevelMap"] {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("思考级别映射必须是 JSON 对象");
+    }
+    const result: NonNullable<ManagedModelSaveInput["thinkingLevelMap"]> = {};
+    for (const level of ["off", "minimal", "low", "medium", "high", "xhigh"] as const) {
+        const mapped = (parsed as Record<string, unknown>)[level];
+        if (mapped === undefined) continue;
+        if (typeof mapped !== "string" && mapped !== null) {
+            throw new Error(`${level} 的映射必须是字符串或 null`);
+        }
+        result[level] = mapped;
+    }
+    return result;
 }
 
 export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Promise<void> }): React.JSX.Element {
@@ -178,6 +200,13 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
 
     const saveModel = async (): Promise<void> => {
         if (!form) return;
+        let thinkingLevelMap: ManagedModelSaveInput["thinkingLevelMap"];
+        try {
+            thinkingLevelMap = parseThinkingLevelMap(form.thinkingLevelMap);
+        } catch (error) {
+            setMessage(error instanceof Error ? error.message : String(error));
+            return;
+        }
         const input: ManagedModelSaveInput = {
             originalProviderId: form.originalProviderId,
             originalModelId: form.originalModelId,
@@ -191,6 +220,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
             contextWindow: parseOptionalInteger(form.contextWindow),
             maxTokens: parseOptionalInteger(form.maxTokens),
             reasoning: form.reasoning,
+            thinkingLevelMap,
             setDefault: form.setDefault,
         };
         const response = await window.piAPI.configSaveManagedModel(input);
@@ -261,6 +291,13 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                         <input type="checkbox" checked={displayedForm.reasoning} onChange={(event) => setForm({ ...displayedForm, reasoning: event.target.checked })} />
                         推理模型
                     </label>
+                    <FormInput
+                        className="col-span-2"
+                        label="思考级别映射 (JSON)"
+                        value={displayedForm.thinkingLevelMap}
+                        onChange={(thinkingLevelMap) => setForm({ ...displayedForm, thinkingLevelMap })}
+                        placeholder='{"minimal":null,"high":"high","xhigh":"max"}'
+                    />
                     <label className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
                         <input type="checkbox" checked={displayedForm.setDefault} onChange={(event) => setForm({ ...displayedForm, setDefault: event.target.checked })} />
                         保存后设为默认
