@@ -1529,6 +1529,7 @@ export interface PiAPI {
     gitAdd(workspacePath: string, files: string[]): Promise<void | IpcError>;
     gitUnstage(workspacePath: string, files: string[]): Promise<void | IpcError>;
     gitCommit(workspacePath: string, message: string): Promise<string | IpcError>;
+    gitPush(workspacePath: string): Promise<string | IpcError>;
     gitLog(workspacePath: string, count?: number): Promise<GitLogEntry[] | IpcError>;
     gitBranches(workspacePath: string): Promise<GitBranch[] | IpcError>;
     gitCheckout(workspacePath: string, branch: string): Promise<GitBranch[] | IpcError>;

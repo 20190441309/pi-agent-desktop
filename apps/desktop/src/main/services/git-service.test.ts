@@ -23,7 +23,7 @@ vi.mock("child_process", () => ({
     execFile: execFileMock,
 }));
 
-import { gitAdd, gitCommit, gitDiff, gitDiffStaged, getGitStatus, gitUnstage } from "./git-service";
+import { gitAdd, gitCheckout, gitCommit, gitDiff, gitDiffStaged, gitPush, getGitStatus, gitUnstage } from "./git-service";
 
 describe("git-service protected path policy", () => {
     beforeEach(() => {
@@ -76,6 +76,48 @@ describe("git-service protected path policy", () => {
         expect(execFileMock).not.toHaveBeenCalled();
     });
 
+    it("pushes through a parameterized non-blocking git command", async () => {
+        mockResults.push("Everything up-to-date\n");
+
+        const result = await gitPush("C:/repo");
+
+        expect(result).toContain("Everything up-to-date");
+        expect(execFileMock).toHaveBeenCalledWith(
+            "git",
+            ["push"],
+            expect.objectContaining({ cwd: "C:/repo", timeout: 60_000 }),
+            expect.any(Function),
+        );
+    });
+
+    it("validates and checks out a local branch as a branch, not a path", async () => {
+        mockResults.push("feature/right-rail\n", "abc123\n", "Switched to branch 'feature/right-rail'\n");
+
+        const result = await gitCheckout("C:/repo", "feature/right-rail");
+
+        expect(result).toBeUndefined();
+        expect(execFileMock).toHaveBeenNthCalledWith(
+            1,
+            "git",
+            ["check-ref-format", "--branch", "feature/right-rail"],
+            expect.objectContaining({ cwd: "C:/repo" }),
+            expect.any(Function),
+        );
+        expect(execFileMock).toHaveBeenNthCalledWith(
+            2,
+            "git",
+            ["rev-parse", "--verify", "refs/heads/feature/right-rail^{commit}"],
+            expect.objectContaining({ cwd: "C:/repo" }),
+            expect.any(Function),
+        );
+        expect(execFileMock).toHaveBeenNthCalledWith(
+            3,
+            "git",
+            ["checkout", "feature/right-rail"],
+            expect.objectContaining({ cwd: "C:/repo" }),
+            expect.any(Function),
+        );
+    });
     it("applies the same file guard to diff and unstage", async () => {
         const diffResult = await gitDiff("C:/repo", "C:/outside/app.ts");
         const unstageResult = await gitUnstage("C:/repo", [".npmrc"]);

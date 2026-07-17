@@ -4,7 +4,7 @@ import { join } from "path";
 import { execFileSync } from "child_process";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const SESSION_ID = "compose-runtime-e2e-session";
@@ -253,10 +253,8 @@ async function openSettingsWindow(app: ElectronApplication, page: Page): Promise
     return settingsWindow;
 }
 
-async function closeSettingsWindow(settingsWindow: Page): Promise<void> {
-    const closed = settingsWindow.waitForEvent("close");
-    await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
-    await closed;
+async function closeSettingsWindow(app: ElectronApplication, settingsWindow: Page): Promise<void> {
+    await hideSettingsWindow(app, settingsWindow);
 }
 
 async function setSwitch(page: Page, label: string, checked: boolean): Promise<void> {
@@ -453,7 +451,7 @@ test.describe("Compose workflow runtime acceptance", () => {
         await expect(dynamicWorkflowSwitch).toHaveAttribute("aria-checked", "true");
         await expect(settingsWindow.getByRole("switch", { name: "Compose Workflow" })).toHaveAttribute("aria-checked", "true");
         await settingsWindow.screenshot({ path: join(ACCEPTANCE_DIR, "compose-runtime-01-settings-enabled.png") });
-        await closeSettingsWindow(settingsWindow);
+        await closeSettingsWindow(app, settingsWindow);
         await page.bringToFront();
 
         await selectAgentMode(page, "Compose");
@@ -521,7 +519,7 @@ test.describe("Compose workflow runtime acceptance", () => {
         await setSwitch(disabledSettings, "Dynamic Workflow", false);
         await setSwitch(disabledSettings, "Compose Workflow", false);
         await disabledSettings.screenshot({ path: join(ACCEPTANCE_DIR, "compose-runtime-04-fallback-disabled-honest.png") });
-        await closeSettingsWindow(disabledSettings);
+        await closeSettingsWindow(app, disabledSettings);
         await page.bringToFront();
 
         await page.evaluate(async ({ workspacePath, sessionId, sessionTitle }) => {

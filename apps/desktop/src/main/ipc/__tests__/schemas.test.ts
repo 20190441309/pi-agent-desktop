@@ -13,6 +13,7 @@ import {
     workspaceCreateSchema,
     settingsSetSchema,
     gitCommitSchema,
+    gitPushSchema,
     gitAddSchema,
     gitDiffSchema,
     gitDiffStagedSchema,
@@ -176,6 +177,15 @@ describe("gitCommitSchema", () => {
     });
 });
 
+describe("gitPushSchema", () => {
+    it("accepts a non-empty workspace path", () => {
+        expect(() => gitPushSchema.parse(["C:/repo"])).not.toThrow();
+    });
+
+    it("rejects an empty workspace path", () => {
+        expect(() => gitPushSchema.parse([""])).toThrow(ZodError);
+    });
+});
 describe("gitAddSchema", () => {
     it("accepts workspacePath + string[] (non-empty)", () => {
         expect(() => gitAddSchema.parse(["C:/repo", ["a.ts", "b.ts"]])).not.toThrow();

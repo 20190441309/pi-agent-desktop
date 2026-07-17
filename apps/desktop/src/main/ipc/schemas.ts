@@ -120,6 +120,10 @@ export const gitCommitSchema = z.tuple([
     z.string().min(1, "workspacePath must be a non-empty string"),
     z.string().min(1, "message must be a non-empty string"),
 ]);
+export const gitPushSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+]);
+
 
 // git:add — 验证 workspacePath 是 string, files 是 string[] (允许空数组走 "no-op" 分支)
 export const gitAddSchema = z.tuple([

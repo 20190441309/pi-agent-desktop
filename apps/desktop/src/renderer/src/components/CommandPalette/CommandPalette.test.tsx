@@ -10,6 +10,7 @@ const filesList = vi.fn();
 const detectProject = vi.fn();
 const getGitStatus = vi.fn();
 const gitAdd = vi.fn();
+const searchSessionMessages = vi.fn();
 
 function renderPalette(props?: Partial<React.ComponentProps<typeof CommandPalette>>): { onClose: ReturnType<typeof vi.fn> } {
   const onClose = vi.fn();
@@ -32,6 +33,7 @@ describe("CommandPalette", () => {
     detectProject.mockReset();
     getGitStatus.mockReset();
     gitAdd.mockReset();
+    searchSessionMessages.mockReset();
     filesList.mockResolvedValue([]);
     getGitStatus.mockResolvedValue({
       branch: "main",
@@ -43,8 +45,9 @@ describe("CommandPalette", () => {
       behind: 0,
     });
     gitAdd.mockResolvedValue(undefined);
+    searchSessionMessages.mockResolvedValue([]);
     Object.defineProperty(window, "piAPI", {
-      value: { filesList, detectProject, getGitStatus, gitAdd },
+      value: { filesList, detectProject, getGitStatus, gitAdd, searchSessionMessages },
       configurable: true,
     });
     useSessionStore.setState({
@@ -496,5 +499,31 @@ describe("CommandPalette", () => {
     });
 
     expect(await screen.findByRole("button", { name: /docs\/report\.md/ })).toBeTruthy();
+  });
+
+  it("searches persisted messages that are not loaded into the renderer store", async () => {
+    searchSessionMessages.mockResolvedValueOnce([{
+      sessionId: "s-older",
+      sessionTitle: "Older session",
+      workspaceId: "ws1",
+      messageId: "m-older",
+      messageContent: "persisted-history-needle",
+      messageRole: "user",
+      timestamp: 1,
+      matchIndex: 0,
+      matchLength: 7,
+    }]);
+    const onSelectHistory = vi.fn();
+    renderPalette({ workspaceId: "ws1", onSelectHistory });
+
+    fireEvent.click(screen.getByRole("tab", { name: "历史" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "搜索命令" }), {
+      target: { value: "history-needle" },
+    });
+
+    const result = await screen.findByRole("button", { name: "persisted-history-needle" });
+    fireEvent.click(result);
+    expect(searchSessionMessages).toHaveBeenCalledWith({ query: "history-needle", workspaceId: "ws1", limit: 30 });
+    expect(onSelectHistory).toHaveBeenCalledWith("s-older", "m-older");
   });
 });

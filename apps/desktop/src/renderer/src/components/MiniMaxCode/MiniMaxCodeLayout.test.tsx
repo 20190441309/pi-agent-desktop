@@ -153,6 +153,29 @@ describe("MiniMaxCode window chrome interactivity", () => {
         fireEvent.pointerUp(window, { pointerId: 1 });
 
         expect(onLeftWidthChange).toHaveBeenCalledWith(320);
+        expect(onLeftWidthChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("supports precise keyboard resizing for the left sidebar", () => {
+        const onLeftWidthChange = vi.fn();
+        render(
+            <MiniMaxCodeLayout
+                leftSlot={<div>对话</div>}
+                centerSlot={<div>主内容</div>}
+                rightSlot={null}
+                leftWidth={190}
+                onLeftWidthChange={onLeftWidthChange}
+            />,
+        );
+
+        const handle = screen.getByRole("separator", { name: "调整左侧栏宽度" });
+        expect(handle.getAttribute("aria-valuenow")).toBe("190");
+        fireEvent.keyDown(handle, { key: "ArrowRight" });
+        fireEvent.keyDown(handle, { key: "ArrowLeft", shiftKey: true });
+        fireEvent.keyDown(handle, { key: "Home" });
+        fireEvent.keyDown(handle, { key: "End" });
+
+        expect(onLeftWidthChange.mock.calls.map(([width]) => width)).toEqual([200, 166, 160, 320]);
     });
 
     it("disables rail interpolation while resizing", () => {
@@ -257,5 +280,6 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(rightFloating?.className ?? "").not.toContain("rounded");
         expect(rightFloating?.className ?? "").not.toContain("shadow");
         expect(rightFloating?.className ?? "").not.toContain("bg-[var(--mm-bg-main)]");
+        expect(rightFloating?.className ?? "").toContain("w-[300px]");
     });
 });

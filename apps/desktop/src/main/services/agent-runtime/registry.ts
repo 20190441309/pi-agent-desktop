@@ -642,7 +642,9 @@ function promptFailureDetails(error: unknown): string {
                 {
                     onPlanProgress: ({ workspaceId, agentId, items }) => {
                         // TODO: migrate to TaskService.createTask in future spec
-                        this.deps.getTaskService?.()?.setSourceTasks(workspaceId, agentId, "plan", items);
+                        void this.deps.getTaskService?.()?.setSourceTasks(workspaceId, agentId, "plan", items).catch((error) => {
+                            log.error("[AgentRuntimeRegistry] failed to persist plan progress:", error);
+                        });
                     },
                 },
             ),

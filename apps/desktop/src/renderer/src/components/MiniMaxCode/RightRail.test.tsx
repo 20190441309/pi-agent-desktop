@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RightRail } from "./RightRail";
@@ -17,26 +17,14 @@ function renderWithI18n(ui: ReactElement): ReturnType<typeof render> {
 describe("RightRail", () => {
   const getGitStatus = vi.fn();
   const gitDiff = vi.fn();
-  const detectProject = vi.fn();
-  const openPath = vi.fn();
-  const revealPath = vi.fn();
 
   beforeEach(() => {
     window.localStorage.setItem("pi-desktop.locale", "zh-CN");
     getGitStatus.mockReset();
     gitDiff.mockReset();
-    detectProject.mockReset();
-    openPath.mockReset();
-    revealPath.mockReset();
-    detectProject.mockResolvedValue({
-      type: "unknown",
-      name: "repo",
-      rootPath: "C:/repo",
-      configFiles: [],
-      hasGit: false,
-    });
+
     Object.defineProperty(window, "piAPI", {
-      value: { getGitStatus, gitDiff, detectProject, openPath, revealPath },
+      value: { getGitStatus, gitDiff },
       configurable: true,
     });
     Object.defineProperty(navigator, "clipboard", {
@@ -73,7 +61,6 @@ describe("RightRail", () => {
 
     expect(getGitStatus).not.toHaveBeenCalled();
     expect(gitDiff).not.toHaveBeenCalled();
-    expect(detectProject).not.toHaveBeenCalled();
   });
 
   it("renders environment git information from the current workspace", async () => {
@@ -101,125 +88,11 @@ describe("RightRail", () => {
     await waitFor(() => {
       expect(screen.getByText("master")).toBeTruthy();
     });
-    expect(screen.getByText("4")).toBeTruthy();
     expect(screen.getByText("+2")).toBeTruthy();
     expect(screen.getByText("-1")).toBeTruthy();
     expect(screen.getByText("1/2")).toBeTruthy();
-    expect(screen.getAllByText("a.ts").length).toBeGreaterThan(0);
     expect(getGitStatus).toHaveBeenCalledWith("C:/ai/pi-agent-desktop/apps/desktop");
     expect(gitDiff).toHaveBeenCalledWith("C:/ai/pi-agent-desktop/apps/desktop");
-  });
-
-  it("renders detected project metadata in the environment panel", async () => {
-    getGitStatus.mockResolvedValue(null);
-    gitDiff.mockResolvedValue("");
-    detectProject.mockResolvedValue({
-      type: "node",
-      name: "pi-workbench",
-      version: "1.2.3",
-      rootPath: "C:/repo",
-      configFiles: ["package.json", "pnpm-lock.yaml"],
-      packageManager: "pnpm",
-      hasGit: true,
-      scripts: { test: "vitest", build: "tsc" },
-    });
-
-    renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    expect(await screen.findByText("pi-workbench")).toBeTruthy();
-    expect(screen.getByText("node")).toBeTruthy();
-    expect(screen.getByText("pnpm")).toBeTruthy();
-    expect(screen.getByText("package.json, pnpm-lock.yaml")).toBeTruthy();
-    expect(screen.getByText("test, build")).toBeTruthy();
-    expect(detectProject).toHaveBeenCalledWith("C:/repo");
-  });
-
-  it("runs detected project scripts in the terminal", async () => {
-    const runCommandSpy = vi.fn();
-    window.addEventListener("terminal:run-command", runCommandSpy);
-    getGitStatus.mockResolvedValue(null);
-    gitDiff.mockResolvedValue("");
-    detectProject.mockResolvedValue({
-      type: "node",
-      name: "pi-workbench",
-      rootPath: "C:/repo",
-      configFiles: ["package.json", "pnpm-lock.yaml"],
-      packageManager: "pnpm",
-      hasGit: true,
-      scripts: { test: "vitest", build: "tsc" },
-    });
-
-    renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "test" }));
-
-    expect(runCommandSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        detail: { command: "pnpm test", mode: "run" },
-      }),
-    );
-    expect(screen.getAllByRole("status").some((item) => item.textContent?.includes("已发送命令到终端"))).toBe(true);
-    window.removeEventListener("terminal:run-command", runCommandSpy);
-  });
-
-  it("expands the full changed file list on demand", async () => {
-    getGitStatus.mockResolvedValue({
-      branch: "master",
-      modified: ["a.ts", "b.ts", "c.ts", "d.ts"],
-      added: [],
-      deleted: [],
-      untracked: [],
-      ahead: 0,
-      behind: 0,
-    });
-    gitDiff.mockResolvedValue("");
-
-    renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    await waitFor(() => {
-      expect(screen.getAllByText("a.ts").length).toBeGreaterThan(0);
-    });
-    fireEvent.click(screen.getByRole("button", { name: "展开其余 1 个文件" }));
-
-    expect(screen.getAllByText("d.ts").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "收起文件" })).toBeTruthy();
-  });
-
-  it("can jump from changed files to Files and Git diff panels", async () => {
-    const openFileSpy = vi.fn();
-    const openGitDiffSpy = vi.fn();
-    window.addEventListener("workspace:open-file", openFileSpy);
-    window.addEventListener("workspace:open-git-diff", openGitDiffSpy);
-    getGitStatus.mockResolvedValue({
-      branch: "master",
-      modified: ["src/a.ts"],
-      added: [],
-      deleted: [],
-      untracked: [],
-      ahead: 0,
-      behind: 0,
-    });
-    gitDiff.mockResolvedValue("");
-
-    renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "src/a.ts" }));
-    expect(openFileSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        detail: { path: "C:/repo\\src/a.ts", mode: undefined },
-      }),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Diff" }));
-    expect(openGitDiffSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        detail: { file: "src/a.ts" },
-      }),
-    );
-    expect(screen.getAllByRole("status").some((item) => item.textContent?.includes("已打开 diff src/a.ts"))).toBe(true);
-
-    window.removeEventListener("workspace:open-file", openFileSpy);
-    window.removeEventListener("workspace:open-git-diff", openGitDiffSpy);
   });
 
   it("refreshes git summary when a workspace file is saved", async () => {
@@ -254,7 +127,7 @@ describe("RightRail", () => {
     await waitFor(() => {
       expect(getGitStatus).toHaveBeenCalledTimes(2);
     });
-    expect(await screen.findByText("src/a.ts")).toBeTruthy();
+    expect(screen.queryByText("src/a.ts")).toBeNull();
   });
 
   it("refreshes git summary when workspace git changes", async () => {
@@ -289,7 +162,6 @@ describe("RightRail", () => {
     await waitFor(() => {
       expect(getGitStatus).toHaveBeenCalledTimes(2);
     });
-    expect(await screen.findByText("src/new.ts")).toBeTruthy();
     expect(screen.getByText("1/0")).toBeTruthy();
   });
 
@@ -313,7 +185,7 @@ describe("RightRail", () => {
     expect(screen.getByText("普通任务")).toBeTruthy();
   });
 
-  it("renders environment, usage, progress, and file output cards without right-rail tool permissions", async () => {
+  it("renders one compact utility panel without token statistics or idle progress", async () => {
     getGitStatus.mockResolvedValue({
       branch: "master",
       modified: [],
@@ -328,25 +200,26 @@ describe("RightRail", () => {
     renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
     expect(await screen.findByText("环境信息")).toBeTruthy();
-    expect(screen.getByText("Token 使用统计")).toBeTruthy();
-    expect(screen.getByText("总 Token")).toBeTruthy();
-    expect(screen.getByText("会话数")).toBeTruthy();
-    expect(screen.getByText("进度")).toBeTruthy();
-    expect(screen.getByText("文件输出")).toBeTruthy();
+    expect(screen.queryByText("来源")).toBeNull();
+    expect(screen.queryByText("本地")).toBeNull();
+    expect(screen.queryByText("比较分支")).toBeNull();
+    expect(screen.queryByText("Token 使用统计")).toBeNull();
+    expect(screen.queryByText("总 Token")).toBeNull();
+    expect(screen.queryByText("会话数")).toBeNull();
+    expect(screen.queryByText("进度")).toBeNull();
     expect(screen.queryByText("工具权限")).toBeNull();
-    expect(screen.queryByLabelText("网络")).toBeNull();
-    expect(screen.queryByText("最近工具")).toBeNull();
   });
 
-  it("keeps cards in natural-height scroll flow instead of shrinkable flex columns", () => {
+  it("uses one restrained outer surface instead of separate cards", () => {
     const { container } = renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
+    const rail = screen.getByTestId("right-rail-panel");
 
-    const rail = container.querySelector("aside");
-
-    expect(rail?.className ?? "").toContain("overflow-y-auto");
-    expect(rail?.className ?? "").toContain("space-y-3");
-    expect(rail?.className ?? "").not.toMatch(/\bflex-col\b/);
-    expect(container.querySelector('section[class*="shadow-"]')).toBeNull();
+    expect(rail.className).toContain("overflow-y-auto");
+    expect(rail.className).toContain("rounded-[8px]");
+    expect(rail.className).toContain("shadow-[var(--right-rail-shadow)]");
+    expect(rail.className).toContain("text-[14px]");
+    expect(rail.className).toContain("[font-family:var(--right-rail-font)]");
+    expect(container.querySelectorAll('section[class*="rounded-"]')).toHaveLength(0);
   });
 
   it("follows the language setting for visible right rail cards", async () => {
@@ -371,10 +244,10 @@ describe("RightRail", () => {
     renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
     expect(await screen.findByText("Environment")).toBeTruthy();
-    expect(screen.getByText("Token usage")).toBeTruthy();
-    expect(screen.getByText("Progress")).toBeTruthy();
-    expect(screen.getByText("File output")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Browse all files" })).toBeTruthy();
+    expect(screen.queryByText("Token usage")).toBeNull();
+    expect(screen.queryByText("Progress")).toBeNull();
+    expect(screen.queryByText("Sources")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Browse all files" })).toHaveLength(1);
     expect(screen.queryByText("Tool permissions")).toBeNull();
     expect(screen.queryByLabelText("Network")).toBeNull();
     expect(screen.queryByText("环境信息")).toBeNull();
@@ -517,251 +390,7 @@ describe("RightRail", () => {
     expect(screen.getByText("Tool")).toBeTruthy();
   });
 
-  it("shows file outputs from authoritative output sources and excludes planning or git heuristics", async () => {
-    getGitStatus.mockResolvedValue({
-      branch: "master",
-      modified: ["src/generated.ts"],
-      added: [],
-      deleted: [],
-      untracked: [],
-      ahead: 0,
-      behind: 0,
-    });
-    gitDiff.mockResolvedValue("");
-    useSessionStore.setState({
-      currentSessionId: "s1",
-      sessions: [
-        {
-          id: "s1",
-          workspaceId: "w1",
-          title: "任务",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          lastOutputPaths: ["plans/output.md"],
-          messages: [
-            {
-              id: "m1",
-              role: "assistant",
-              content: "计划里提到 C:/repo/plan_probe.txt，但这还不是实际产物。",
-              timestamp: new Date(),
-              generatedUi: {
-                version: "v1",
-                id: "ui-file-output",
-                title: "交付物",
-                sections: [
-                  {
-                    id: "generated-files",
-                    kind: "file_list",
-                    items: [{ id: "file-1", label: "generated.ts", path: "src/generated.ts" }],
-                  },
-                ],
-              },
-              toolCalls: [
-                {
-                  id: "tc1",
-                  name: "write",
-                  status: "completed",
-                  output: "Wrote docs/result.md",
-                },
-                {
-                  id: "tc2",
-                  name: "plan_write",
-                  status: "completed",
-                  input: { filename: "create-plan-probe" },
-                },
-                {
-                  id: "tc3",
-                  name: "bash",
-                  status: "completed",
-                  input: { command: "echo PLAN_OK > \"C:/repo/plan_probe.txt\"" },
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    usePlanStore.setState({
-      ...usePlanStore.getState(),
-      activeCard: {
-        id: "plan_1",
-        title: "创建并验证 plan_probe.txt",
-        content: "1. 创建文件\n2. 验证存在",
-        filename: "create-plan-probe",
-        createdAt: Date.now(),
-      },
-    });
-
-    renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    await waitFor(() => {
-      expect(screen.getByText("output.md")).toBeTruthy();
-    });
-    const fileOutputSection = screen.getByText("文件输出").closest("section");
-    expect(fileOutputSection).toBeTruthy();
-    const fileOutputs = within(fileOutputSection!);
-    expect(fileOutputs.getByText("output.md")).toBeTruthy();
-    expect(fileOutputs.getByText("result.md")).toBeTruthy();
-    expect(fileOutputs.getByText("plan_probe.txt")).toBeTruthy();
-    expect(fileOutputs.getByText("generated.ts")).toBeTruthy();
-    expect(fileOutputs.queryByText("create-plan-probe")).toBeNull();
-  });
-
-  it("shows shell action errors for file outputs", async () => {
-    openPath.mockResolvedValueOnce({
-      code: "ipcErrors.protectedPath.blocked",
-      fallback: "受保护路径不可打开",
-    });
-    useSessionStore.setState({
-      currentSessionId: "s1",
-      sessions: [
-        {
-          id: "s1",
-          workspaceId: "w1",
-          title: "任务",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          lastOutputPaths: ["secrets/.env"],
-          messages: [],
-        },
-      ],
-    });
-
-    renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "系统打开" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toContain("受保护路径不可打开");
-    });
-    expect(openPath).toHaveBeenCalledWith("C:/repo\\secrets/.env");
-  });
-
-  it("shows string failures from Electron shell for file outputs", async () => {
-    openPath.mockResolvedValueOnce("No application is associated with the specified file");
-    useSessionStore.setState({
-      currentSessionId: "s1",
-      sessions: [
-        {
-          id: "s1",
-          workspaceId: "w1",
-          title: "任务",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          lastOutputPaths: ["reports/result.unknown"],
-          messages: [],
-        },
-      ],
-    });
-
-    renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "系统打开" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toContain("No application is associated with the specified file");
-    });
-    expect(screen.queryByText("已请求系统打开")).toBeNull();
-  });
-
-  it("shows rejected reveal errors for file outputs", async () => {
-    revealPath.mockRejectedValueOnce(new Error("explorer unavailable"));
-    useSessionStore.setState({
-      currentSessionId: "s1",
-      sessions: [
-        {
-          id: "s1",
-          workspaceId: "w1",
-          title: "任务",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          lastOutputPaths: ["reports/result.md"],
-          messages: [],
-        },
-      ],
-    });
-
-    renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "定位" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toContain("系统定位失败: explorer unavailable");
-    });
-    expect(screen.queryByText("已请求系统定位")).toBeNull();
-  });
-
-  it("shows clipboard failures for file output paths", async () => {
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText: vi.fn(async () => { throw new Error("clipboard denied"); }) },
-      configurable: true,
-    });
-    useSessionStore.setState({
-      currentSessionId: "s1",
-      sessions: [
-        {
-          id: "s1",
-          workspaceId: "w1",
-          title: "任务",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          lastOutputPaths: ["reports/result.md"],
-          messages: [],
-        },
-      ],
-    });
-
-    renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "复制路径" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toContain("复制路径失败: clipboard denied");
-    });
-    expect(screen.queryByRole("button", { name: "已复制" })).toBeNull();
-  });
-
-  it("can reference a file output back into chat", async () => {
-    const prefillSpy = vi.fn();
-    const switchSpy = vi.fn();
-    window.addEventListener("chatpanel:prefill", prefillSpy);
-    window.addEventListener("app:switch-section", switchSpy);
-    useSessionStore.setState({
-      currentSessionId: "s1",
-      sessions: [
-        {
-          id: "s1",
-          workspaceId: "w1",
-          title: "任务",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          lastOutputPaths: ["reports/result.md"],
-          messages: [],
-        },
-      ],
-    });
-
-    renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "引用" }));
-
-    expect(prefillSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        detail: { text: "@C:/repo\\reports/result.md " },
-      }),
-    );
-    expect(switchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        detail: { section: "chat" },
-      }),
-    );
-    expect((await screen.findByRole("status")).textContent).toContain("已引用到聊天");
-
-    window.removeEventListener("chatpanel:prefill", prefillSpy);
-    window.removeEventListener("app:switch-section", switchSpy);
-  });
-
-  it("puts environment controls first, keeps usage stats in the rail, and opens Files and Git from visible rail actions", async () => {
+  it("puts environment controls first, excludes usage stats, and opens Files and Git from visible rail actions", async () => {
     const switchSpy = vi.fn();
     window.addEventListener("app:switch-section", switchSpy);
     getGitStatus.mockResolvedValue({
@@ -814,27 +443,25 @@ describe("RightRail", () => {
     expect(screen.queryByText("claude-sonnet")).toBeNull();
     expect(screen.queryByText("anthropic")).toBeNull();
     expect(screen.queryByText("输入 1.2K")).toBeNull();
-    expect(screen.getByText("Token 使用统计")).toBeTruthy();
-    expect(screen.getAllByText("1.5K").length).toBeGreaterThan(0);
-    expect(screen.queryByText("预估费用")).toBeNull();
-    expect(screen.queryByText(/\$\d/)).toBeNull();
-    expect(screen.getByText("输入 Token")).toBeTruthy();
-    expect(screen.getByText("输出 Token")).toBeTruthy();
-    expect(screen.getByText("anthropic/claude-sonnet")).toBeTruthy();
-    expect(screen.getByText("会话数")).toBeTruthy();
+    expect(screen.queryByText("Token 使用统计")).toBeNull();
+    expect(screen.queryByText("1.5K")).toBeNull();
+    expect(screen.queryByText("输入 Token")).toBeNull();
+    expect(screen.queryByText("输出 Token")).toBeNull();
+    expect(screen.queryByText("anthropic/claude-sonnet")).toBeNull();
+    expect(screen.queryByText("会话数")).toBeNull();
     expect(screen.queryByText("工具权限")).toBeNull();
     expect(screen.queryByLabelText("文件写入")).toBeNull();
     expect(screen.queryByLabelText("网络")).toBeNull();
     expect(screen.queryByText("最近工具")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "浏览全部文件" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "浏览全部文件" })[0]);
     expect(switchSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         detail: { section: "files" },
       }),
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /提交或推送/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "查看变更文件" }));
     expect(switchSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         detail: { section: "git" },

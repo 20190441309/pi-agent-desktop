@@ -7,7 +7,7 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { fuzzyScore } from "../../utils/fuzzy-match";
 import { useSessionStore } from "../../stores/session-store";
 import { useI18n } from "../../i18n";
-import { isIpcError, type FileEntry, type GitStatus, type ProjectInfo } from "@shared";
+import { isIpcError, type FileEntry, type GitStatus, type ProjectInfo, type SessionSearchResult } from "@shared";
 import { contentWithGeneratedUiText } from "../../utils/generated-ui";
 import { classifyTerminalCommand } from "../../utils/terminal-command";
 import { projectScriptCommand } from "../../utils/project-scripts";
@@ -112,6 +112,7 @@ export function CommandPalette({
     const [projectError, setProjectError] = useState<string | null>(null);
     const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
     const [actionStatus, setActionStatus] = useState<PaletteCommandStatus | null>(null);
+    const [historyMatches, setHistoryMatches] = useState<SessionSearchResult[]>([]);
     const inputRef = useRef<HTMLInputElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
     useFocusTrap(dialogRef, isOpen);
@@ -218,6 +219,27 @@ export function CommandPalette({
     useEffect(() => {
         setActiveIdx(0);
     }, [mode, query]);
+
+    useEffect(() => {
+        if (!isOpen || mode !== "history" || !query.trim() || !window.piAPI?.searchSessionMessages) {
+            setHistoryMatches([]);
+            return;
+        }
+        let cancelled = false;
+        const timer = window.setTimeout(() => {
+            void window.piAPI.searchSessionMessages({ query: query.trim(), workspaceId, limit: 30 })
+                .then((result) => {
+                    if (!cancelled) setHistoryMatches(isIpcError(result) ? [] : result);
+                })
+                .catch(() => {
+                    if (!cancelled) setHistoryMatches([]);
+                });
+        }, 120);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timer);
+        };
+    }, [isOpen, mode, query, workspaceId]);
 
     const retryFileSearch = useCallback(() => {
         setFilesReloadKey((k) => k + 1);
@@ -407,6 +429,19 @@ export function CommandPalette({
                 }
                 if (all.length >= 30) break;
             }
+            for (const match of historyMatches) {
+                const id = `${match.sessionId}_${match.messageId}`;
+                if (all.some((item) => item.id === id)) continue;
+                all.push({
+                    id,
+                    primary: match.messageContent.length > 80 ? `${match.messageContent.slice(0, 80)}...` : match.messageContent,
+                    secondary: t("commandPalette.historyLine", {
+                        title: match.sessionTitle,
+                        role: match.messageRole === "user" ? t("messageBubble.userAuthor") : t("messageBubble.piAuthor"),
+                    }),
+                    onSelect: () => onSelectHistory?.(match.sessionId, match.messageId),
+                });
+            }
             // 按 score 排序
             computed = all
                 .map((r) => ({ r, s: fuzzyScore(r.primary, query) }))
@@ -415,7 +450,7 @@ export function CommandPalette({
                 .map((x) => x.r);
         }
         return computed;
-    }, [mode, query, files, project, gitContextCommands, sessions, workspaceId, workspacePath, onSelectFile, onSelectHistory, onRunCommand, t, loadGitStatus]);
+    }, [mode, query, files, project, gitContextCommands, sessions, historyMatches, workspaceId, workspacePath, onSelectFile, onSelectHistory, onRunCommand, t, loadGitStatus]);
 
     if (!isOpen) return null;
 

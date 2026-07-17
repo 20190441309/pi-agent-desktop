@@ -2,9 +2,9 @@ import { ipcMain } from 'electron';
 import { execFile } from 'child_process';
 import log from 'electron-log/main';
 import { ipcError } from '@shared';
-import { gitAdd, gitCommit, gitDiff, gitDiffStaged, getGitStatus, gitUnstage, gitCheckout, gitCreateBranch, gitOriginalContent, gitChangedFiles } from '../services/git-service';
+import { gitAdd, gitCommit, gitPush, gitDiff, gitDiffStaged, getGitStatus, gitUnstage, gitCheckout, gitCreateBranch, gitOriginalContent, gitChangedFiles } from '../services/git-service';
 import { getProtectedPathReason } from '../services/protected-paths';
-import { gitAddSchema, gitCommitSchema, gitDiffSchema, gitDiffStagedSchema, gitCheckoutSchema, gitCreateBranchSchema, gitOriginalContentSchema, gitChangedFilesSchema, gitStatusSchema } from './schemas';
+import { gitAddSchema, gitCommitSchema, gitPushSchema, gitDiffSchema, gitDiffStagedSchema, gitCheckoutSchema, gitCreateBranchSchema, gitOriginalContentSchema, gitChangedFilesSchema, gitStatusSchema } from './schemas';
 
 
 interface GitBranchEntry {
@@ -190,6 +190,20 @@ export function setupGitIpc(): void {
         "ipcErrors.git.commitFailed",
         `git commit 失败: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+  });
+
+  ipcMain.handle('git:push', async (_, workspacePath: string) => {
+    try {
+      gitPushSchema.parse([workspacePath]);
+    } catch (err) {
+      return ipcError("ipcErrors.git.invalidArgs", `git push 参数无效: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      return await gitPush(workspacePath);
+    } catch (err) {
+      log.error("[git.ipc] git:push exec failed:", err);
+      return ipcError("ipcErrors.git.pushFailed", `git push 失败: ${err instanceof Error ? err.message : String(err)}`);
     }
   });
 

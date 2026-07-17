@@ -280,6 +280,7 @@ const piAPI: PiAPI = {
     gitAdd: (workspacePath, files) => ipcRenderer.invoke("git:add", workspacePath, files) as Promise<void | IpcError>,
     gitUnstage: (workspacePath, files) => ipcRenderer.invoke("git:unstage", workspacePath, files) as Promise<void | IpcError>,
     gitCommit: (workspacePath, message) => ipcRenderer.invoke("git:commit", workspacePath, message) as Promise<string | IpcError>,
+    gitPush: (workspacePath) => ipcRenderer.invoke("git:push", workspacePath) as Promise<string | IpcError>,
     gitLog: (workspacePath, count) => ipcRenderer.invoke("git:log", workspacePath, count) as Promise<GitLogEntry[] | IpcError>,
     gitBranches: (workspacePath) => ipcRenderer.invoke("git:branches", workspacePath) as Promise<GitBranch[] | IpcError>,
     gitCheckout: (workspacePath, branch) => ipcRenderer.invoke("git:checkout", workspacePath, branch) as Promise<GitBranch[] | IpcError>,

@@ -21,6 +21,7 @@ const { gitServiceMock, getProtectedPathReasonMock, execFileMock, execFileSyncMo
         gitAdd: vi.fn(),
         gitUnstage: vi.fn(),
         gitCommit: vi.fn(),
+        gitPush: vi.fn(),
         gitCheckout: vi.fn(),
         gitCreateBranch: vi.fn(),
         gitOriginalContent: vi.fn(),
@@ -263,6 +264,35 @@ describe("git IPC", () => {
         });
     });
 
+    describe("git:push", () => {
+        it("returns push output on success", async () => {
+            gitServiceMock.gitPush.mockResolvedValue("Everything up-to-date");
+
+            const handler = handlers.get("git:push")!;
+            const result = await handler({}, "C:/repo");
+
+            expect(result).toBe("Everything up-to-date");
+            expect(gitServiceMock.gitPush).toHaveBeenCalledWith("C:/repo");
+        });
+
+        it("returns ipcError when push fails", async () => {
+            gitServiceMock.gitPush.mockRejectedValue(new Error("remote rejected"));
+
+            const handler = handlers.get("git:push")!;
+            const result = await handler({}, "C:/repo");
+
+            expect(isIpcError(result)).toBe(true);
+            if (isIpcError(result)) expect(result.code).toBe("ipcErrors.git.pushFailed");
+        });
+
+        it("rejects an empty workspace path", async () => {
+            const handler = handlers.get("git:push")!;
+            const result = await handler({}, "");
+
+            expect(isIpcError(result)).toBe(true);
+            expect(gitServiceMock.gitPush).not.toHaveBeenCalled();
+        });
+    });
     // ── git:checkout (protected path + schema) ──────────────────────────
     describe("git:checkout", () => {
         it("returns branch list on success", async () => {

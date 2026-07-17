@@ -1010,6 +1010,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             case "custom_message": {
                 const session = getTargetSession();
                 if (!session) break;
+                const display = (event as unknown as { display?: unknown }).display;
+                if (display === false) break;
                 const customType = typeof (event as unknown as { customType?: unknown }).customType === "string"
                     ? (event as unknown as { customType: string }).customType
                     : "";

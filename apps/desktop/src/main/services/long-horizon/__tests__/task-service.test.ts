@@ -60,4 +60,39 @@ describe("TaskService", () => {
         expect(await service.list({ workspaceId: "ws1", agentId: "agent-1" })).toEqual([]);
         expect(await service.getActive({ workspaceId: "ws1", agentId: "agent-1" })).toBeNull();
     });
+
+    it("deduplicates repeated task ids in a single progress snapshot", async () => {
+        const service = createService();
+
+        await expect(service.setSourceTasks("ws1", "agent-1", "plan", [
+            { id: "P1", text: "first update", status: "pending" },
+            { id: "P1", text: "latest update", status: "running" },
+        ])).resolves.toBeUndefined();
+
+        expect(await service.list({ workspaceId: "ws1", agentId: "agent-1" })).toEqual([
+            expect.objectContaining({ id: "P1", text: "latest update", status: "running" }),
+        ]);
+    });
+
+    it("isolates identical task ids across sources and agents", async () => {
+        const service = createService();
+
+        await service.setSourceTasks("ws1", "agent-1", "plan", [
+            { id: "P1", text: "agent plan", status: "running" },
+        ]);
+        await service.setSourceTasks("ws1", "agent-1", "goal", [
+            { id: "P1", text: "agent goal", status: "pending" },
+        ]);
+        await service.setSourceTasks("ws1", "agent-2", "plan", [
+            { id: "P1", text: "other agent plan", status: "completed" },
+        ]);
+
+        expect(await service.list({ workspaceId: "ws1", agentId: "agent-1" })).toEqual([
+            expect.objectContaining({ id: "P1", source: "goal", text: "agent goal" }),
+            expect.objectContaining({ id: "P1", source: "plan", text: "agent plan" }),
+        ]);
+        expect(await service.list({ workspaceId: "ws1", agentId: "agent-2" })).toEqual([
+            expect.objectContaining({ id: "P1", source: "plan", text: "other agent plan" }),
+        ]);
+    });
 });

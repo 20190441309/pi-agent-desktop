@@ -128,6 +128,10 @@ function mapStatusLegacyToDb(status: LongHorizonTaskRecord["status"]): string {
     }
 }
 
+function legacyTaskSessionId(workspaceId: string, agentId: string | undefined, source: "goal" | "plan"): string {
+    return `${workspaceId}::${agentKey(agentId)}::${source}`;
+}
+
 function rowToTask(row: Record<string, unknown>): LongHorizonTaskRecord {
     return {
         id: String(row.id),
@@ -381,6 +385,10 @@ export class LongHorizonDatabase {
     ): Promise<void> {
         await this.yieldToEventLoop();
         const now = Date.now();
+        const sessionId = legacyTaskSessionId(workspaceId, agentId, source);
+        const uniqueItems = Array.from(
+            new Map(items.map((item) => [item.id, item])).values(),
+        );
         this.db.exec("BEGIN");
         try {
             this.db.prepare("DELETE FROM task WHERE workspace_id = ? AND agent_key = ? AND source = ?")
@@ -392,10 +400,10 @@ export class LongHorizonDatabase {
                     source, workspace_id, agent_id, agent_key, ordinal
                 ) VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, NULL, NULL, ?, ?, ?, ?, ?)
             `);
-            for (const [index, item] of items.entries()) {
+            for (const [index, item] of uniqueItems.entries()) {
                 insert.run(
                     item.id,
-                    workspaceId,
+                    sessionId,
                     mapStatusLegacyToDb(item.status),
                     item.text,
                     now,

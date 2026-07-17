@@ -1072,6 +1072,23 @@ describe("usePiStream", () => {
         });
     });
 
+    it("does not render hidden extension context messages", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "custom_message",
+                customType: "compose-mode-context",
+                content: "Compose runtime is active.",
+                display: false,
+            } as PiEvent);
+        });
+
+        expect(useSessionStore.getState().sessions[0]?.messages).toEqual([]);
+    });
+
     it("normalizes legacy custom_message cards into generated ui payloads", async () => {
         await act(async () => {
             render(<HookHost />);

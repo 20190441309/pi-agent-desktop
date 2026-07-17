@@ -150,19 +150,22 @@ export async function gitCommit(workspacePath: string, message: string): Promise
     if (workspaceError) return workspaceError;
     return execGit(["commit", "-m", message], workspacePath);
 }
+export async function gitPush(workspacePath: string): Promise<string | IpcError> {
+    const workspaceError = assertWorkspaceAllowed(workspacePath);
+    if (workspaceError) return workspaceError;
+    return execGit(["push"], workspacePath, 60_000);
+}
 
 export async function gitCheckout(workspacePath: string, branch: string): Promise<void | IpcError> {
     const workspaceError = assertWorkspaceAllowed(workspacePath);
     if (workspaceError) return workspaceError;
-    // Verify the branch ref exists before attempting checkout. This replaces the
-    // previous over-strict regex (which rejected valid names like "feature/x@y")
-    // and surfaces a clear error when the ref is missing.
     try {
-        await execGit(["rev-parse", "--verify", "--", branch], workspacePath);
+        await execGit(["check-ref-format", "--branch", branch], workspacePath);
+        await execGit(["rev-parse", "--verify", `refs/heads/${branch}^{commit}`], workspacePath);
     } catch {
         return ipcError("ipcErrors.git.invalidArgs", `分支不存在: ${branch}`, { branch });
     }
-    await execGit(["checkout", "--", branch], workspacePath);
+    await execGit(["checkout", branch], workspacePath);
 }
 
 export async function gitCreateBranch(workspacePath: string, branchName: string): Promise<void | IpcError> {

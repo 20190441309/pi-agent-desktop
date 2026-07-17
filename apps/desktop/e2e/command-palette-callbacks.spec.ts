@@ -25,7 +25,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow } from "./support/electron-windows";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -172,9 +172,7 @@ test.describe('CommandPalette 3 callback (v1.0.16 fix)', () => {
         const settingsWindow = await settingsWindowPromise;
         await settingsWindow.waitForLoadState('domcontentloaded');
         await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible({ timeout: 5000 });
-        const settingsClosed = settingsWindow.waitForEvent('close');
-        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
-        await settingsClosed;
+        await hideSettingsWindow(app, settingsWindow);
         await page.bringToFront();
 
     });

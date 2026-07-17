@@ -42,9 +42,9 @@ async function skipOnboarding(page: Page): Promise<void> {
 }
 
 async function openRightRailIfNeeded(page: Page): Promise<void> {
-    if (await page.getByText("Token 使用统计").count() > 0) return;
+    if (await page.getByText("环境信息").count() > 0) return;
     await page.getByRole("button", { name: "展开右侧栏" }).first().click();
-    await expect(page.getByText("Token 使用统计")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("环境信息")).toBeVisible({ timeout: 10_000 });
 }
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
@@ -56,7 +56,7 @@ async function openSettingsWindow(app: ElectronApplication, page: Page): Promise
     return settingsWindow;
 }
 
-test.describe("main page token usage stats", () => {
+test.describe("main page token presentation", () => {
     let app: ElectronApplication | undefined;
 
     test.setTimeout(90_000);
@@ -66,7 +66,7 @@ test.describe("main page token usage stats", () => {
         app = undefined;
     });
 
-    test("shows persisted session usage in the chat header and right rail with screenshots", async ({}, testInfo) => {
+    test("keeps persisted usage in the header and settings but removes it from the right rail", async ({}, testInfo) => {
         mkdirSync(SCREENSHOT_DIR, { recursive: true });
         const userDataDir = testInfo.outputPath(`main-token-user-data-${Date.now()}`);
         const workspacePath = testInfo.outputPath("main-token-workspace");
@@ -120,24 +120,22 @@ test.describe("main page token usage stats", () => {
         });
 
         await openRightRailIfNeeded(page);
-        await expect(page.getByText("总 Token")).toBeVisible();
-        await expect(page.getByText("60M").first()).toBeVisible();
-        await expect(page.getByText("预估费用")).toHaveCount(0);
-        await expect(page.getByText(/\$\d/)).toHaveCount(0);
-        await expect(page.getByText("输入 Token")).toBeVisible();
-        await expect(page.getByText("42M")).toBeVisible();
-        await expect(page.getByText("输出 Token")).toBeVisible();
-        await expect(page.getByText("18M")).toBeVisible();
-        await expect(page.getByText("mimo/mimo-v2.5-pro")).toBeVisible();
-        const usagePanel = page.getByTestId("usage-stats-panel");
-        await usagePanel.scrollIntoViewIfNeeded();
-        await page.getByText("mimo/mimo-v2.5-pro").scrollIntoViewIfNeeded();
+        await expect(page.getByText("环境信息")).toBeVisible();
+        await expect(page.getByText("来源")).toHaveCount(0);
+        await expect(page.getByText("进度")).toHaveCount(0);
+        await expect(page.getByText("Token 使用统计")).toHaveCount(0);
+        await expect(page.getByText("总 Token")).toHaveCount(0);
+        await expect(page.getByText("输入 Token")).toHaveCount(0);
+        await expect(page.getByText("输出 Token")).toHaveCount(0);
+        await expect(page.getByText("mimo/mimo-v2.5-pro")).toHaveCount(0);
+        const utilityPanel = page.getByTestId("right-rail-panel");
+        await expect(utilityPanel).toBeVisible();
         await page.screenshot({
-            path: join(SCREENSHOT_DIR, "02-main-right-rail-token-stats.png"),
+            path: join(SCREENSHOT_DIR, "02-main-right-rail-compact.png"),
             fullPage: true,
         });
-        await usagePanel.screenshot({
-            path: join(SCREENSHOT_DIR, "03-main-token-panel-closeup.png"),
+        await utilityPanel.screenshot({
+            path: join(SCREENSHOT_DIR, "03-main-right-rail-closeup.png"),
         });
 
         const settingsWindow = await openSettingsWindow(app, page);

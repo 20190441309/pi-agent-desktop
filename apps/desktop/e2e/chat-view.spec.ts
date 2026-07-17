@@ -320,7 +320,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         await expect(thinkingTrigger).toBeVisible();
         await expect(attachBtn).toBeVisible();
 
-        await controls.getByRole('button', { name: /思考强度: 中/ }).click();
+        await thinkingTrigger.click();
         const thinkingMenu = page.getByRole('menu', { name: '思考强度' });
         await expect(thinkingMenu).toBeVisible();
         await expect(thinkingMenu.getByRole('menuitemradio', { name: '高' })).toBeVisible();
@@ -479,7 +479,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         await seededSessionButton.click();
         const initialUserArticle = page.getByRole('article', { name: /你 ·/ }).filter({ hasText: '请制定一个全面审查项目的计划' });
         await expect(initialUserArticle).toBeVisible({ timeout: 15_000 });
-        await expect(initialUserArticle.getByTestId('message-surface')).toHaveClass(/py-3/);
+        await expect(initialUserArticle.getByTestId('message-surface')).toHaveClass(/py-2/);
         const initialAssistantArticle = page.getByRole('article', { name: /Pi ·/ }).filter({ hasText: '背景说明' });
         await expect(initialAssistantArticle).toBeVisible();
         await expect(initialAssistantArticle.getByTestId('message-surface')).not.toHaveClass(/bg-\[var\(--mm-bg-panel\)\]/);

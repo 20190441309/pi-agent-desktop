@@ -671,6 +671,20 @@ describe("ChatView", () => {
 
   it("uses the floating arrow to jump to the latest message", () => {
     mockedStreamError = null;
+    const originalIntersectionObserver = window.IntersectionObserver;
+    let intersectionCallback: IntersectionObserverCallback | null = null;
+    window.IntersectionObserver = class {
+      constructor(callback: IntersectionObserverCallback) {
+        intersectionCallback = callback;
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+      takeRecords(): IntersectionObserverEntry[] { return []; }
+      readonly root = null;
+      readonly rootMargin = "0px";
+      readonly thresholds = [0];
+    };
     useSessionStore.setState((state) => ({
       sessions: state.sessions.map((session) => (
         session.id === "s1"
@@ -703,9 +717,15 @@ describe("ChatView", () => {
       scrollTo: { configurable: true, value: scrollTo },
     });
 
+    expect(screen.queryByRole("button", { name: "回到最新消息" })).toBeNull();
+    act(() => {
+      intersectionCallback?.([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver);
+    });
     fireEvent.click(screen.getByRole("button", { name: "回到最新消息" }));
 
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 2400, behavior: "smooth" });
+    expect(screen.queryByRole("button", { name: "回到最新消息" })).toBeNull();
+    window.IntersectionObserver = originalIntersectionObserver;
   });
 
   it("does not synchronously measure the full transcript on scroll", () => {
@@ -743,6 +763,35 @@ describe("ChatView", () => {
     );
 
     expect(screen.queryByTestId("external-model-selector")).toBeNull();
+  });
+
+  it("hides persisted compose runtime context cards created by older builds", () => {
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => session.id === "s1" ? {
+        ...session,
+        messages: [{
+          id: "legacy-compose-context",
+          role: "assistant" as const,
+          content: "",
+          timestamp: new Date(),
+          generatedUi: {
+            version: "v1" as const,
+            id: "legacy-compose-context-card",
+            title: "Pi 生成式界面",
+            sections: [{
+              id: "content",
+              kind: "markdown" as const,
+              content: "Compose runtime is active. This is the first compose-guided turn for the current session.",
+            }],
+          },
+        }],
+      } : session),
+    }));
+
+    render(<I18nProvider><ChatView /></I18nProvider>);
+
+    expect(screen.queryByText(/Compose runtime is active/)).toBeNull();
+    expect(screen.queryByText("Pi 生成式界面")).toBeNull();
   });
 
   it("keeps the stream surface mounted without rendering the composer while inactive", () => {

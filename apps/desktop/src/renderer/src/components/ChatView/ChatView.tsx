@@ -106,6 +106,13 @@ function visibleText(message: Message): string {
   return stripThinking(message.content);
 }
 
+function isHiddenInternalContext(message: Message): boolean {
+  if (message.role !== "assistant") return false;
+  const text = contentWithGeneratedUiText(message.content, message.generatedUi);
+  return text.includes("Compose runtime is active.")
+    && text.includes("compose-guided turn for the current session");
+}
+
 function buildPlanExecutionPrompt(input: {
   title: string;
   filename?: string;
@@ -314,6 +321,7 @@ export function ChatView({
   const [titleDraft, setTitleDraft] = useState("");
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [globalComposerRoot, setGlobalComposerRoot] = useState<HTMLElement | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const activePlanExecution = usePlanStore((state) => state.activeExecution);
   const animatedTokenFrameRef = useRef<number | null>(null);
   const animatedTokenSessionIdRef = useRef<string | null>(currentSession?.id ?? null);
@@ -324,6 +332,7 @@ export function ChatView({
 
   useEffect(() => {
     isNearBottomRef.current = true;
+    setShowScrollToBottom(false);
   }, [agentId, currentSession?.id]);
 
   useEffect(() => {
@@ -452,6 +461,7 @@ export function ChatView({
     const merged = mergeAdjacentThinkingMessages(rawMessages);
     // v1.0.14-fix: 过滤后端偶发的完全空白 assistant 消息(有 content/thinking/card/tools/plan 至少一个才保留)
     return merged.filter((message) => {
+      if (isHiddenInternalContext(message)) return false;
       const hasVisible = visibleText(message).length > 0;
       const hasThinking = Boolean(message.thinking?.trim());
       const hasGeneratedUi = Boolean(message.generatedUi);
@@ -473,7 +483,9 @@ export function ChatView({
     if (!scrollRegion || !bottomSentinel || typeof IntersectionObserver === "undefined") return;
 
     const observer = new IntersectionObserver(([entry]) => {
-      isNearBottomRef.current = entry?.isIntersecting ?? true;
+      const isNearBottom = entry?.isIntersecting ?? true;
+      isNearBottomRef.current = isNearBottom;
+      setShowScrollToBottom(!isNearBottom);
     }, {
       root: scrollRegion,
       rootMargin: "0px 0px 160px 0px",
@@ -951,7 +963,7 @@ export function ChatView({
             )}
 
             {/* 回到最新消息按钮 */}
-            {messages.length > 5 && (
+            {messages.length > 5 && showScrollToBottom && (
               <button
                 type="button"
                 onClick={() => {
@@ -959,6 +971,7 @@ export function ChatView({
                   if (!scrollRegion) return;
                   scrollRegion.scrollTo({ top: scrollRegion.scrollHeight, behavior: 'smooth' });
                   isNearBottomRef.current = true;
+                  setShowScrollToBottom(false);
                 }}
                 className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] shadow-sm text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-[background-color,border-color,color,opacity,box-shadow,transform]"
                 aria-label={t("chatView.scrollBottom")}

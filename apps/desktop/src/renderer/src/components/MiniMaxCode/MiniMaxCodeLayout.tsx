@@ -144,22 +144,17 @@ export function MiniMaxCodeLayout({
         const handlePointerMove = (event: PointerEvent): void => {
             handleMove(event.clientX);
         };
-        const handleMouseMove = (event: MouseEvent): void => {
-            handleMove(event.clientX);
-        };
         const handleEnd = (): void => {
             resizeStateRef.current = null;
             setIsResizingLeft(false);
         };
         window.addEventListener("pointermove", handlePointerMove);
-        window.addEventListener("mousemove", handleMouseMove);
         window.addEventListener("pointerup", handleEnd);
-        window.addEventListener("mouseup", handleEnd);
+        window.addEventListener("pointercancel", handleEnd);
         return () => {
             window.removeEventListener("pointermove", handlePointerMove);
-            window.removeEventListener("mousemove", handleMouseMove);
             window.removeEventListener("pointerup", handleEnd);
-            window.removeEventListener("mouseup", handleEnd);
+            window.removeEventListener("pointercancel", handleEnd);
         };
     }, [onLeftWidthChange]);
 
@@ -202,10 +197,17 @@ export function MiniMaxCodeLayout({
         event.currentTarget.setPointerCapture?.(event.pointerId);
     };
 
-    const handleLeftResizeMouseDown = (event: React.MouseEvent<HTMLDivElement>): void => {
+    const handleLeftResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
         if (!onLeftWidthChange) return;
+        const step = event.shiftKey ? 24 : 10;
+        let nextWidth: number | null = null;
+        if (event.key === "ArrowLeft") nextWidth = resolvedLeftWidth - step;
+        if (event.key === "ArrowRight") nextWidth = resolvedLeftWidth + step;
+        if (event.key === "Home") nextWidth = MIN_LEFT_WIDTH;
+        if (event.key === "End") nextWidth = MAX_LEFT_WIDTH;
+        if (nextWidth === null) return;
         event.preventDefault();
-        startLeftResize(event.clientX);
+        onLeftWidthChange(clampLeftWidth(nextWidth));
     };
 
     return (
@@ -265,10 +267,13 @@ export function MiniMaxCodeLayout({
                             role="separator"
                             aria-label="调整左侧栏宽度"
                             aria-orientation="vertical"
+                            aria-valuemin={MIN_LEFT_WIDTH}
+                            aria-valuemax={MAX_LEFT_WIDTH}
+                            aria-valuenow={resolvedLeftWidth}
                             tabIndex={0}
                             onPointerDown={handleLeftResizePointerDown}
-                            onMouseDown={handleLeftResizeMouseDown}
-                            className="absolute bottom-0 top-0 z-50 w-2 cursor-col-resize"
+                            onKeyDown={handleLeftResizeKeyDown}
+                            className="absolute bottom-0 top-0 z-50 w-2 touch-none cursor-col-resize"
                             style={{ left: resolvedLeftWidth - 3 }}
                         >
                             <span className="mx-auto block h-full w-px bg-transparent transition-colors hover:bg-[var(--mm-border-strong)]" aria-hidden />
@@ -290,10 +295,10 @@ export function MiniMaxCodeLayout({
 
                     {renderRightFloating ? (
                         <aside
-                            className={`pi-motion-floating-rail absolute right-3 z-[60] flex w-[var(--mm-width-sidebar-right)] flex-col ${
+                            className={`pi-motion-floating-rail absolute right-3 z-[60] flex flex-col ${
                                 rightFloatingChrome
-                                    ? "overflow-hidden rounded-[8px] border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_18px_48px_rgba(15,23,42,0.13)]"
-                                    : "pointer-events-none overflow-visible"
+                                    ? "w-[var(--mm-width-sidebar-right)] overflow-hidden rounded-[8px] border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_18px_48px_rgba(15,23,42,0.13)]"
+                                    : "pointer-events-none w-[300px] overflow-visible"
                             }`}
                             style={{ top: rightFloatingTopOffset, bottom: rightFloatingBottomOffset }}
                             data-mmcode-region="right-floating"

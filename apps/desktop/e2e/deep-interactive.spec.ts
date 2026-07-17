@@ -85,6 +85,10 @@ function requireDeepConfig(): DeepProviderConfig {
 }
 
 function resolveDeepProviderConfig(): DeepProviderConfig | null {
+    if (process.env.PI_DESKTOP_DEEP_USE_CURRENT_PROVIDER === '1') {
+        const current = readCurrentProviderConfig();
+        if (current) return current;
+    }
     const longCatKey = process.env.LONGCAT_API_KEY ?? readLocalLongCatApiKey();
     if (longCatKey) {
         return {
@@ -115,6 +119,37 @@ function resolveDeepProviderConfig(): DeepProviderConfig | null {
     }
 
     return null;
+}
+
+function readCurrentProviderConfig(): DeepProviderConfig | null {
+    try {
+        const configDir = join(process.env.USERPROFILE ?? '', '.pi', 'agent');
+        const settings = JSON.parse(readFileSync(join(configDir, 'settings.json'), 'utf8')) as { defaultProvider?: string; defaultModel?: string };
+        const models = JSON.parse(readFileSync(join(configDir, 'models.json'), 'utf8')) as { providers?: Record<string, { name?: string; baseUrl?: string; api?: string; apiKey?: string; models?: Array<{ id: string; name?: string; contextWindow?: number; maxTokens?: number }> }> };
+        const auth = JSON.parse(readFileSync(join(configDir, 'auth.json'), 'utf8')) as Record<string, { key?: string; apiKey?: string }>;
+        const providerId = settings.defaultProvider;
+        const modelId = settings.defaultModel;
+        if (!providerId || !modelId) return null;
+        const provider = models.providers?.[providerId];
+        const model = provider?.models?.find((item) => item.id === modelId);
+        const recoveredAuth = auth[providerId] ?? auth[`${providerId}_ispure`] ?? auth[`${providerId}_legacy`];
+        const apiKey = provider?.apiKey ?? recoveredAuth?.key ?? recoveredAuth?.apiKey;
+        if (!provider?.baseUrl || !provider.api || !model || !apiKey) return null;
+        return {
+            provider: providerId,
+            providerName: provider.name ?? providerId,
+            model: modelId,
+            modelName: model.name ?? modelId,
+            baseUrl: provider.baseUrl,
+            api: provider.api,
+            apiKeyEnv: DEEP_API_KEY_ENV,
+            apiKeyValue: apiKey,
+            contextWindow: model.contextWindow ?? 128000,
+            maxTokens: model.maxTokens ?? 4096,
+        };
+    } catch {
+        return null;
+    }
 }
 
 function readLocalLongCatApiKey(): string | undefined {
@@ -316,6 +351,33 @@ deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
             const preview = msg.replace(/\s+/g, ' ').slice(0, 80);
             console.log(`  [${i}] ${preview}...`);
         });
+    });
+
+    test('2b. Compose 模式隐藏内部上下文并返回真实助手回复', async () => {
+        test.setTimeout(TEST_TIMEOUT);
+        const { app, page } = await launchApp();
+        try {
+            const modeTrigger = page.getByRole('button', { name: '选择 Agent 模式' });
+            await expect(modeTrigger).toBeVisible({ timeout: 10_000 });
+            await modeTrigger.click();
+            const modeMenu = page.getByRole('menu', { name: 'Agent 模式' });
+            await expect(modeMenu).toBeVisible();
+            await modeMenu.getByRole('menuitemradio', { name: /Compose/ }).click();
+            await expect(modeTrigger).toContainText('Compose');
+
+            const textarea = page.locator('textarea[aria-label*="发送" i]').first();
+            const initialCount = await page.locator('article').count();
+            await textarea.fill('请只用一句中文回复：COMPOSE_OK');
+            await textarea.press('Enter');
+            await waitForAiResponse(page, initialCount);
+            await waitForRunToFinish(page);
+
+            await expect(page.getByText(/Compose runtime is active/i)).toHaveCount(0);
+            await expect(page.getByText(/This is the first compose-guided turn/i)).toHaveCount(0);
+            await expect(page.getByRole('article', { name: /Pi ·/ }).last()).toContainText(/COMPOSE_OK/i);
+        } finally {
+            await app.close();
+        }
     });
 
     test('3. 让 AI 创建一个小项目（计算器组件）', async () => {
