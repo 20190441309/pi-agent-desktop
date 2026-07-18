@@ -1,26 +1,9 @@
 // MiniMaxCodeTitleBar — 32px 顶部标题栏
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 const MAC_TRAFFIC_LIGHT_RESERVE = 80;
-const TITLEBAR_DRAG_THRESHOLD_PX = 5;
-const TITLEBAR_DRAG_SUPPRESS_DOUBLE_CLICK_MS = 500;
-
-interface TitlebarDragState {
-    pointerId: number;
-    startX: number;
-    startY: number;
-    lastX: number;
-    lastY: number;
-    started: boolean;
-}
-
-function isTitlebarControlTarget(target: EventTarget | null): boolean {
-    return target instanceof Element && Boolean(target.closest(
-        "button, a, input, textarea, select, [role='tab'], [data-window-drag-exclude='true']",
-    ));
-}
 
 export interface MiniMaxCodeTitleBarProps {
     title?: string;
@@ -86,11 +69,6 @@ export function MiniMaxCodeTitleBar({
     const { t } = useTranslation();
     const [isMaximized, setIsMaximized] = useState(false);
     const [platform, setPlatform] = useState<NodeJS.Platform | "browser">("browser");
-    const titlebarRef = useRef<HTMLDivElement>(null);
-    const dragStateRef = useRef<TitlebarDragState | null>(null);
-    const dragFrameRef = useRef<number | null>(null);
-    const dragMovePendingRef = useRef(false);
-    const suppressDoubleClickUntilRef = useRef(0);
 
     useEffect(() => {
         if (typeof window === "undefined" || !window.nodeAPI) return;
@@ -99,60 +77,6 @@ export function MiniMaxCodeTitleBar({
         const unsub = window.piAPI?.onWindowMaximizeChanged((max) => setIsMaximized(max));
         return () => { if (typeof unsub === "function") unsub(); };
     }, []);
-
-    const flushPendingDragMove = useCallback((): void => {
-        if (!dragMovePendingRef.current) return;
-        if (dragFrameRef.current !== null && typeof window.cancelAnimationFrame === "function") {
-            window.cancelAnimationFrame(dragFrameRef.current);
-        }
-        dragFrameRef.current = null;
-        dragMovePendingRef.current = false;
-        const drag = dragStateRef.current;
-        if (drag?.started) {
-            window.piAPI?.windowUpdateDrag(drag.lastX, drag.lastY);
-        }
-    }, []);
-
-    const finishTitlebarDrag = useCallback((): void => {
-        const drag = dragStateRef.current;
-        if (!drag) return;
-        flushPendingDragMove();
-        if (drag.started) {
-            suppressDoubleClickUntilRef.current = Date.now() + TITLEBAR_DRAG_SUPPRESS_DOUBLE_CLICK_MS;
-            window.piAPI?.windowEndDrag();
-        }
-        const titlebar = titlebarRef.current;
-        if (titlebar?.hasPointerCapture?.(drag.pointerId)) {
-            titlebar.releasePointerCapture(drag.pointerId);
-        }
-        dragStateRef.current = null;
-    }, [flushPendingDragMove]);
-
-    const scheduleDragMove = useCallback((): void => {
-        dragMovePendingRef.current = true;
-        if (dragFrameRef.current !== null) return;
-        if (typeof window.requestAnimationFrame !== "function") {
-            flushPendingDragMove();
-            return;
-        }
-        dragFrameRef.current = window.requestAnimationFrame(() => {
-            dragFrameRef.current = null;
-            dragMovePendingRef.current = false;
-            const drag = dragStateRef.current;
-            if (drag?.started) {
-                window.piAPI?.windowUpdateDrag(drag.lastX, drag.lastY);
-            }
-        });
-    }, [flushPendingDragMove]);
-
-    useEffect(() => {
-        const onWindowBlur = (): void => finishTitlebarDrag();
-        window.addEventListener("blur", onWindowBlur);
-        return () => {
-            window.removeEventListener("blur", onWindowBlur);
-            finishTitlebarDrag();
-        };
-    }, [finishTitlebarDrag]);
 
     const isMac = platform === "darwin";
     const leftPad = isMac ? MAC_TRAFFIC_LIGHT_RESERVE : 10;
@@ -168,56 +92,18 @@ export function MiniMaxCodeTitleBar({
 
     return (
         <div
-            ref={titlebarRef}
             style={{ height: "var(--mm-height-titlebar)" }}
-            className={`app-region-no-drag flex w-full shrink-0 items-center border-b border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] select-none ${className}`}
+            className={`flex w-full shrink-0 items-center border-b border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] select-none ${className}`}
             data-mmcode-region="titlebar"
             role="banner"
             aria-label="window title bar"
-            onPointerDown={(event) => {
-                if (event.button !== 0 || isTitlebarControlTarget(event.target)) return;
-                dragStateRef.current = {
-                    pointerId: event.pointerId,
-                    startX: event.screenX,
-                    startY: event.screenY,
-                    lastX: event.screenX,
-                    lastY: event.screenY,
-                    started: false,
-                };
-            }}
-            onPointerMove={(event) => {
-                const drag = dragStateRef.current;
-                if (!drag || drag.pointerId !== event.pointerId) return;
-                if (event.buttons === 0) {
-                    finishTitlebarDrag();
-                    return;
-                }
-                drag.lastX = event.screenX;
-                drag.lastY = event.screenY;
-                if (!drag.started) {
-                    const deltaX = event.screenX - drag.startX;
-                    const deltaY = event.screenY - drag.startY;
-                    if (Math.hypot(deltaX, deltaY) < TITLEBAR_DRAG_THRESHOLD_PX) return;
-                    drag.started = true;
-                    event.currentTarget.setPointerCapture?.(event.pointerId);
-                    window.piAPI?.windowBeginDrag(drag.startX, drag.startY);
-                }
-                scheduleDragMove();
-            }}
-            onPointerUp={finishTitlebarDrag}
-            onPointerCancel={finishTitlebarDrag}
-            onDoubleClick={(event) => {
-                if (isTitlebarControlTarget(event.target)) return;
-                if (Date.now() < suppressDoubleClickUntilRef.current) return;
-                void window.piAPI?.windowToggleMaximize();
-            }}
         >
             {/* 左侧 */}
             <div
                 style={{ width: isMac ? leftPad : leftWidth ?? "var(--mm-width-sidebar-left)", flexShrink: 0 }}
-                className={variant === "settings"
+                className={`app-region-drag ${variant === "settings"
                     ? "flex h-full items-center gap-1 px-2"
-                    : "relative top-[4px] flex h-full items-center gap-[8px] pl-[17px] pr-2"}
+                    : "relative top-[4px] flex h-full items-center gap-[8px] pl-[17px] pr-2"}`}
                 data-mmcode-region="titlebar-left"
             >
                 {!isMac && (
@@ -232,7 +118,7 @@ export function MiniMaxCodeTitleBar({
 
             {/* 中间 drag region */}
             <div
-                className="flex h-full min-w-0 flex-1 items-center px-2"
+                className={`flex h-full min-w-0 flex-1 items-center px-2 ${navigationSlot ? "" : "app-region-drag"}`}
                 data-mmcode-region="titlebar-center"
             >
                 {navigationSlot ?? (showCenterMeta && (

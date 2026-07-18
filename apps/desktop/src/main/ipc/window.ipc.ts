@@ -3,19 +3,6 @@ import type { BrowserWindow as BrowserWindowType } from 'electron';
 
 const trackedMaximizedState = new WeakMap<BrowserWindowType, boolean>();
 const normalBoundsBeforeMaximize = new WeakMap<BrowserWindowType, Rectangle>();
-const activeWindowDrags = new WeakMap<BrowserWindowType, {
-  pointerStartX: number;
-  pointerStartY: number;
-  windowStartX: number;
-  windowStartY: number;
-  windowStartWidth: number;
-  windowStartHeight: number;
-}>();
-
-function isFiniteCoordinate(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 function windowFromEvent(event: IpcMainInvokeEvent): BrowserWindowType | null {
   return BrowserWindow.fromWebContents(event.sender);
 }
@@ -53,39 +40,6 @@ export function setupWindowIpc(getMainWindow: () => BrowserWindowType | null): v
     return win && !win.isDestroyed() ? trackedMaximizedState.get(win) ?? win.isMaximized() : false;
   });
 
-  ipcMain.on("window:drag-start", (event, screenX: unknown, screenY: unknown) => {
-    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
-    if (!win || win.isDestroyed() || !isFiniteCoordinate(screenX) || !isFiniteCoordinate(screenY)) return;
-    if (trackedMaximizedState.get(win) ?? win.isMaximized()) return;
-    const bounds = win.getBounds();
-    activeWindowDrags.set(win, {
-      pointerStartX: screenX,
-      pointerStartY: screenY,
-      windowStartX: bounds.x,
-      windowStartY: bounds.y,
-      windowStartWidth: bounds.width,
-      windowStartHeight: bounds.height,
-    });
-  });
-
-  ipcMain.on("window:drag-move", (event, screenX: unknown, screenY: unknown) => {
-    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
-    if (!win || win.isDestroyed() || !isFiniteCoordinate(screenX) || !isFiniteCoordinate(screenY)) return;
-    const drag = activeWindowDrags.get(win);
-    if (!drag) return;
-    win.setBounds({
-      x: Math.round(drag.windowStartX + screenX - drag.pointerStartX),
-      y: Math.round(drag.windowStartY + screenY - drag.pointerStartY),
-      width: drag.windowStartWidth,
-      height: drag.windowStartHeight,
-    }, false);
-  });
-
-  ipcMain.on("window:drag-end", (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
-    if (win) activeWindowDrags.delete(win);
-  });
-
   ipcMain.handle("window:close", (event) => {
     const win = windowFromEvent(event) ?? getMainWindow();
     if (win && !win.isDestroyed()) win.close();
@@ -104,7 +58,5 @@ export function setupWindowEvents(getMainWindow: () => BrowserWindowType | null)
     };
     win.on("maximize", () => sendMaximizeState(true));
     win.on("unmaximize", () => sendMaximizeState(false));
-    win.on("blur", () => activeWindowDrags.delete(win));
-    win.on("closed", () => activeWindowDrags.delete(win));
   }
 }

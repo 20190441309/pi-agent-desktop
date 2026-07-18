@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
-const listeners = new Map<string, (...args: unknown[]) => unknown>();
 const webContentsSend = vi.fn();
 const maximizeMock = vi.fn();
 const unmaximizeMock = vi.fn();
@@ -30,9 +29,7 @@ vi.mock("electron", () => ({
     handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
       handlers.set(channel, handler);
     }),
-    on: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
-      listeners.set(channel, handler);
-    }),
+    on: vi.fn(),
   },
   BrowserWindow: {
     fromWebContents: vi.fn(() => mockWindow),
@@ -44,7 +41,6 @@ import { setupWindowEvents, setupWindowIpc } from "../window.ipc";
 describe("setupWindowIpc", () => {
   beforeEach(() => {
     handlers.clear();
-    listeners.clear();
     webContentsSend.mockClear();
     maximizeMock.mockClear();
     unmaximizeMock.mockClear();
@@ -81,25 +77,6 @@ describe("setupWindowIpc", () => {
     expect(setBoundsMock).toHaveBeenCalledWith({ x: 10, y: 20, width: 690, height: 756 });
   });
 
-  it("moves the current frameless window without changing its size", () => {
-    const event = { sender: mockWebContents };
-
-    listeners.get("window:drag-start")?.(event, 100, 200);
-    listeners.get("window:drag-move")?.(event, 142, 263);
-
-    expect(setBoundsMock).toHaveBeenLastCalledWith({
-      x: 52,
-      y: 83,
-      width: 690,
-      height: 756,
-    }, false);
-
-    listeners.get("window:drag-end")?.(event);
-    setBoundsMock.mockClear();
-    listeners.get("window:drag-move")?.(event, 170, 290);
-    expect(setBoundsMock).not.toHaveBeenCalled();
-  });
-
   it("returns the tracked maximize state to renderer callers", () => {
     const toggle = handlers.get("window:toggle-maximize")!;
     const read = handlers.get("window:is-maximized")!;
@@ -115,23 +92,9 @@ describe("setupWindowIpc", () => {
 
 describe("setupWindowEvents", () => {
   beforeEach(() => {
-    listeners.clear();
     webContentsSend.mockClear();
     setBoundsMock.mockClear();
     onMock.mockClear();
-  });
-
-  it("clears an active manual drag when the window loses focus", () => {
-    setupWindowIpc(() => mockWindow);
-    const event = { sender: mockWebContents };
-    listeners.get("window:drag-start")?.(event, 100, 200);
-
-    setupWindowEvents(() => mockWindow);
-    const blurListener = onMock.mock.calls.find((call) => call[0] === "blur")?.[1] as (() => void) | undefined;
-    blurListener?.();
-    listeners.get("window:drag-move")?.(event, 160, 260);
-
-    expect(setBoundsMock).not.toHaveBeenCalled();
   });
 
   it("keeps tracked maximize state in sync with native window events", () => {

@@ -1,4 +1,4 @@
-import type { BrowserWindowConstructorOptions } from "electron";
+import type { BrowserWindowConstructorOptions, WebPreferences } from "electron";
 
 type MainWindowChromeOptions = Pick<
   BrowserWindowConstructorOptions,
@@ -22,5 +22,11 @@ export function resolveMainWindowChromeOptions(platform: NodeJS.Platform): MainW
   return {
     ...opaqueSurface,
     frame: false,
+  };
+}
+
+export function resolveMainWindowPerformancePreferences(): Pick<WebPreferences, "backgroundThrottling"> {
+  return {
+    backgroundThrottling: false,
   };
 }

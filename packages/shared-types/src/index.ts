@@ -1639,9 +1639,6 @@ export interface PiAPI {
     windowToggleMaximize(): Promise<void>;
     windowIsMaximized(): Promise<boolean>;
     windowClose(): Promise<void>;
-    windowBeginDrag(screenX: number, screenY: number): void;
-    windowUpdateDrag(screenX: number, screenY: number): void;
-    windowEndDrag(): void;
     onWindowMaximizeChanged(cb: (maximized: boolean) => void): Unsubscribe;
 
     // v1.2: Workbench context — renderer pushes currently-viewed file to main

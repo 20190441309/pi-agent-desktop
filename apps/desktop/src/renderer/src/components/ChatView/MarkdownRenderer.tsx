@@ -11,21 +11,22 @@ import remarkGfm from "remark-gfm";
 
 interface MarkdownRendererProps {
     content: string;
+    isStreaming?: boolean;
 }
 
-export const MarkdownRenderer = React.memo(function MarkdownRenderer({ content }: MarkdownRendererProps): React.ReactElement {
+export const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStreaming = false }: MarkdownRendererProps): React.ReactElement {
     // 使用 useMemo 缓存渲染结果，避免重复解析相同的 markdown
     const renderedContent = useMemo(() => (
         <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeHighlight]}
+            rehypePlugins={isStreaming ? [] : [rehypeHighlight]}
         >
             {content}
         </ReactMarkdown>
-    ), [content]);
+    ), [content, isStreaming]);
 
     return (
-        <div className="markdown-body max-w-none">
+        <div className="markdown-body max-w-none" data-streaming={isStreaming ? "true" : "false"}>
             {renderedContent}
         </div>
     );

@@ -8,6 +8,7 @@ import { useWorkspaceStore } from "../../stores/workspace-store";
 import { usePiStatusStore } from "../../stores/pi-status-store";
 import { usePlanStore } from "../../stores/plan-store";
 import { useAgentStore } from "../../stores/agent-store";
+import { useSettingsStore } from "../../stores/settings-store";
 import { useAgentModeStore } from "../../stores/agent-mode-store";
 import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from "../MiniMaxCode/chromeButton";
 import { ChatView } from "./ChatView";
@@ -112,6 +113,13 @@ describe("ChatView", () => {
       runtimeByAgent: {},
       initialized: true,
     });
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        provider: "",
+        model: "",
+      },
+    }));
     Object.defineProperty(window, "piAPI", {
       value: {
         createSession: vi.fn(async (workspaceId: string, title?: string, id?: string) => ({
@@ -805,6 +813,33 @@ describe("ChatView", () => {
 
     expect(screen.getByTestId("chat-view-root")).toBeTruthy();
     expect(screen.queryByTestId("chat-input-shell")).toBeNull();
+  });
+
+  it("shows the full provider and model text in the new conversation summary", () => {
+    mockedStreamError = null;
+    const provider = "provider-with-a-very-long-identifier";
+    const model = "model-with-a-very-long-version-and-capability-suffix";
+    const modelSummary = `${provider} / ${model}`;
+    useSessionStore.setState({ currentSessionId: "s2" });
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        provider,
+        model,
+      },
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    const modelText = screen.getByText(modelSummary);
+    expect(modelText.textContent).toBe(modelSummary);
+    expect(modelText.className).toContain("whitespace-normal");
+    expect(modelText.className).toContain("break-all");
+    expect(modelText.className).not.toContain("truncate");
   });
 
   it("shows compact token usage in the top strip without collapsing small values to zero", () => {

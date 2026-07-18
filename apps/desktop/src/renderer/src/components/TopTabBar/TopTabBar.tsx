@@ -25,7 +25,7 @@ export function TopTabBar({ activeTab, onTabChange, onOpenSettings, rightSlot }:
 
     return (
         <div
-            className="app-region-no-drag flex h-full min-w-0 flex-1 items-center bg-transparent"
+            className="flex h-full min-w-0 flex-1 items-center bg-transparent"
             data-mmcode-component="top-tabbar"
             role="tablist"
             aria-label={t("topbar.ariaLabel")}
@@ -60,7 +60,7 @@ export function TopTabBar({ activeTab, onTabChange, onOpenSettings, rightSlot }:
                 })}
             </div>
             <div
-                className="app-region-no-drag h-full min-w-[96px] flex-1 touch-none cursor-default"
+                className="app-region-drag h-full min-w-[96px] flex-1 touch-none cursor-default"
                 data-mmcode-region="titlebar-drag-surface"
                 aria-hidden="true"
             />

@@ -250,10 +250,6 @@ export class ConfigManager {
             addProviderModels("yaml", providerId, filteredProvider);
         }
 
-        models.sort((a, b) =>
-            `${a.providerName}\u0000${a.modelName}`.localeCompare(`${b.providerName}\u0000${b.modelName}`),
-        );
-
         return {
             configDir: this.configDir,
             defaultProvider: this.getStringSetting(settings.parsed, "defaultProvider"),

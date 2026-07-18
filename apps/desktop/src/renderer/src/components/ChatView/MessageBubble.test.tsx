@@ -278,6 +278,36 @@ describe("MessageBubble", () => {
     expect(screen.getByText("可展开的思考内容").closest('[data-motion="thinking-content"]')?.className).toContain("pi-motion-thinking-content");
   });
 
+  it("renders thinking and tool activity before the formal assistant content", () => {
+    const message: Message = {
+      id: "m-ordered-assistant-content",
+      role: "assistant",
+      content: "正式回答",
+      thinking: "先分析问题",
+      timestamp: new Date(0),
+      toolCalls: [
+        {
+          id: "tc-read",
+          name: "read_file",
+          status: "completed",
+        },
+      ],
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    const thinkingToggle = screen.getByRole("button", { name: /展开思考/ });
+    const toolSummary = screen.getByText("查看 1 个文件");
+    const formalContent = screen.getByText("正式回答");
+
+    expect(thinkingToggle.compareDocumentPosition(toolSummary) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(toolSummary.compareDocumentPosition(formalContent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+
   it("hides assistant thinking when thinking display is disabled", () => {
     useSettingsStore.setState({
       settings: {
@@ -451,8 +481,49 @@ describe("MessageBubble", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByText("**普通助手回复**").tagName).toBe("DIV");
-    expect(screen.queryByText("普通助手回复")).toBeNull();
+    expect(screen.getByText("普通助手回复").tagName).toBe("STRONG");
+    expect(document.querySelector('.markdown-body')?.getAttribute("data-streaming")).toBe("true");
+  });
+
+  it("keeps Markdown structure readable while assistant content is streaming", () => {
+    const message: Message = {
+      id: "m-streaming-markdown",
+      role: "assistant",
+      content: [
+        "## 架构分层",
+        "",
+        "- **主进程**：窗口、PTY、IPC",
+        "- **渲染进程**：React、状态管理",
+        "",
+        "```text",
+        "src/renderer/  App / Terminal / Browser / Settings / Agent / stores",
+      ].join("\n"),
+      timestamp: new Date(0),
+    };
+
+    const { container, rerender } = render(
+      <I18nProvider>
+        <MessageBubble message={message} isStreaming />
+      </I18nProvider>,
+    );
+
+    const streamingHeading = screen.getByRole("heading", { name: "架构分层" });
+    const streamingCodeBlock = container.querySelector("pre");
+    expect(streamingHeading.tagName).toBe("H2");
+    expect(screen.getByText("主进程").tagName).toBe("STRONG");
+    expect(streamingCodeBlock?.textContent).toContain("src/renderer/");
+    expect(container.querySelector('.markdown-body')?.getAttribute("data-streaming")).toBe("true");
+    expect(screen.queryByText(/## 架构分层/)).toBeNull();
+
+    rerender(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByRole("heading", { name: "架构分层" })).toBe(streamingHeading);
+    expect(container.querySelector("pre")).toBe(streamingCodeBlock);
+    expect(container.querySelector('.markdown-body')?.getAttribute("data-streaming")).toBe("false");
   });
 
   it("shows custom card open-file string failures from Electron shell", async () => {

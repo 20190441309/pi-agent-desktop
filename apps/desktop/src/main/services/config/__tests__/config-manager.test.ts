@@ -98,6 +98,48 @@ describe("ConfigManager", () => {
         ]);
     });
 
+    it("preserves provider and model declaration order when listing managed models", async () => {
+        await writeFile(
+            join(dir, "models.json"),
+            JSON.stringify({
+                providers: {
+                    zeta: {
+                        name: "Zeta Provider",
+                        models: [
+                            { id: "second", name: "Second Model" },
+                            { id: "first", name: "First Model" },
+                        ],
+                    },
+                    alpha: {
+                        name: "Alpha Provider",
+                        models: [{ id: "only", name: "Only Model" }],
+                    },
+                },
+            }),
+            "utf8",
+        );
+        await writeFile(
+            join(dir, "settings.json"),
+            JSON.stringify({ defaultProvider: "alpha", defaultModel: "only" }),
+            "utf8",
+        );
+
+        const result = await manager.listManagedModels();
+
+        expect(result.models.map((model) => `${model.providerId}:${model.modelId}`)).toEqual([
+            "zeta:second",
+            "zeta:first",
+            "alpha:only",
+        ]);
+        expect(manager.loadPiAgentConfig()?.providers.flatMap((provider) =>
+            provider.models.map((model) => `${provider.id}:${model.id}`),
+        )).toEqual([
+            "zeta:second",
+            "zeta:first",
+            "alpha:only",
+        ]);
+    });
+
     it("saves a managed model with Pi SDK compatible api and key fields", async () => {
         const result = await manager.saveManagedModel({
             providerId: "custom",

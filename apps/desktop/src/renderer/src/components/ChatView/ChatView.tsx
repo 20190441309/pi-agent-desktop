@@ -170,7 +170,7 @@ function EmptyConversationIntro({
           <span className="text-[var(--mm-text-tertiary)]">{workspaceFieldLabel}</span>
           {workspaceControl}
           <span className="text-[var(--mm-text-tertiary)]">{modelFieldLabel}</span>
-          <span className="truncate text-[var(--mm-text-secondary)]">{modelSummary}</span>
+          <span className="min-w-0 whitespace-normal break-all text-[var(--mm-text-secondary)]" title={modelSummary}>{modelSummary}</span>
           <span className="text-[var(--mm-text-tertiary)]">{permissionFieldLabel}</span>
           <span className="text-[var(--mm-text-secondary)]">{permissionLabel}</span>
           <span className="text-[var(--mm-text-tertiary)]">{thinkingFieldLabel}</span>

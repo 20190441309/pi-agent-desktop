@@ -292,13 +292,13 @@ test.describe("continuous acceptance window, tabs, and sidebar", () => {
             await record("F02-C06", "F02", "标题栏拖拽区域与按钮区域分离", async () => {
                 if (!page) throw new Error("main page missing");
                 const regions = await page.evaluate(() => {
-                    const title = window.getComputedStyle(document.querySelector('[data-mmcode-region="titlebar"]') as HTMLElement).webkitAppRegion;
+                    const dragSurface = window.getComputedStyle(document.querySelector('[data-mmcode-region="titlebar-drag-surface"]') as HTMLElement).webkitAppRegion;
                     const button = window.getComputedStyle(document.querySelector('button[aria-label="最小化窗口"]') as HTMLElement).webkitAppRegion;
-                    return { title, button };
+                    return { dragSurface, button };
                 });
-                expect(regions.title).toBe("no-drag");
+                expect(regions.dragSurface).toBe("drag");
                 expect(regions.button).toBe("no-drag");
-                return "标题栏统一由受控指针拖动处理，窗口按钮保持 no-drag 可点击。";
+                return "标题栏使用独立原生 drag 区域，窗口按钮保持 no-drag 可点击。";
             }, "titlebar-drag-regions");
 
             await record("F02-C07", "F02", "最大化状态在 renderer reload 后同步回 UI", async () => {

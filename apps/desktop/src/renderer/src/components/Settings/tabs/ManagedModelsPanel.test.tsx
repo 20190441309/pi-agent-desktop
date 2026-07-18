@@ -48,6 +48,65 @@ describe("ManagedModelsPanel model actions", () => {
         expect(screen.getByTestId("managed-model-actions").className).toContain("w-[132px]");
     });
 
+    it("preserves the configured model order before and after testing a model", async () => {
+        const configTestProvider = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            message: "连接成功",
+        }));
+        Object.defineProperty(window, "piAPI", {
+            configurable: true,
+            value: {
+                configListManagedModels: vi.fn(async () => ({
+                    configDir: "C:/Users/test/.pi/agent",
+                    defaultProvider: "alpha",
+                    defaultModel: "alpha-model",
+                    models: [
+                        {
+                            providerId: "zeta",
+                            providerName: "Zeta Provider",
+                            modelId: "zeta-model",
+                            modelName: "Zeta Model",
+                            baseUrl: "https://zeta.example.com/v1",
+                            source: "json" as const,
+                            isDefault: false,
+                            hasApiKey: true,
+                        },
+                        {
+                            providerId: "alpha",
+                            providerName: "Alpha Provider",
+                            modelId: "alpha-model",
+                            modelName: "Alpha Model",
+                            baseUrl: "https://alpha.example.com/v1",
+                            source: "json" as const,
+                            isDefault: true,
+                            hasApiKey: true,
+                        },
+                    ],
+                })),
+                configGetAuth: vi.fn(async () => ({ raw: "{}", parsed: {} })),
+                configTestProvider,
+            },
+        });
+
+        render(
+            <I18nProvider>
+                <ManagedModelsPanel onPiConfigChanged={vi.fn(async () => undefined)} />
+            </I18nProvider>,
+        );
+
+        const testButtonLabels = (): Array<string | null> => screen
+            .getAllByRole("button", { name: /^测试 / })
+            .map((button) => button.getAttribute("aria-label"));
+        await waitFor(() => {
+            expect(testButtonLabels()).toEqual(["测试 Zeta Model", "测试 Alpha Model"]);
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "测试 Zeta Model" }));
+        await waitFor(() => expect(configTestProvider).toHaveBeenCalledTimes(1));
+        expect(testButtonLabels()).toEqual(["测试 Zeta Model", "测试 Alpha Model"]);
+    });
+
     it("offers only OpenAI-compatible, Codex, and Claude Code API formats", async () => {
         render(
             <I18nProvider>

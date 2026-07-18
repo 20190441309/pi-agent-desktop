@@ -125,9 +125,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
     const displayedDeleteModel = pendingDeleteModel ?? retainedDeleteModelRef.current;
     useFocusTrap(dialogRef, form !== null);
     useFocusTrap(deleteDialogRef, pendingDeleteModel !== null);
-    const modelRows = result
-        ? [...result.models].sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.providerName.localeCompare(b.providerName) || a.modelName.localeCompare(b.modelName))
-        : [];
+    const modelRows = result?.models ?? [];
 
     const refresh = async (): Promise<void> => {
         const next = await window.piAPI.configListManagedModels();

@@ -71,7 +71,7 @@ import { forkNativeSession } from './services/pi-session/native-session-fork';
 import { loadPiSdk } from './services/pi-session/sdk-runtime';
 import { registerSingleInstance } from './services/single-instance';
 import { SqliteSessionRepository } from './services/sqlite-session-repository';
-import { resolveMainWindowChromeOptions } from './services/main-window-options';
+import { resolveMainWindowChromeOptions, resolveMainWindowPerformancePreferences } from './services/main-window-options';
 import type { PiAgentConfig } from './types';
 
 const e2eLocale = process.env.PI_DESKTOP_E2E_LOCALE;
@@ -524,6 +524,7 @@ function createWindow(): void {
     //  - 其他: frame:false 全部由 renderer 渲染 drag region + 按钮
     ...resolveMainWindowChromeOptions(process.platform),
     webPreferences: {
+      ...resolveMainWindowPerformancePreferences(),
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,

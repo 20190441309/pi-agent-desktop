@@ -398,13 +398,16 @@ function MessageBubbleImpl({
                   />
                 )}
 
+                {message.toolCalls?.some((toolCall) => toolCall.name === "render_ui" && toolCall.status === "running") ? (
+                  <div className="mt-2 text-[11px] text-[var(--mm-text-tertiary)]">正在生成界面...</div>
+                ) : null}
+                {message.toolCalls && message.toolCalls.some((toolCall) => toolCall.name !== "render_ui" || toolCall.status === "error") ? (
+                  <ToolActivity toolCalls={message.toolCalls} />
+                ) : null}
+
                 {shouldRenderAssistantContent && (
                   <div className="text-sm leading-relaxed font-normal">
-                    {isStreaming ? (
-                      <div className="whitespace-pre-wrap break-words">{visibleContent}</div>
-                    ) : (
-                      <MarkdownRenderer content={visibleContent} />
-                    )}
+                    <MarkdownRenderer content={visibleContent} isStreaming={isStreaming} />
                   </div>
                 )}
 
@@ -449,12 +452,6 @@ function MessageBubbleImpl({
               </>
             )}
 
-            {message.toolCalls?.some((toolCall) => toolCall.name === "render_ui" && toolCall.status === "running") ? (
-              <div className="mt-2 text-[11px] text-[var(--mm-text-tertiary)]">正在生成界面...</div>
-            ) : null}
-            {message.toolCalls && message.toolCalls.some((toolCall) => toolCall.name !== "render_ui" || toolCall.status === "error") ? (
-              <ToolActivity toolCalls={message.toolCalls} />
-            ) : null}
 
             {!isUser && (
               <div className="mt-2 flex items-center justify-start gap-2" data-testid="message-footer">
