@@ -26,7 +26,7 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(frame?.className ?? "").toContain("shadow-[var(--mm-main-window-shadow)]");
     });
 
-    it("keeps titlebar blank space draggable while top tabs stay clickable in Electron", () => {
+    it("keeps titlebar controls non-native while the shared titlebar owns drag handling", () => {
         render(
             <I18nProvider>
                 <MiniMaxCodeTitleBar
@@ -38,13 +38,15 @@ describe("MiniMaxCode window chrome interactivity", () => {
 
         const chatTab = screen.getByRole("tab", { name: "对话" });
         const tablist = screen.getByRole("tablist", { name: "顶部标签栏" });
+        const titlebar = screen.getByRole("banner", { name: "window title bar" });
         const titlebarCenter = chatTab.closest('[data-mmcode-region="titlebar-center"]');
         const dragSurface = document.querySelector('[data-mmcode-region="titlebar-drag-surface"]');
         const closeButton = screen.getByRole("button", { name: "关闭窗口" });
         const titlebarRight = closeButton.closest('[data-mmcode-region="titlebar-right"]');
 
         expect(titlebarCenter?.className ?? "").not.toContain("app-region-no-drag");
-        expect(tablist.className).toContain("app-region-drag");
+        expect(titlebar.className).toContain("app-region-no-drag");
+        expect(tablist.className).toContain("app-region-no-drag");
         expect(chatTab.className).toContain("app-region-no-drag");
         expect(dragSurface?.className ?? "").toContain("flex-1");
         expect(dragSurface?.className ?? "").toContain("app-region-no-drag");
@@ -52,6 +54,69 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(titlebarRight?.className ?? "").toContain("pr-[5px]");
     });
 
+    it("starts dragging only after a threshold, coalesces moves, and suppresses drag double-click maximize", () => {
+        const previousPiAPI = window.piAPI;
+        const previousNodeAPI = window.nodeAPI;
+        const beginDrag = vi.fn();
+        const updateDrag = vi.fn();
+        const endDrag = vi.fn();
+        const toggleMaximize = vi.fn(async () => undefined);
+        const frames: FrameRequestCallback[] = [];
+        const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+            frames.push(callback);
+            return frames.length;
+        });
+        const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+        Object.defineProperty(window, "nodeAPI", {
+            configurable: true,
+            value: { platform: "win32" },
+        });
+        Object.defineProperty(window, "piAPI", {
+            configurable: true,
+            value: {
+                windowBeginDrag: beginDrag,
+                windowUpdateDrag: updateDrag,
+                windowEndDrag: endDrag,
+                windowToggleMaximize: toggleMaximize,
+                windowIsMaximized: vi.fn(async () => false),
+                onWindowMaximizeChanged: vi.fn(() => () => undefined),
+            },
+        });
+
+        render(
+            <I18nProvider>
+                <MiniMaxCodeTitleBar
+                    title="Pi Agent"
+                    navigationSlot={<TopTabBar activeTab="chat" onTabChange={() => undefined} />}
+                />
+            </I18nProvider>,
+        );
+
+        const titlebar = screen.getByRole("banner", { name: "window title bar" });
+        fireEvent.pointerDown(titlebar, { button: 0, pointerId: 7, screenX: 100, screenY: 100 });
+        fireEvent.pointerMove(titlebar, { buttons: 1, pointerId: 7, screenX: 103, screenY: 103 });
+        expect(beginDrag).not.toHaveBeenCalled();
+
+        fireEvent.pointerMove(titlebar, { buttons: 1, pointerId: 7, screenX: 110, screenY: 110 });
+        fireEvent.pointerMove(titlebar, { buttons: 1, pointerId: 7, screenX: 125, screenY: 130 });
+        expect(beginDrag).toHaveBeenCalledTimes(1);
+        expect(beginDrag).toHaveBeenCalledWith(100, 100);
+        expect(updateDrag).not.toHaveBeenCalled();
+
+        frames[0]?.(0);
+        expect(updateDrag).toHaveBeenCalledTimes(1);
+        expect(updateDrag).toHaveBeenCalledWith(125, 130);
+
+        fireEvent.pointerUp(titlebar, { pointerId: 7, screenX: 125, screenY: 130 });
+        expect(endDrag).toHaveBeenCalledTimes(1);
+        fireEvent.doubleClick(titlebar);
+        expect(toggleMaximize).not.toHaveBeenCalled();
+
+        requestFrame.mockRestore();
+        cancelFrame.mockRestore();
+        Object.defineProperty(window, "piAPI", { configurable: true, value: previousPiAPI });
+        Object.defineProperty(window, "nodeAPI", { configurable: true, value: previousNodeAPI });
+    });
     it("keeps the global composer root in the center workspace layout flow", () => {
         render(
             <MiniMaxCodeLayout

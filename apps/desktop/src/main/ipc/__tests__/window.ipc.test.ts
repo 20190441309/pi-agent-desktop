@@ -8,7 +8,6 @@ const unmaximizeMock = vi.fn();
 const minimizeMock = vi.fn();
 const closeMock = vi.fn();
 const setBoundsMock = vi.fn();
-const setPositionMock = vi.fn();
 const onMock = vi.fn();
 const mockWebContents = {};
 const mockWindow = {
@@ -20,7 +19,6 @@ const mockWindow = {
   close: closeMock,
   getBounds: vi.fn(() => ({ x: 10, y: 20, width: 690, height: 756 })),
   setBounds: setBoundsMock,
-  setPosition: setPositionMock,
   on: onMock,
   webContents: {
     send: webContentsSend,
@@ -53,14 +51,13 @@ describe("setupWindowIpc", () => {
     minimizeMock.mockClear();
     closeMock.mockClear();
     setBoundsMock.mockClear();
-    setPositionMock.mockClear();
     onMock.mockClear();
     mockWindow.isDestroyed.mockReturnValue(false);
     mockWindow.isMaximized.mockReturnValue(false);
     setupWindowIpc(() => mockWindow);
   });
 
-  it("toggles frameless transparent windows using tracked state when Electron isMaximized is unreliable", () => {
+  it("toggles frameless windows using tracked state when Electron isMaximized is unreliable", () => {
     const handler = handlers.get("window:toggle-maximize")!;
     const event = { sender: mockWebContents };
 
@@ -84,18 +81,23 @@ describe("setupWindowIpc", () => {
     expect(setBoundsMock).toHaveBeenCalledWith({ x: 10, y: 20, width: 690, height: 756 });
   });
 
-  it("moves the current frameless window while the explicit titlebar drag is active", () => {
+  it("moves the current frameless window without changing its size", () => {
     const event = { sender: mockWebContents };
 
     listeners.get("window:drag-start")?.(event, 100, 200);
     listeners.get("window:drag-move")?.(event, 142, 263);
 
-    expect(setPositionMock).toHaveBeenLastCalledWith(52, 83);
+    expect(setBoundsMock).toHaveBeenLastCalledWith({
+      x: 52,
+      y: 83,
+      width: 690,
+      height: 756,
+    }, false);
 
     listeners.get("window:drag-end")?.(event);
-    setPositionMock.mockClear();
+    setBoundsMock.mockClear();
     listeners.get("window:drag-move")?.(event, 170, 290);
-    expect(setPositionMock).not.toHaveBeenCalled();
+    expect(setBoundsMock).not.toHaveBeenCalled();
   });
 
   it("returns the tracked maximize state to renderer callers", () => {
@@ -113,8 +115,23 @@ describe("setupWindowIpc", () => {
 
 describe("setupWindowEvents", () => {
   beforeEach(() => {
+    listeners.clear();
     webContentsSend.mockClear();
+    setBoundsMock.mockClear();
     onMock.mockClear();
+  });
+
+  it("clears an active manual drag when the window loses focus", () => {
+    setupWindowIpc(() => mockWindow);
+    const event = { sender: mockWebContents };
+    listeners.get("window:drag-start")?.(event, 100, 200);
+
+    setupWindowEvents(() => mockWindow);
+    const blurListener = onMock.mock.calls.find((call) => call[0] === "blur")?.[1] as (() => void) | undefined;
+    blurListener?.();
+    listeners.get("window:drag-move")?.(event, 160, 260);
+
+    expect(setBoundsMock).not.toHaveBeenCalled();
   });
 
   it("keeps tracked maximize state in sync with native window events", () => {

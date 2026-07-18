@@ -197,6 +197,9 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
             const bounds = (await windowState(app, 'index.html')).bounds;
             return Math.abs(bounds.x - initialMainBounds.x) + Math.abs(bounds.y - initialMainBounds.y);
         }).toBeGreaterThanOrEqual(80);
+        const movedMainBounds = (await windowState(app, 'index.html')).bounds;
+        expect(Math.abs(movedMainBounds.width - initialMainBounds.width)).toBeLessThanOrEqual(1);
+        expect(Math.abs(movedMainBounds.height - initialMainBounds.height)).toBeLessThanOrEqual(1);
 
         await page.locator('[data-mmcode-region="titlebar-right"] button[aria-label="最大化"]').click();
         await expect(page.locator('[data-mmcode-region="titlebar-right"] button[aria-label="取消最大化"]')).toBeVisible();

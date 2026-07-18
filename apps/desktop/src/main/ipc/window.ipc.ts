@@ -8,6 +8,8 @@ const activeWindowDrags = new WeakMap<BrowserWindowType, {
   pointerStartY: number;
   windowStartX: number;
   windowStartY: number;
+  windowStartWidth: number;
+  windowStartHeight: number;
 }>();
 
 function isFiniteCoordinate(value: unknown): value is number {
@@ -61,6 +63,8 @@ export function setupWindowIpc(getMainWindow: () => BrowserWindowType | null): v
       pointerStartY: screenY,
       windowStartX: bounds.x,
       windowStartY: bounds.y,
+      windowStartWidth: bounds.width,
+      windowStartHeight: bounds.height,
     });
   });
 
@@ -69,10 +73,12 @@ export function setupWindowIpc(getMainWindow: () => BrowserWindowType | null): v
     if (!win || win.isDestroyed() || !isFiniteCoordinate(screenX) || !isFiniteCoordinate(screenY)) return;
     const drag = activeWindowDrags.get(win);
     if (!drag) return;
-    win.setPosition(
-      Math.round(drag.windowStartX + screenX - drag.pointerStartX),
-      Math.round(drag.windowStartY + screenY - drag.pointerStartY),
-    );
+    win.setBounds({
+      x: Math.round(drag.windowStartX + screenX - drag.pointerStartX),
+      y: Math.round(drag.windowStartY + screenY - drag.pointerStartY),
+      width: drag.windowStartWidth,
+      height: drag.windowStartHeight,
+    }, false);
   });
 
   ipcMain.on("window:drag-end", (event) => {
@@ -98,5 +104,7 @@ export function setupWindowEvents(getMainWindow: () => BrowserWindowType | null)
     };
     win.on("maximize", () => sendMaximizeState(true));
     win.on("unmaximize", () => sendMaximizeState(false));
+    win.on("blur", () => activeWindowDrags.delete(win));
+    win.on("closed", () => activeWindowDrags.delete(win));
   }
 }

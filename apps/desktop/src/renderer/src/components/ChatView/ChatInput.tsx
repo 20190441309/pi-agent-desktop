@@ -765,10 +765,7 @@ export function ChatInput({
           <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--mm-text-tertiary)]" aria-hidden>
             <PermissionModeIcon mode={currentPermission} />
           </span>
-          <span>{currentPermissionLabel}</span>
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+          <span className="leading-none">{currentPermissionLabel}</span>
         </button>
       }
     >
@@ -1153,11 +1150,11 @@ export function ChatInput({
                 trigger={
                   <button
                     type="button"
-                    className="flex h-7 w-[150px] items-center gap-1.5 px-2 text-left text-[10px] leading-none text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
+                    className="flex h-full w-[190px] items-center justify-center gap-1.5 px-2 text-center text-[10px] leading-none text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
                     aria-label={t("chatInput.model.current", { model: currentModelLabel })}
                   >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-accent-blue)]" aria-hidden />
-                    <span className="truncate">{currentModelLabel}</span>
+                    <span className="relative -top-[1.5px] whitespace-nowrap">{currentModelLabel}</span>
                   </button>
                 }
               >
@@ -1207,13 +1204,10 @@ export function ChatInput({
                 trigger={
                   <button
                     type="button"
-                    className="flex h-7 items-center gap-1 border-l border-[var(--mm-border)] px-2 text-[10px] leading-none text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
+                    className="flex h-full items-center border-l border-[var(--mm-border)] px-2 text-[10px] leading-none text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
                     aria-label={t("chatInput.thinking.aria", { label: currentThinkingLabel })}
                   >
                     <span className="font-medium text-[var(--mm-text-primary)]">{currentThinkingLabel}</span>
-                    <svg className="h-3 w-3 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
-                    </svg>
                   </button>
                 }
               >

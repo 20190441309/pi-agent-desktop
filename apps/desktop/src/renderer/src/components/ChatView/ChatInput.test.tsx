@@ -364,7 +364,7 @@ describe("ChatInput", () => {
     expect(screen.queryByLabelText("compose 模式已启用")).toBeNull();
   });
 
-  it("keeps reference composer labels optically centered without an agent mode chevron", () => {
+  it("keeps reference composer labels vertically centered without dropdown chevrons", () => {
     useAgentModeStore.setState({ byWorkspace: { ws1: "compose" } });
 
     render(
@@ -382,12 +382,24 @@ describe("ChatInput", () => {
     );
 
     const agentModeButton = screen.getByRole("button", { name: "选择 Agent 模式" });
+    const permissionButton = screen.getByRole("button", { name: "权限: 智能授权" });
     const modelButton = screen.getByRole("button", { name: /当前模型:/ });
     const thinkingButton = screen.getByRole("button", { name: /思考强度:/ });
 
     expect(agentModeButton.querySelector("svg")).toBeNull();
+    expect(permissionButton.querySelectorAll("svg")).toHaveLength(1);
+    expect(permissionButton.querySelector("span:last-child")?.className).toContain("leading-none");
+    expect(modelButton.className).toContain("h-full");
+    expect(modelButton.className).toContain("w-[190px]");
+    expect(modelButton.className).toContain("justify-center");
     expect(modelButton.className).toContain("leading-none");
+    expect(modelButton.querySelector("span:first-child")?.className).not.toContain("top-");
+    expect(modelButton.querySelector("span:last-child")?.className).toContain("whitespace-nowrap");
+    expect(modelButton.querySelector("span:last-child")?.className).toContain("-top-[1.5px]");
+    expect(modelButton.querySelector("span:last-child")?.className).not.toContain("truncate");
+    expect(thinkingButton.className).toContain("h-full");
     expect(thinkingButton.className).toContain("leading-none");
+    expect(thinkingButton.querySelector("svg")).toBeNull();
   });
 
   it("allows changing permission mode from the reference composer", () => {

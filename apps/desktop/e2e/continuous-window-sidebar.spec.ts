@@ -296,9 +296,9 @@ test.describe("continuous acceptance window, tabs, and sidebar", () => {
                     const button = window.getComputedStyle(document.querySelector('button[aria-label="最小化窗口"]') as HTMLElement).webkitAppRegion;
                     return { title, button };
                 });
-                expect(regions.title).toBe("drag");
+                expect(regions.title).toBe("no-drag");
                 expect(regions.button).toBe("no-drag");
-                return "标题栏主体是 drag 区域，窗口按钮是 no-drag 可点击区域。";
+                return "标题栏统一由受控指针拖动处理，窗口按钮保持 no-drag 可点击。";
             }, "titlebar-drag-regions");
 
             await record("F02-C07", "F02", "最大化状态在 renderer reload 后同步回 UI", async () => {

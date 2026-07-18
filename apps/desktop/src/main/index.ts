@@ -71,6 +71,7 @@ import { forkNativeSession } from './services/pi-session/native-session-fork';
 import { loadPiSdk } from './services/pi-session/sdk-runtime';
 import { registerSingleInstance } from './services/single-instance';
 import { SqliteSessionRepository } from './services/sqlite-session-repository';
+import { resolveMainWindowChromeOptions } from './services/main-window-options';
 import type { PiAgentConfig } from './types';
 
 const e2eLocale = process.env.PI_DESKTOP_E2E_LOCALE;
@@ -518,14 +519,10 @@ function createWindow(): void {
     minHeight: MAIN_WINDOW_HEIGHT,
     show: false,
     autoHideMenuBar: true,
-    transparent: process.platform === "win32",
-    backgroundColor: "#00000000",
     // Custom title bar (renderer-controlled)
     //  - darwin: hiddenInset preserves native traffic lights
     //  - 其他: frame:false 全部由 renderer 渲染 drag region + 按钮
-    ...(process.platform === "darwin"
-      ? { titleBarStyle: "hiddenInset" as const, frame: true }
-      : { frame: false }),
+    ...resolveMainWindowChromeOptions(process.platform),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
