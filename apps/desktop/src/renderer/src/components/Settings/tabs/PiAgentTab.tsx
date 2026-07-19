@@ -11,15 +11,24 @@ export function PiAgentTab(): React.JSX.Element {
 
     useEffect(() => {
         if (!window.piAPI?.getFullConfig) return;
+        let active = true;
 
         const loadConfig = (): void => {
-            window.piAPI.getFullConfig().then(setPiFullConfig).catch(console.error);
+            window.piAPI.getFullConfig().then((config) => {
+                if (active) setPiFullConfig(config);
+            }).catch(console.error);
         };
 
         loadConfig();
-        return window.piAPI.onPiConfigChanged?.(() => {
+        window.addEventListener('focus', loadConfig);
+        const unsubscribe = window.piAPI.onPiConfigChanged?.(() => {
             loadConfig();
         });
+        return () => {
+            active = false;
+            window.removeEventListener('focus', loadConfig);
+            if (typeof unsubscribe === 'function') unsubscribe();
+        };
     }, []);
 
     return (

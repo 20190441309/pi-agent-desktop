@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 
 type CaseStatus = "PASS" | "FAIL" | "BLOCKED";
 
@@ -225,10 +225,7 @@ test.describe("continuous acceptance generated run", () => {
             let settingsWindow: Page | undefined;
             await record("设置 tab 打开独立设置窗口", async () => {
                 if (!page || !app) throw new Error("main page or app missing");
-                const settingsWindowPromise = app.waitForEvent("window");
-                await page.getByRole("button", { name: "打开设置" }).click();
-                settingsWindow = await settingsWindowPromise;
-                await settingsWindow.waitForLoadState("domcontentloaded");
+                settingsWindow = await showSettingsWindow(app, page);
                 await visible(settingsWindow, settingsWindow.getByRole("tablist", { name: "设置分类" }));
                 return "设置 tab 通过真实 IPC 打开独立 BrowserWindow。";
             }, "settings-window-opened", () => settingsWindow);
@@ -265,11 +262,7 @@ test.describe("continuous acceptance generated run", () => {
 
             await record("关闭设置窗口后主窗口仍可继续操作", async () => {
                 if (!page || !settingsWindow) throw new Error("main page or settings window missing");
-                const closed = settingsWindow.waitForEvent("close");
-                await settingsWindow.getByRole("button", { name: "关闭窗口" }).click({ noWaitAfter: true }).catch((error) => {
-                    if (!settingsWindow.isClosed()) throw error;
-                });
-                await closed;
+                await hideSettingsWindow(app, settingsWindow);
                 await page.bringToFront();
                 await page.getByRole("tab", { name: "对话" }).click();
                 await visible(page, page.locator('textarea[aria-label="发送"]').first());

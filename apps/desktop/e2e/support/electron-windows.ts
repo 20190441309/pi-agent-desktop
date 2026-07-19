@@ -45,6 +45,21 @@ export async function retryMainAction<T>(action: () => Promise<T>, attempts = 8)
     throw new Error("Electron main process action did not complete");
 }
 
+export async function showSettingsWindow(app: ElectronApplication, mainPage: Page): Promise<Page> {
+    await mainPage.getByRole("button", { name: "打开设置" }).click();
+    const settingsWindow = await getWindowByUrl(app, "settings.html");
+    await expect.poll(async () => app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows().find((candidate) => {
+            try {
+                return !candidate.isDestroyed() && candidate.webContents.getURL().includes("settings.html");
+            } catch {
+                return false;
+            }
+        });
+        return window?.isVisible() ?? false;
+    })).toBe(true);
+    return settingsWindow;
+}
 export async function hideSettingsWindow(app: ElectronApplication, settingsWindow: Page): Promise<void> {
     await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
     await expect.poll(async () => app.evaluate(({ BrowserWindow }) => {

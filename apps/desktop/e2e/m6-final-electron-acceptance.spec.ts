@@ -5,7 +5,7 @@ import { mkdir as mkdirAsync } from "fs/promises";
 import { join } from "path";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl, retryMainAction } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, retryMainAction, showSettingsWindow } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const HISTORY_NEEDLE = "m6-history-needle";
@@ -214,10 +214,7 @@ async function emitApprovalDeferredReview(
 }
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
-    const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("button", { name: "打开设置" }).click();
-    const settingsWindow = await settingsWindowPromise;
-    await settingsWindow.waitForLoadState("domcontentloaded");
+    const settingsWindow = await showSettingsWindow(app, page);
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible({ timeout: 10_000 });
     return settingsWindow;
 }
@@ -498,9 +495,7 @@ test.describe("M6 release gate — final Electron acceptance", () => {
             await goalSwitch.click();
             await expect(goalSwitch).toHaveAttribute("aria-checked", targetGoalState);
 
-            const closeFirst = settingsWindow.waitForEvent("close");
-            await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
-            await closeFirst;
+            await hideSettingsWindow(app!, settingsWindow);
             await page.bringToFront();
 
             settingsWindow = await openSettingsWindow(app!, page);
@@ -510,9 +505,7 @@ test.describe("M6 release gate — final Electron acceptance", () => {
             await settingsWindow.getByRole("tab", { name: "长程能力" }).click();
             await expect(settingsWindow.getByRole("switch", { name: "Goal / 停止条件" })).toHaveAttribute("aria-checked", targetGoalState);
 
-            const closeSecond = settingsWindow.waitForEvent("close");
-            await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
-            await closeSecond;
+            await hideSettingsWindow(app!, settingsWindow);
 
             await app!.close();
             app = undefined;
@@ -529,9 +522,7 @@ test.describe("M6 release gate — final Electron acceptance", () => {
             await expect(settingsWindow.getByRole("switch", { name: "Goal / 停止条件" })).toHaveAttribute("aria-checked", targetGoalState);
             await screenshot(settingsWindow, "2026-06-24-m6-04-settings-persisted.png");
 
-            const closeThird = settingsWindow.waitForEvent("close");
-            await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
-            await closeThird;
+            await hideSettingsWindow(app!, settingsWindow);
             await page.bringToFront();
         });
 

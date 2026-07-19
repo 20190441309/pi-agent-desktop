@@ -3,7 +3,7 @@ import { join } from "path";
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 
@@ -39,18 +39,9 @@ async function prepareWorkspace(page: Page, workspacePath: string): Promise<void
 }
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
-    const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("button", { name: "打开设置" }).click();
-    const settingsWindow = await settingsWindowPromise;
-    await settingsWindow.waitForLoadState("domcontentloaded");
+    const settingsWindow = await showSettingsWindow(app, page);
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();
     return settingsWindow;
-}
-
-async function closeSettingsWindow(settingsWindow: Page): Promise<void> {
-    const closeEvent = settingsWindow.waitForEvent("close");
-    await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
-    await closeEvent;
 }
 
 async function setFontSize(settingsWindow: Page, value: string): Promise<void> {
@@ -118,7 +109,7 @@ test.describe("settings persistence", () => {
 
         await captureAcceptanceScreenshot(settingsWindow, "2026-06-24-m4-01.png");
 
-        await closeSettingsWindow(settingsWindow);
+        await hideSettingsWindow(app!, settingsWindow);
         await page.bringToFront();
 
         settingsWindow = await openSettingsWindow(app, page);

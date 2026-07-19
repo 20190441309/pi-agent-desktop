@@ -4,6 +4,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
+import { hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 
 const TEST_TIMEOUT = 60_000;
 
@@ -151,10 +152,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         const userDataDir = test.info().outputPath(`settings-${Date.now()}`);
         const { app, page } = await launchApp(userDataDir);
 
-        const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('button', { name: '打开设置' }).click();
-        const settingsWindow = await settingsWindowPromise;
-        await settingsWindow.waitForLoadState('domcontentloaded');
+        const settingsWindow = await showSettingsWindow(app, page);
 
         // Get tabs
         const tabs = settingsWindow.getByRole('tablist', { name: '设置分类' }).getByRole('tab');
@@ -169,9 +167,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
             await expect(tabs.nth(i)).toHaveAttribute('aria-selected', 'true');
         }
 
-        const settingsClosed = settingsWindow.waitForEvent('close');
-        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
-        await settingsClosed;
+        await hideSettingsWindow(app, settingsWindow);
 
         await app.close();
     });
@@ -207,10 +203,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         await page.bringToFront();
         await expect.poll(async () => (await windowState(app, 'index.html')).isMinimized).toBe(false);
 
-        const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('button', { name: '打开设置' }).click();
-        const settingsWindow = await settingsWindowPromise;
-        await settingsWindow.waitForLoadState('domcontentloaded');
+        const settingsWindow = await showSettingsWindow(app, page);
         await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible();
         await expectTitlebarButtonsUsable(settingsWindow);
 
@@ -258,10 +251,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         await expect(page.getByRole('heading', { name: '工具权限' })).toHaveCount(0);
         await page.screenshot({ path: test.info().outputPath('right-rail-without-tool-permissions.png'), fullPage: true });
 
-        const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('button', { name: '打开设置' }).click();
-        const settingsWindow = await settingsWindowPromise;
-        await settingsWindow.waitForLoadState('domcontentloaded');
+        const settingsWindow = await showSettingsWindow(app, page);
         await settingsWindow.getByRole('tab', { name: '权限' }).click();
         await expect(settingsWindow.getByRole('heading', { name: '工具权限', exact: true })).toBeVisible({ timeout: 5000 });
         await expect(settingsWindow.getByLabel('网络')).toBeVisible();

@@ -57,4 +57,44 @@ describe("PiAgentTab", () => {
         });
         expect(getFullConfig).toHaveBeenCalledTimes(2);
     });
+
+    it("reloads the full Pi config when the reused window regains focus", async () => {
+        const getFullConfig = vi.fn()
+            .mockResolvedValueOnce({
+                configPath: "C:/Users/demo/.pi/agent",
+                defaultProvider: "mimo",
+                defaultModel: "mimo-v2.5",
+                providers: [],
+            })
+            .mockResolvedValueOnce({
+                configPath: "C:/Users/demo/.pi/agent",
+                defaultProvider: "longcat",
+                defaultModel: "longcat-preview",
+                providers: [],
+            });
+
+        Object.assign(window, {
+            piAPI: {
+                getFullConfig,
+                onPiConfigChanged: vi.fn(() => vi.fn()),
+            },
+        });
+
+        render(
+            <I18nProvider>
+                <PiAgentTab />
+            </I18nProvider>,
+        );
+
+        expect(await screen.findByText("mimo-v2.5")).toBeTruthy();
+
+        act(() => {
+            window.dispatchEvent(new Event("focus"));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("longcat-preview")).toBeTruthy();
+        });
+        expect(getFullConfig).toHaveBeenCalledTimes(2);
+    });
 });

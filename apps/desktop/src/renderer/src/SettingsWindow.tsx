@@ -28,7 +28,13 @@ function SettingsShell(): React.JSX.Element {
     }, [settings.theme]);
 
     useEffect(() => {
-        void loadPiConfig();
+        const refreshPiConfig = (): void => {
+            void loadPiConfig();
+        };
+
+        refreshPiConfig();
+        window.addEventListener('focus', refreshPiConfig);
+        return () => window.removeEventListener('focus', refreshPiConfig);
     }, [loadPiConfig]);
 
     useEffect(() => {

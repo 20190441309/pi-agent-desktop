@@ -13,7 +13,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 import { mkdir } from 'fs/promises';
 
 const TEST_TIMEOUT = 60_000;
@@ -44,10 +44,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
 }
 
 async function openConfigWindow(app: ElectronApplication, page: Page): Promise<Page> {
-    const settingsWindowPromise = app.waitForEvent('window');
-    await page.getByRole('button', { name: '打开设置' }).click();
-    const settingsWindow = await settingsWindowPromise;
-    await settingsWindow.waitForLoadState('domcontentloaded');
+    const settingsWindow = await showSettingsWindow(app, page);
     await settingsWindow.getByRole('tab', { name: '配置文件' }).click();
     await expect(settingsWindow.getByRole('tab', { name: '配置文件' })).toHaveAttribute('aria-selected', 'true');
     return settingsWindow;
@@ -182,9 +179,7 @@ test.describe('Pi Desktop — Third-Party Model Configuration', () => {
         await settingsWindow.waitForTimeout(500);
 
         // Close settings
-        const settingsClosed = settingsWindow.waitForEvent('close');
-        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
-        await settingsClosed;
+        await hideSettingsWindow(app, settingsWindow);
         await page.bringToFront();
 
         // Step 4: Verify via IPC API

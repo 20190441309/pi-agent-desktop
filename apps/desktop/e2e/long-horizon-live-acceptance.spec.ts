@@ -3,7 +3,7 @@ import { electronMainEntry } from "../playwright.config";
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 
 const SCREENSHOT_DIR = join(__dirname, "..", "e2e-output", "long-horizon-live");
 const DEEP_API_KEY_ENV = "PI_DESKTOP_DEEP_API_KEY";
@@ -143,18 +143,9 @@ async function takeScreenshot(page: Page, name: string): Promise<void> {
 }
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
-    const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("tab", { name: "设置" }).click();
-    const settingsWindow = await settingsWindowPromise;
-    await settingsWindow.waitForLoadState("domcontentloaded");
+    const settingsWindow = await showSettingsWindow(app, page);
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible({ timeout: 10_000 });
     return settingsWindow;
-}
-
-async function closeSettingsWindow(settingsWindow: Page): Promise<void> {
-    const closed = settingsWindow.waitForEvent("close");
-    await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
-    await closed;
 }
 
 async function setSwitch(page: Page, label: string, checked: boolean): Promise<void> {
@@ -408,7 +399,7 @@ liveDescribe("Pi Desktop long-horizon live acceptance", () => {
             subagents: true,
         });
         await takeScreenshot(settingsWindow, "02-settings-long-horizon-enabled");
-        await closeSettingsWindow(settingsWindow);
+        await hideSettingsWindow(context.app, settingsWindow);
         await page.bringToFront();
 
         await openModeMenu(page);
@@ -492,7 +483,7 @@ liveDescribe("Pi Desktop long-horizon live acceptance", () => {
             subagents: false,
         });
         await takeScreenshot(disabledSettings, "11-settings-long-horizon-disabled");
-        await closeSettingsWindow(disabledSettings);
+        await hideSettingsWindow(context.app, disabledSettings);
         await page.bringToFront();
 
         await openModeMenu(page);

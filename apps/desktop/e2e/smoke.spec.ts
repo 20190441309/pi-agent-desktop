@@ -14,7 +14,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -45,16 +45,6 @@ async function expandRightRailIfNeeded(page: Page): Promise<void> {
     if (await expandRightRail.isVisible().catch(() => false)) {
         await expandRightRail.click();
     }
-}
-
-async function closeSettingsWindow(settingsWindow: Page): Promise<void> {
-    const closed = settingsWindow.waitForEvent('close');
-    await settingsWindow.evaluate(() => {
-        const closeButton = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
-            .find((button) => button.getAttribute('aria-label') === '关闭窗口');
-        closeButton?.click();
-    });
-    await closed;
 }
 
 test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
@@ -115,13 +105,10 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await expect(page.getByTestId('terminal-panel')).toBeVisible({ timeout: 5000 });
         await expect(page.getByTestId('terminal-panel')).toHaveClass(/h-full/);
 
-        const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('button', { name: '打开设置' }).click();
-        const settingsWindow = await settingsWindowPromise;
-        await settingsWindow.waitForLoadState('domcontentloaded');
+        const settingsWindow = await showSettingsWindow(app, page);
         await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible({ timeout: 5000 });
 
-        await closeSettingsWindow(settingsWindow);
+        await hideSettingsWindow(app, settingsWindow);
         await page.bringToFront();
 
         await page.locator('button[data-mmcode-section="new-task"]').click();
@@ -186,10 +173,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
     test('4. Settings 独立窗口接通 — 10 个 tabs 都能切', async () => {
         ({ app, page } = await launchApp());
 
-        const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('button', { name: '打开设置' }).click();
-        const settingsWindow = await settingsWindowPromise;
-        await settingsWindow.waitForLoadState('domcontentloaded');
+        const settingsWindow = await showSettingsWindow(app, page);
 
         const tablist = settingsWindow.getByRole('tablist', { name: '设置分类' });
         await expect(tablist).toBeVisible();
@@ -213,7 +197,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await tablist.getByRole('tab', { name: '关于' }).click();
         await expect(tablist.getByRole('tab', { name: '关于' })).toHaveAttribute('aria-selected', 'true');
 
-        await closeSettingsWindow(settingsWindow);
+        await hideSettingsWindow(app, settingsWindow);
     });
 
     test('5. CommandPalette 接通 — Ctrl+K 快捷键 + 历史 / Sessions 路由', async () => {

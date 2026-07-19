@@ -8,7 +8,7 @@ import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { join } from 'path';
 import { mkdirSync } from 'fs';
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
     const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -110,10 +110,7 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         // ===== Step 6: Click "设置" (Settings) — opens window =====
         const settingsBtn = page.getByRole('button', { name: '打开设置' });
         await expect(settingsBtn).toBeVisible({ timeout: 5000 });
-        const settingsWindowPromise = app.waitForEvent('window');
-        await settingsBtn.click();
-        const settingsWindow = await settingsWindowPromise;
-        await settingsWindow.waitForLoadState('domcontentloaded');
+        const settingsWindow = await showSettingsWindow(app, page);
         await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible({ timeout: 5000 });
         await page.waitForTimeout(400);
         await settingsWindow.screenshot({ path: join(screenshotDir, '06-after-click-settings.png') });
@@ -129,9 +126,7 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
             console.log(`[AUTO] Settings tab ${i} clicked`);
         }
 
-        const settingsClosed = settingsWindow.waitForEvent('close');
-        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
-        await settingsClosed;
+        await hideSettingsWindow(app, settingsWindow);
         await page.bringToFront();
         await page.screenshot({ path: join(screenshotDir, '06c-after-close-settings.png') });
         console.log('[AUTO] Closed Settings window');

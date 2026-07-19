@@ -429,6 +429,22 @@ describe("App sidebar session navigation", () => {
         vi.useRealTimers();
     });
 
+    it("主窗口重新获得焦点时会刷新 Pi 模型配置", async () => {
+        render(<App />);
+
+        await waitFor(() => {
+            expect(piAPI.loadPiConfig).toHaveBeenCalledTimes(1);
+        });
+
+        act(() => {
+            window.dispatchEvent(new Event("focus"));
+        });
+
+        await waitFor(() => {
+            expect(piAPI.loadPiConfig).toHaveBeenCalledTimes(2);
+        });
+    });
+
     it("主导航只保留对话、运行、工作台和扩展，设置使用右侧图标按钮", () => {
         render(<App />);
 

@@ -486,7 +486,13 @@ function AppShell(): React.ReactElement {
     const loadPiConfigRef = useRef(loadPiConfig);
     loadPiConfigRef.current = loadPiConfig;
     useEffect(() => {
-        void loadPiConfigRef.current();
+        const refreshPiConfig = (): void => {
+            void loadPiConfigRef.current();
+        };
+
+        refreshPiConfig();
+        window.addEventListener("focus", refreshPiConfig);
+        return () => window.removeEventListener("focus", refreshPiConfig);
     }, []);
 
     // 首启检测：fresh user 直接显示；非首启则等 workspace 初始恢复完成后再决定

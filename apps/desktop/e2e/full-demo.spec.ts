@@ -14,7 +14,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 
 async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
   const userDataDir = test.info().outputPath(`full-demo-${Date.now()}`);
@@ -73,14 +73,9 @@ test.describe('Pi Desktop 完整功能演示', () => {
     await page.waitForTimeout(500);
     await page.screenshot({ path: 'e2e-output/demo-02-skills.png' });
 
-    const settingsWindowPromise = app.waitForEvent('window');
-    await page.getByRole('button', { name: '打开设置' }).click();
-    const settingsWindow = await settingsWindowPromise;
-    await settingsWindow.waitForLoadState('domcontentloaded');
+    const settingsWindow = await showSettingsWindow(app, page);
     await settingsWindow.screenshot({ path: 'e2e-output/demo-03-settings.png' });
-    const settingsClosed = settingsWindow.waitForEvent('close');
-    await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
-    await settingsClosed;
+    await hideSettingsWindow(app, settingsWindow);
     await page.bringToFront();
 
     // 回到聊天
@@ -125,10 +120,7 @@ test.describe('Pi Desktop 完整功能演示', () => {
     await page.keyboard.press('Escape');
 
     // ── 7. 设置 Model Tab ───────────────────────
-    const modelSettingsWindowPromise = app.waitForEvent('window');
-    await page.getByRole('button', { name: '打开设置' }).click();
-    const modelSettingsWindow = await modelSettingsWindowPromise;
-    await modelSettingsWindow.waitForLoadState('domcontentloaded');
+    const modelSettingsWindow = await showSettingsWindow(app, page);
 
     // 尝试切换 tab
     const modelTab = modelSettingsWindow.getByRole('tab', { name: '模型' });
@@ -137,8 +129,6 @@ test.describe('Pi Desktop 完整功能演示', () => {
       await modelSettingsWindow.waitForTimeout(500);
       await modelSettingsWindow.screenshot({ path: 'e2e-output/demo-10-settings-model.png' });
     }
-    const modelSettingsClosed = modelSettingsWindow.waitForEvent('close');
-    await modelSettingsWindow.getByRole('button', { name: '关闭窗口' }).click();
-    await modelSettingsClosed;
+    await hideSettingsWindow(app, modelSettingsWindow);
   });
 });

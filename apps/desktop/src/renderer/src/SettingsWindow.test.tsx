@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsWindow from "./SettingsWindow";
 import { useSettingsStore } from "./stores/settings-store";
@@ -44,6 +44,21 @@ describe("SettingsWindow", () => {
     expect(screen.queryByText("系统设置")).toBeNull();
   });
 
+  it("reloads Pi config when the reused settings window regains focus", async () => {
+    render(<SettingsWindow />);
+
+    await waitFor(() => {
+      expect(window.piAPI.loadPiConfig).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => {
+      expect(window.piAPI.loadPiConfig).toHaveBeenCalledTimes(2);
+    });
+  });
   it("marks the independent settings frame for first-show motion", () => {
     render(<SettingsWindow />);
 

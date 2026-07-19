@@ -19,7 +19,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow } from "./support/electron-windows";
 import { join } from 'path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
@@ -291,9 +291,7 @@ deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
         await settingsWindow.waitForTimeout(500);
         await takeScreenshot(settingsWindow, '03-settings-model-tab');
 
-        const settingsClosed = settingsWindow.waitForEvent('close');
-        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
-        await settingsClosed;
+        await hideSettingsWindow(app, settingsWindow);
         await page.bringToFront();
         await page.waitForTimeout(300);
         await takeScreenshot(page, '04-settings-closed');

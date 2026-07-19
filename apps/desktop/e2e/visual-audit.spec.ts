@@ -3,7 +3,7 @@ import { join } from "path";
 import { test, expect, _electron, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 
 const REAL_GIT_WORKSPACE_PATH = process.cwd();
 
@@ -337,16 +337,11 @@ test.describe("Pi Desktop — visual function audit", () => {
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "07-terminal");
 
-        const settingsWindowPromise = app.waitForEvent("window");
-        await page.getByRole("button", { name: "打开设置" }).click();
-        const settingsWindow = await settingsWindowPromise;
-        await settingsWindow.waitForLoadState("domcontentloaded");
+        const settingsWindow = await showSettingsWindow(app, page);
         await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();
         await expectHealthyLayout(settingsWindow);
         await screenshot(settingsWindow, screenshotDir, "08-settings");
-        const settingsClosed = settingsWindow.waitForEvent("close");
-        await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
-        await settingsClosed;
+        await hideSettingsWindow(app, settingsWindow);
         await page.bringToFront();
 
         await page.keyboard.press("Control+k");
@@ -427,10 +422,7 @@ test.describe("Pi Desktop — visual function audit", () => {
         ({ app, page } = await launchApp(userDataDir));
         await expect(page.getByRole("tablist", { name: "顶部标签栏" })).toBeVisible({ timeout: 15_000 });
 
-        const settingsWindowPromise = app.waitForEvent("window");
-        await page.getByRole("button", { name: "打开设置" }).click();
-        const settingsWindow = await settingsWindowPromise;
-        await settingsWindow.waitForLoadState("domcontentloaded");
+        const settingsWindow = await showSettingsWindow(app, page);
         await expect(settingsWindow.locator("html")).toHaveAttribute("data-theme", "dark");
         await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();
 
@@ -470,10 +462,7 @@ test.describe("Pi Desktop — visual function audit", () => {
         await expect(page.getByRole("tablist", { name: "顶部标签栏" })).toBeVisible({ timeout: 15_000 });
         await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
-        const settingsWindowPromise = app.waitForEvent("window");
-        await page.getByRole("button", { name: "打开设置" }).click();
-        const settingsWindow = await settingsWindowPromise;
-        await settingsWindow.waitForLoadState("domcontentloaded");
+        const settingsWindow = await showSettingsWindow(app, page);
         await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();
         await settingsWindow.getByRole("tab", { name: "界面" }).click();
         await expect(settingsWindow.getByRole("button", { name: "深色" })).toBeVisible();
@@ -526,9 +515,7 @@ test.describe("Pi Desktop — visual function audit", () => {
         const storedFontSize = await page.evaluate(() => window.piAPI.getSettings().then((settings) => settings.fontSize));
         expect(storedFontSize).toBe(20);
 
-        const settingsClosed = settingsWindow.waitForEvent("close");
-        await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
-        await settingsClosed;
+        await hideSettingsWindow(app, settingsWindow);
         await app.close();
         app = undefined;
 

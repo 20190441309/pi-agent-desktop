@@ -3,7 +3,7 @@ import { join } from "path";
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 
@@ -57,20 +57,11 @@ async function installGrantedNotificationMock(page: Page): Promise<void> {
 }
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
-    const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("button", { name: "打开设置" }).click();
-    const settingsWindow = await settingsWindowPromise;
-    await settingsWindow.waitForLoadState("domcontentloaded");
+    const settingsWindow = await showSettingsWindow(app, page);
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible({ timeout: 10_000 });
     await settingsWindow.getByRole("tab", { name: "通用" }).click();
     await expect(settingsWindow.getByRole("switch", { name: "系统通知" })).toBeVisible({ timeout: 10_000 });
     return settingsWindow;
-}
-
-async function closeSettingsWindow(settingsWindow: Page): Promise<void> {
-    const closeEvent = settingsWindow.waitForEvent("close");
-    await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
-    await closeEvent;
 }
 
 async function captureAcceptanceScreenshot(page: Page, fileName: string): Promise<void> {
@@ -112,12 +103,12 @@ test.describe("notification settings", () => {
         await notificationSwitch.click();
         await expect(notificationSwitch).toHaveAttribute("aria-checked", "false");
         await captureAcceptanceScreenshot(settingsWindow, "2026-06-30-notification-settings-off.png");
-        await closeSettingsWindow(settingsWindow);
+        await hideSettingsWindow(app!, settingsWindow);
 
         settingsWindow = await openSettingsWindow(app, page);
         await expect(settingsWindow.getByRole("switch", { name: "系统通知" })).toHaveAttribute("aria-checked", "false");
         await captureAcceptanceScreenshot(settingsWindow, "2026-06-30-notification-settings-reopen.png");
-        await closeSettingsWindow(settingsWindow);
+        await hideSettingsWindow(app!, settingsWindow);
 
         await app.close();
         app = undefined;
