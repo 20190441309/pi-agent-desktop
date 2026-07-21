@@ -3,7 +3,25 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiSlashCommand } from "@shared";
-import { useSlashCommands } from "./useSlashCommands";
+import { findActiveSlashCommand, useSlashCommands } from "./useSlashCommands";
+
+describe("findActiveSlashCommand", () => {
+  it("matches leading slash tokens and cursor window", () => {
+    expect(findActiveSlashCommand("/model", 6)).toEqual({
+      start: 0,
+      end: 6,
+      query: "model",
+    });
+    expect(findActiveSlashCommand("  /pl", 5)).toEqual({
+      start: 2,
+      end: 5,
+      query: "pl",
+    });
+    expect(findActiveSlashCommand("hello /mo", 9)).toBeNull();
+    expect(findActiveSlashCommand("/src/app.ts", 5)).toBeNull();
+    expect(findActiveSlashCommand("/model", 0)).toBeNull();
+  });
+});
 
 const COMMANDS: PiSlashCommand[] = [
   { name: "model", description: "Select model", source: "builtin", desktopAction: "open-models" },

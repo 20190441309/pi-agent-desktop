@@ -22,7 +22,7 @@ export interface UseSlashCommandsReturn {
     close: () => void;
 }
 
-function findActiveSlashCommand(text: string, cursorPosition: number): SlashCommandMatch | null {
+export function findActiveSlashCommand(text: string, cursorPosition: number): SlashCommandMatch | null {
     const cursor = Math.max(0, Math.min(cursorPosition, text.length));
     const match = text.match(/^(\s*)\/([^\s]*)/);
     if (!match) return null;
