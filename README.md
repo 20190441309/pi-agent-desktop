@@ -24,7 +24,7 @@ Current release snapshot:
 | Published GitHub Releases | `v1.0.12` stable release |
 | Release assets | `Pi-Desktop-1.0.12-setup.exe`, `Pi-Desktop-1.0.12-setup.exe.blockmap`, `latest.yml` |
 | Release published at | `2026-06-27 15:59:59Z` |
-| GitHub release page | `https://github.com/ChisaAlter/pi-agent-desktop/releases/tag/v1.0.12` |
+| GitHub release page | `https://github.com/20190441309/pi-agent-desktop/releases/tag/v1.0.12` |
 | In-app updater runtime | implemented, packaged, and wired to GitHub Releases |
 | Real updater result today | a real packaged `1.0.11` build discovered, downloaded, and installed the live `v1.0.12` release from GitHub Releases |
 
@@ -64,7 +64,7 @@ The release line is now consistent end to end: package version, installer naming
 ### Install and run
 
 ```bash
-git clone https://github.com/ChisaAlter/pi-agent-desktop.git
+git clone https://github.com/20190441309/pi-agent-desktop.git
 cd pi-desktop
 pnpm install
 pnpm --filter @pi-desktop/desktop dev

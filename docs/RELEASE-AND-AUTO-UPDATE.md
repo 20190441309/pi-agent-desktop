@@ -24,7 +24,7 @@ This snapshot was updated on 2026-06-27 as part of the updater release cut.
 | Latest remote Git tag | `v1.0.12` |
 | Published GitHub Release | `v1.0.12` |
 | Release published at | `2026-06-27 15:59:59Z` |
-| GitHub release page | `https://github.com/ChisaAlter/pi-agent-desktop/releases/tag/v1.0.12` |
+| GitHub release page | `https://github.com/20190441309/pi-agent-desktop/releases/tag/v1.0.12` |
 | Published assets | installer, installer blockmap, `latest.yml` |
 | Updater result in packaged build | anonymous GitHub metadata is live; a real packaged `1.0.11` build downloaded and installed `1.0.12` successfully |
 
@@ -175,7 +175,7 @@ You are testing the wrong artifact shape. The updater runtime depends on package
 For `v1.0.12`, a `404` is no longer expected from missing release publication. If it happens now, check:
 
 - the repository was not switched back to `private`
-- the packaged app is still pointing at `ChisaAlter/pi-agent-desktop`
+- the packaged app is still pointing at `20190441309/pi-agent-desktop`
 - the packaged app was built with `PI_DESKTOP_ENABLE_AUTO_UPDATE=1`
 - the network path to GitHub Releases is reachable from the test machine
 - the release asset URLs in `latest.yml` still resolve

@@ -142,6 +142,14 @@ const PI_AGENT_DIR = process.env.PI_DESKTOP_CONFIG_DIR || join(homedir(), '.pi',
 
 // Configure redaction and bounded file rotation before the first log entry.
 configureProductionLogging(log);
+
+// Suppress EPIPE errors from broken stdout/stderr pipes (background launch on macOS)
+process.stdout.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code !== "EPIPE") throw err;
+});
+process.stderr.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code !== "EPIPE") throw err;
+});
 attachCrashDiagnostics({ processEvents: process, appEvents: app, logger: log });
 // Startup banner for electron-log diagnostics
 log.info(`[Main] Pi Desktop starting (electron ${process.versions.electron}, node ${process.versions.node})`);
@@ -530,6 +538,7 @@ function createWindow(): void {
   });
 
   mainWindow.on('ready-to-show', () => {
+    if (process.platform === 'darwin') app.dock?.show();
     mainWindow?.show();
   });
 
@@ -1012,6 +1021,8 @@ app.whenReady().then(() => {
     log.info('No Pi Agent config found, using defaults');
   }
 
+  // Ensure macOS dock icon is visible when launched from background
+  if (process.platform === "darwin") app.dock?.show();
   createWindow();
   desktopOverlayWindowManager = new DesktopOverlayWindowManager(() => mainWindow);
   desktopOverlayWindowManager.ensureWindow();
@@ -1095,6 +1106,7 @@ app.whenReady().then(() => {
   });
 
   app.on('activate', () => {
+    if (process.platform === 'darwin') app.dock?.show();
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }

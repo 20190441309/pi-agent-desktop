@@ -19,7 +19,7 @@ describe("AboutTab updater card", () => {
                 lastCheckedAt: 1_720_000_000_000,
                 disabledReason: null,
                 error: null,
-                releasePageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest",
+                releasePageUrl: "https://github.com/20190441309/pi-agent-desktop/releases/latest",
             },
             loading: false,
             error: null,
@@ -63,7 +63,7 @@ describe("AboutTab updater card", () => {
                 lastCheckedAt: 1_720_000_000_000,
                 disabledReason: null,
                 error: null,
-                releasePageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest",
+                releasePageUrl: "https://github.com/20190441309/pi-agent-desktop/releases/latest",
             },
         });
 
@@ -88,7 +88,7 @@ describe("AboutTab updater card", () => {
                 lastCheckedAt: 1_720_000_000_000,
                 disabledReason: null,
                 error: null,
-                releasePageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest",
+                releasePageUrl: "https://github.com/20190441309/pi-agent-desktop/releases/latest",
             },
             loading: true,
         });
@@ -118,7 +118,7 @@ describe("AboutTab updater card", () => {
                 lastCheckedAt: 1_720_000_000_000,
                 disabledReason: null,
                 error: null,
-                releasePageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest",
+                releasePageUrl: "https://github.com/20190441309/pi-agent-desktop/releases/latest",
             },
         });
 
@@ -144,7 +144,7 @@ describe("AboutTab updater card", () => {
                 lastCheckedAt: 1_720_000_000_000,
                 disabledReason: "仍可检查 GitHub 最新版本，如有更新请手动下载。",
                 error: null,
-                releasePageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest",
+                releasePageUrl: "https://github.com/20190441309/pi-agent-desktop/releases/latest",
             },
         });
 
@@ -171,7 +171,7 @@ describe("AboutTab updater card", () => {
                 lastCheckedAt: 1_720_000_000_000,
                 disabledReason: null,
                 error: "GitHub Releases 404",
-                releasePageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest",
+                releasePageUrl: "https://github.com/20190441309/pi-agent-desktop/releases/latest",
             },
             error: null,
         });

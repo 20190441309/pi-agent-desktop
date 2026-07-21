@@ -107,7 +107,7 @@ describe("ManagedModelsPanel model actions", () => {
         expect(testButtonLabels()).toEqual(["测试 Zeta Model", "测试 Alpha Model"]);
     });
 
-    it("offers only OpenAI-compatible, Codex, and Claude Code API formats", async () => {
+    it("offers OpenAI-compatible, Codex, Claude Code, and Google AI API formats", async () => {
         render(
             <I18nProvider>
                 <ManagedModelsPanel onPiConfigChanged={vi.fn(async () => undefined)} />
@@ -122,6 +122,7 @@ describe("ManagedModelsPanel model actions", () => {
             "OpenAI 兼容",
             "Codex",
             "Claude Code",
+            "Google AI",
         ]);
     });
 

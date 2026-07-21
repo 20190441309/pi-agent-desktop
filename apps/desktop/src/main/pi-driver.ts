@@ -59,27 +59,37 @@ export type { PiAgentModel, PiAgentConfig } from './types';
 
 const PI_NPM_PACKAGE = '@earendil-works/pi-coding-agent';
 const PI_AGENT_DIR = join(homedir(), '.pi', 'agent');
-const MANAGED_RUNTIME_ROOT = join(
-  process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'),
-  'PiDesktop',
-  'runtime',
-  'pi',
-);
+const MANAGED_RUNTIME_ROOT = platform() === 'win32'
+  ? join(
+      process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'),
+      'PiDesktop',
+      'runtime',
+      'pi',
+    )
+  : join(homedir(), 'Library', 'Application Support', 'PiDesktop', 'runtime', 'pi');
 const MANAGED_RUNTIME_BACKUP = `${MANAGED_RUNTIME_ROOT}.previous`;
 
-// Windows 上 npm global bin 的常见位置
+// 各平台 npm global bin 的常见位置
 const COMMON_PATHS = platform() === 'win32'
   ? [
       join(homedir(), 'AppData', 'Roaming', 'npm'),
       join(homedir(), 'AppData', 'Local', 'npm'),
       'C:\\Program Files\\nodejs',
     ]
-  : [
-      '/usr/local/bin',
-      '/usr/bin',
-      join(homedir(), '.npm-global', 'bin'),
-      join(homedir(), '.local', 'bin'),
-    ];
+  : platform() === 'darwin'
+    ? [
+        '/opt/homebrew/bin',       // Apple Silicon Homebrew
+        '/usr/local/bin',          // Intel Mac / Homebrew Intel
+        '/usr/bin',
+        join(homedir(), '.npm-global', 'bin'),
+        join(homedir(), '.local', 'bin'),
+      ]
+    : [
+        '/usr/local/bin',
+        '/usr/bin',
+        join(homedir(), '.npm-global', 'bin'),
+        join(homedir(), '.local', 'bin'),
+      ];
 
 // ── 主类 ────────────────────────────────────────────────────────
 

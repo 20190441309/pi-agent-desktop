@@ -6,7 +6,7 @@ Thanks for your interest in contributing! Pi Desktop is an open-source Electron 
 
 ```bash
 # 1. Fork & clone
-git clone https://github.com/ChisaAlter/pi-agent-desktop.git
+git clone https://github.com/20190441309/pi-agent-desktop.git
 cd pi-desktop
 pnpm install
 

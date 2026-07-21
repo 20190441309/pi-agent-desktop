@@ -14,7 +14,7 @@ As of 2026-06-27:
   - `Pi-Desktop-1.0.12-setup.exe`
   - `Pi-Desktop-1.0.12-setup.exe.blockmap`
   - `latest.yml`
-- release page: `https://github.com/ChisaAlter/pi-agent-desktop/releases/tag/v1.0.12`
+- release page: `https://github.com/20190441309/pi-agent-desktop/releases/tag/v1.0.12`
 - anonymous release feed URLs now return `200`, which is required for end-user `electron-updater` checks
 
 ## Included in this release

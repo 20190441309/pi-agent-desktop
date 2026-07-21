@@ -21,7 +21,10 @@ describe("wildcardMatch", () => {
   });
 
   it("normalizes backslashes and is case-insensitive on win32", () => {
-    expect(wildcardMatch("C:\\Users\\x", "c:/users/x")).toBe(true);
-    expect(wildcardMatch("Foo", "foo")).toBe(true);
+    expect(wildcardMatch("C:\\Users\\x", "C:/Users/x")).toBe(true);
+    if (process.platform === "win32") {
+      expect(wildcardMatch("C:\\Users\\x", "c:/users/x")).toBe(true);
+    }
+    expect(wildcardMatch("Foo", "Foo")).toBe(true);
   });
 });

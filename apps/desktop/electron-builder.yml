@@ -18,8 +18,6 @@ files:
   - '!build_output.txt'
   - '!extensions/**/*'
 extraResources:
-  - from: build/icon.ico
-    to: build/icon.ico
   - from: extensions
     to: extensions
     filter:
@@ -29,6 +27,9 @@ extraResources:
 win:
   executableName: "Pi Desktop"
   icon: build/icon.ico
+  extraResources:
+    - from: build/icon.ico
+      to: build/icon.ico
   target:
     - target: nsis
       arch: x64
@@ -47,8 +48,19 @@ nsis:
   warningsAsErrors: true
 
 mac:
+  icon: build/icon.icns
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
+  extraResources:
+    - from: build/icon.png
+      to: build/icon.png
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  hardenedRuntime: false
+  gatekeeperAssess: false
 
 linux:
   target:
@@ -67,6 +79,6 @@ electronDownload:
 # Release workflow 使用 PI_DESKTOP_ENABLE_AUTO_UPDATE=1 重新构建 main bundle，应用内更新入口才会启用。
 publish:
   provider: github
-  owner: ChisaAlter
+  owner: 20190441309
   repo: pi-agent-desktop
   releaseType: release

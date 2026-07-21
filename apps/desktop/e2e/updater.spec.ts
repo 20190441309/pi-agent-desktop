@@ -79,7 +79,7 @@ async function installUpdaterIpcStubs(app: ElectronApplication): Promise<void> {
             lastCheckedAt: null,
             disabledReason: null,
             error: null,
-            releasePageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest",
+            releasePageUrl: "https://github.com/20190441309/pi-agent-desktop/releases/latest",
         };
         for (const channel of ["updater:get-state", "updater:check", "updater:download", "updater:install"]) {
             ipcMain.removeHandler(channel);

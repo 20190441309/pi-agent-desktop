@@ -45,6 +45,179 @@ const providerApiOptions = [
     { value: 'openai-completions', label: 'OpenAI 兼容' },
     { value: 'openai-codex-responses', label: 'Codex' },
     { value: 'anthropic-messages', label: 'Claude Code' },
+    { value: 'google-generative-ai', label: 'Google AI' },
+];
+
+interface PresetProvider {
+    id: string;
+    name: string;
+    baseUrl: string;
+    api: string;
+    models: Array<{ id: string; name: string; contextWindow?: number; reasoning?: boolean }>;
+}
+
+const PRESET_PROVIDERS: PresetProvider[] = [
+    // ── 多模型网关 (OMP 来源) ──────────────────────────────────
+    {
+        id: 'opencode',
+        name: 'OpenCode Zen',
+        baseUrl: 'https://opencode.ai/zen/v1',
+        api: 'openai-completions',
+        models: [
+            { id: 'deepseek-v4-flash-free', name: 'DeepSeek V4 Flash (免费)', contextWindow: 65536 },
+            { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', contextWindow: 65536 },
+            { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', contextWindow: 65536, reasoning: true },
+            { id: 'mimo-v2.5-free', name: 'MiMo V2.5 (免费)', contextWindow: 1048576, reasoning: true },
+            { id: 'minimax-m3', name: 'MiniMax M3', contextWindow: 131072 },
+            { id: 'glm-5.2', name: 'GLM 5.2', contextWindow: 128000 },
+            { id: 'kimi-k2.7-code', name: 'Kimi K2.7 Code', contextWindow: 131072 },
+            { id: 'grok-4.5', name: 'Grok 4.5', contextWindow: 131072 },
+            { id: 'nemotron-3-ultra-free', name: 'Nemotron 3 Ultra (免费)', contextWindow: 131072 },
+        ],
+    },
+    {
+        id: 'zenmux',
+        name: 'ZenMux',
+        baseUrl: 'https://zenmux.ai/api/v1',
+        api: 'openai-completions',
+        models: [
+            { id: 'openai/gpt-4o', name: 'GPT-4o', contextWindow: 128000 },
+            { id: 'openai/gpt-5', name: 'GPT-5', contextWindow: 200000, reasoning: true },
+            { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', contextWindow: 65536, reasoning: true },
+            { id: 'deepseek/deepseek-v4-flash-free', name: 'DeepSeek V4 Flash (免费)', contextWindow: 65536 },
+            { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1048576, reasoning: true },
+            { id: 'google/gemini-3.5-flash', name: 'Gemini 3.5 Flash', contextWindow: 1048576 },
+            { id: 'xiaomi/mimo-v2.5-pro', name: 'MiMo V2.5 Pro', contextWindow: 1048576, reasoning: true },
+            { id: 'xiaomi/mimo-v2.5', name: 'MiMo V2.5', contextWindow: 1048576, reasoning: true },
+            { id: 'qwen/qwen3.7-max', name: 'Qwen 3.7 Max', contextWindow: 131072 },
+            { id: 'z-ai/glm-5.2', name: 'GLM 5.2', contextWindow: 128000 },
+            { id: 'moonshotai/kimi-k3', name: 'Kimi K3', contextWindow: 131072 },
+            { id: 'x-ai/grok-4.5', name: 'Grok 4.5', contextWindow: 131072 },
+            { id: 'minimax/minimax-m3', name: 'MiniMax M3', contextWindow: 131072 },
+        ],
+    },
+    // ── 厂商直连 ─────────────────────────────────────────────
+    {
+        id: 'xiaomi',
+        name: '小米 MiMo',
+        baseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
+        api: 'openai-completions',
+        models: [
+            { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', contextWindow: 1048576, reasoning: true },
+            { id: 'mimo-v2.5', name: 'MiMo V2.5', contextWindow: 1048576, reasoning: true },
+            { id: 'mimo-v2-pro', name: 'MiMo V2 Pro', contextWindow: 1048576, reasoning: true },
+            { id: 'mimo-v2-omni', name: 'MiMo V2 Omni', contextWindow: 262144, reasoning: true },
+        ],
+    },
+    {
+        id: 'openai',
+        name: 'OpenAI',
+        baseUrl: 'https://api.openai.com/v1',
+        api: 'openai-completions',
+        models: [
+            { id: 'gpt-4o', name: 'GPT-4o', contextWindow: 128000 },
+            { id: 'gpt-4o-mini', name: 'GPT-4o Mini', contextWindow: 128000 },
+            { id: 'o1', name: 'o1', contextWindow: 200000, reasoning: true },
+            { id: 'o3-mini', name: 'o3 Mini', contextWindow: 200000, reasoning: true },
+        ],
+    },
+    {
+        id: 'anthropic',
+        name: 'Anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        api: 'anthropic-messages',
+        models: [
+            { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', contextWindow: 200000, reasoning: true },
+            { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', contextWindow: 200000 },
+            { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', contextWindow: 200000 },
+        ],
+    },
+    {
+        id: 'google',
+        name: 'Google AI',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+        api: 'google-generative-ai',
+        models: [
+            { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1048576, reasoning: true },
+            { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextWindow: 1048576, reasoning: true },
+            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', contextWindow: 1048576 },
+        ],
+    },
+    {
+        id: 'deepseek',
+        name: 'DeepSeek',
+        baseUrl: 'https://api.deepseek.com',
+        api: 'openai-completions',
+        models: [
+            { id: 'deepseek-chat', name: 'DeepSeek V3', contextWindow: 65536 },
+            { id: 'deepseek-reasoner', name: 'DeepSeek R1', contextWindow: 65536, reasoning: true },
+        ],
+    },
+    // ── 国内厂商 ─────────────────────────────────────────────
+    {
+        id: 'qwen',
+        name: '通义千问',
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        api: 'openai-completions',
+        models: [
+            { id: 'qwen-max', name: 'Qwen Max', contextWindow: 131072 },
+            { id: 'qwen-plus', name: 'Qwen Plus', contextWindow: 131072 },
+            { id: 'qwen-turbo', name: 'Qwen Turbo', contextWindow: 131072 },
+            { id: 'qwq-plus', name: 'QwQ Plus', contextWindow: 131072, reasoning: true },
+        ],
+    },
+    {
+        id: 'zhipu',
+        name: '智谱 AI',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        api: 'openai-completions',
+        models: [
+            { id: 'glm-4-plus', name: 'GLM-4 Plus', contextWindow: 128000 },
+            { id: 'glm-4-flash', name: 'GLM-4 Flash', contextWindow: 128000 },
+        ],
+    },
+    {
+        id: 'moonshot',
+        name: 'Moonshot',
+        baseUrl: 'https://api.moonshot.cn/v1',
+        api: 'openai-completions',
+        models: [
+            { id: 'moonshot-v1-128k', name: 'Moonshot v1 128K', contextWindow: 131072 },
+            { id: 'moonshot-v1-32k', name: 'Moonshot v1 32K', contextWindow: 32768 },
+        ],
+    },
+    {
+        id: 'minimax',
+        name: 'MiniMax',
+        baseUrl: 'https://api.minimax.chat/v1',
+        api: 'openai-completions',
+        models: [
+            { id: 'MiniMax-M1', name: 'MiniMax M1', contextWindow: 131072, reasoning: true },
+            { id: 'abab6.5s-chat', name: 'Abab 6.5s', contextWindow: 131072 },
+        ],
+    },
+    // ── 本地模型 ─────────────────────────────────────────────
+    {
+        id: 'ollama',
+        name: 'Ollama (本地)',
+        baseUrl: 'http://localhost:11434/v1',
+        api: 'openai-completions',
+        models: [
+            { id: 'qwen3:8b', name: 'Qwen3 8B', contextWindow: 32768 },
+            { id: 'llama3.1:8b', name: 'Llama 3.1 8B', contextWindow: 131072 },
+            { id: 'deepseek-r1:8b', name: 'DeepSeek R1 8B', contextWindow: 32768, reasoning: true },
+            { id: 'gemma3:4b', name: 'Gemma 3 4B', contextWindow: 32768 },
+        ],
+    },
+    {
+        id: 'lm-studio',
+        name: 'LM Studio (本地)',
+        baseUrl: 'http://localhost:1234/v1',
+        api: 'openai-completions',
+        models: [
+            { id: 'local-model', name: '本地模型', contextWindow: 32768 },
+        ],
+    },
 ];
 
 function apiFromApiType(apiType?: string): string | undefined {
@@ -264,6 +437,65 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                     <div className="text-sm font-semibold text-[var(--mm-text-primary)]">{displayedForm.originalModelId ? '编辑模型' : '新增模型'}</div>
                     <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-md px-2 py-1 text-sm transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">关闭</button>
                 </div>
+                {!displayedForm.originalModelId && (
+                    <div className="shrink-0 border-b border-[var(--mm-border)] px-5 py-3">
+                        <div className="mb-2 text-xs font-medium text-[var(--mm-text-secondary)]">快速选择供应商</div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {PRESET_PROVIDERS.map((preset) => (
+                                <button
+                                    key={preset.id}
+                                    type="button"
+                                    onClick={() => {
+                                        const m = preset.models[0];
+                                        setForm({
+                                            ...displayedForm,
+                                            providerId: preset.id,
+                                            providerName: preset.name,
+                                            baseUrl: preset.baseUrl,
+                                            api: preset.api,
+                                            modelId: m.id,
+                                            modelName: m.name,
+                                            contextWindow: m.contextWindow?.toString() ?? '',
+                                            reasoning: m.reasoning ?? false,
+                                        });
+                                    }}
+                                    className="settings-pressable rounded-md border border-[var(--mm-border)] px-2.5 py-1 text-xs font-medium text-[var(--mm-text-primary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]"
+                                >
+                                    {preset.name}
+                                </button>
+                            ))}
+                        </div>
+                        {PRESET_PROVIDERS.find(p => p.id === displayedForm.providerId) && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                {PRESET_PROVIDERS.find(p => p.id === displayedForm.providerId)!.models.map((m) => (
+                                    <button
+                                        key={m.id}
+                                        type="button"
+                                        onClick={() => {
+                                            const p = PRESET_PROVIDERS.find(pp => pp.id === displayedForm.providerId)!;
+                                            setForm({
+                                                ...displayedForm,
+                                                modelId: m.id,
+                                                modelName: m.name,
+                                                contextWindow: m.contextWindow?.toString() ?? '',
+                                                reasoning: m.reasoning ?? false,
+                                                baseUrl: p.baseUrl,
+                                                api: p.api,
+                                            });
+                                        }}
+                                        className={`settings-pressable rounded-md border px-2 py-0.5 text-[11px] transition-[transform,background-color] duration-150 ease-out ${
+                                            displayedForm.modelId === m.id
+                                                ? 'border-[var(--mm-accent-blue)] bg-[var(--mm-accent-blue)]/10 text-[var(--mm-accent-blue)]'
+                                                : 'border-[var(--mm-border)] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]'
+                                        }`}
+                                    >
+                                        {m.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
                 <div className="grid min-h-0 grid-cols-2 gap-4 overflow-y-auto p-5">
                     <FormInput inputRef={providerIdInputRef} label="Provider ID" value={displayedForm.providerId} onChange={(providerId) => setForm({ ...displayedForm, providerId })} />
                     <FormInput label="Provider 名称" value={displayedForm.providerName} onChange={(providerName) => setForm({ ...displayedForm, providerName })} />

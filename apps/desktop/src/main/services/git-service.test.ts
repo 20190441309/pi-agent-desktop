@@ -44,7 +44,8 @@ describe("git-service protected path policy", () => {
     });
 
     it("blocks staging files outside the workspace", async () => {
-        const result = await gitAdd("C:/repo", ["C:/outside/secret.txt"]);
+        const outsidePath = process.platform === "win32" ? "C:/outside/readme.txt" : "/tmp/outside/readme.txt";
+        const result = await gitAdd("C:/repo", [outsidePath]);
 
         expect(isIpcError(result)).toBe(true);
         if (isIpcError(result)) {
@@ -119,7 +120,8 @@ describe("git-service protected path policy", () => {
         );
     });
     it("applies the same file guard to diff and unstage", async () => {
-        const diffResult = await gitDiff("C:/repo", "C:/outside/app.ts");
+        const outsidePath = process.platform === "win32" ? "C:/outside/app.ts" : "/tmp/outside/app.ts";
+        const diffResult = await gitDiff("C:/repo", outsidePath);
         const unstageResult = await gitUnstage("C:/repo", [".npmrc"]);
 
         expect(isIpcError(diffResult)).toBe(true);

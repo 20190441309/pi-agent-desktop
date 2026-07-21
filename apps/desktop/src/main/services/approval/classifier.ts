@@ -39,15 +39,20 @@ function isExtraHighRiskCommand(cmd: string): boolean {
     return EXTRA_HIGH_RISK_PATTERNS.some((p) => p.test(cmd));
 }
 
-// 高危写路径 (支持 Unix / Windows / ~ 前缀)
+// 高危写路径 (支持 Unix / Windows / macOS / ~ 前缀)
 const HIGH_RISK_PATH_PATTERNS: RegExp[] = [
     /^~?\/?\.ssh\//,
     /^~?\/?\.aws\//,
     /^~?\/?\.config\//,
     /^~?\/?\.bashrc$/,
     /^~?\/?\.zshrc$/,
+    /^~?\/?\.zprofile$/,
     /^~?\/?\.profile$/,
     /^\/etc\//i,
+    /^\/System\//i,
+    /^\/Library\//i,
+    /^\/private\//i,
+    /^\/usr\/(bin|sbin)\//i,
     /^C:\\Windows\\System32/i,
     /\.git[\\/]hooks/,
     /\.git[\\/]config$/,

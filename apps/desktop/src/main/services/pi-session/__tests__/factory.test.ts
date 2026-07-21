@@ -238,10 +238,10 @@ describe("createWorkspaceSession", () => {
             },
         });
 
-        expect(authStorageCreate).toHaveBeenCalledWith("C:\\Users\\test\\.pi\\agent\\auth.json");
+        expect(authStorageCreate).toHaveBeenCalledWith(join("C:/Users/test/.pi/agent/auth.json"));
         expect(modelRegistryCreate).toHaveBeenCalledWith(
             expect.anything(),
-            "C:\\Users\\test\\.pi\\agent\\models.json",
+            join("C:/Users/test/.pi/agent/models.json"),
         );
         expect(registerProvider).toHaveBeenCalledWith(
             "longcat",

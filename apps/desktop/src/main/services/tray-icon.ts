@@ -15,13 +15,16 @@ export interface TrayIconPathResolution {
 
 export function resolveTrayIconPath(options: TrayIconPathResolverOptions): TrayIconPathResolution {
   const exists = options.exists ?? existsSync;
+  const isMac = process.platform === 'darwin';
+  const iconFile = isMac ? 'icon.png' : 'icon.ico';
+
   const checkedPaths = [
-    join(options.resourcesPath, "build", "icon.ico"),
-    join(options.resourcesPath, "app.asar.unpacked", "build", "icon.ico"),
-    join(options.appPath, "build", "icon.ico"),
-    resolve(options.appPath, "..", "build", "icon.ico"),
-    resolve(options.appPath, "..", "..", "build", "icon.ico"),
-    join(options.cwd, "build", "icon.ico"),
+    join(options.resourcesPath, "build", iconFile),
+    join(options.resourcesPath, "app.asar.unpacked", "build", iconFile),
+    join(options.appPath, "build", iconFile),
+    resolve(options.appPath, "..", "build", iconFile),
+    resolve(options.appPath, "..", "..", "build", iconFile),
+    join(options.cwd, "build", iconFile),
   ];
 
   return {

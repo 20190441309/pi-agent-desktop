@@ -11,7 +11,7 @@ const updaterState = {
     lastCheckedAt: null,
     disabledReason: null,
     error: null,
-    releasePageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest",
+    releasePageUrl: "https://github.com/20190441309/pi-agent-desktop/releases/latest",
 };
 
 const listeners: Array<(state: typeof updaterState) => void> = [];

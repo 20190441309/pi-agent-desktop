@@ -28,8 +28,9 @@ type WorkspaceStore = {
 /** 共享的 workspace 串行 mutator (锁范围仅覆盖 store.get/set 的 RMW)。 */
 type MutateWorkspaces = (fn: (current: Workspace[]) => Workspace[]) => Promise<Workspace[]>;
 
-function normalizeWorkspacePath(path: string): string {
-  return path.trim().replace(/[\\/]+/g, "\\").replace(/\\+$/, "").toLowerCase();
+function normalizeWorkspacePath(p: string): string {
+  const normalized = p.trim().replace(/[\\/]+/g, '/');
+  return normalized.replace(/\/+$/, '').toLowerCase();
 }
 
 export function setupWorkspaceIpc(opts: {

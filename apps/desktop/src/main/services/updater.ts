@@ -5,8 +5,8 @@ import type { AppUpdaterProgress, AppUpdaterState } from "@shared";
 
 declare const __PI_DESKTOP_AUTO_UPDATE_ENABLED__: boolean;
 
-const RELEASE_PAGE_URL = "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest";
-const RELEASE_API_URL = "https://api.github.com/repos/ChisaAlter/pi-agent-desktop/releases/latest";
+const RELEASE_PAGE_URL = "https://github.com/20190441309/pi-agent-desktop/releases/latest";
+const RELEASE_API_URL = "https://api.github.com/repos/20190441309/pi-agent-desktop/releases/latest";
 const STARTUP_CHECK_DELAY_MS = 3_000;
 const PERIODIC_CHECK_MS = 6 * 60 * 60 * 1_000;
 

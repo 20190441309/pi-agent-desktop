@@ -142,7 +142,7 @@ describe("agent modes", () => {
     it("allows plan mode to write only plan markdown files", () => {
         expect(isPlanModeToolAllowed({ toolName: "read", args: { file_path: "src/app.ts" }, workspacePath: "C:/repo" })).toBe(true);
         expect(isPlanModeToolAllowed({ toolName: "write", args: { file_path: ".pi/plans/input.md" }, workspacePath: "C:/repo" })).toBe(true);
-        expect(isPlanModeToolAllowed({ toolName: "edit", args: { path: "C:/repo/.pi/plans/input.md" }, workspacePath: "C:/repo" })).toBe(true);
+        expect(isPlanModeToolAllowed({ toolName: "edit", args: { path: ".pi/plans/input.md" }, workspacePath: "C:/repo" })).toBe(true);
         expect(isPlanModeToolAllowed({ toolName: "plan_write", args: { filename: "create-plan-probe" }, workspacePath: "C:/repo" })).toBe(true);
         expect(isPlanModeToolAllowed({ toolName: "plan_write", args: { filename: ".pi/plans/chat-input.md" }, workspacePath: "C:/repo" })).toBe(true);
         expect(isPlanModeToolAllowed({ toolName: "write", args: { file_path: "src/app.ts" }, workspacePath: "C:/repo" })).toBe(false);

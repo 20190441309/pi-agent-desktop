@@ -170,3 +170,82 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -LiteralPath C:\p -Recurse -Force -ErrorAction SilentlyContinue
+
+  release-macos:
+    name: Build + Publish (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Lint
+        run: pnpm -r lint
+
+      - name: Build (renderer + main)
+        run: pnpm --filter @pi-desktop/desktop build
+        env:
+          PI_DESKTOP_ENABLE_AUTO_UPDATE: "1"
+
+      - name: Package (DMG for macOS)
+        run: pnpm --filter @pi-desktop/desktop package
+        env:
+          PI_DESKTOP_ENABLE_AUTO_UPDATE: "1"
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Publish GitHub release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          notes_file="RELEASE-NOTES-${tag}.md"
+          title="Pi Desktop ${tag}"
+
+          if [ ! -f "$notes_file" ]; then
+            cat > "$notes_file" <<EOF
+          # ${title}
+
+          Release artifacts for ${tag}.
+          EOF
+          fi
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --title "$title" --notes-file "$notes_file"
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$title" --notes-file "$notes_file"
+          fi
+
+          gh release upload "$tag" \
+            apps/desktop/dist/Pi-Desktop-*.dmg \
+            apps/desktop/dist/latest-mac.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-desktop-${{ github.ref_name }}-macos
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/latest-mac.yml
+          if-no-files-found: error

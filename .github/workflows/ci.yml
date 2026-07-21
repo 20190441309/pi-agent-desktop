@@ -12,8 +12,12 @@ concurrency:
 
 jobs:
   verify:
-    name: Typecheck + Lint + Test
-    runs-on: windows-latest
+    name: Typecheck + Lint + Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
     steps:
@@ -30,21 +34,15 @@ jobs:
         with:
           version: 9.0.0
 
-      # 不做 release.yml 里的 NSIS 短路径镜像; verify 只跑 typecheck/lint/test,
-      # 不打包, Windows 路径长度足够。pnpm store 缓存复用 install。
       - name: Install dependencies
-        shell: pwsh
         run: pnpm install --frozen-lockfile
 
       # 严格按 AGENTS.md 的验证顺序: typecheck 与 lint 可并行, 但必须都过再跑 test。
       - name: Typecheck
-        shell: pwsh
         run: pnpm -r typecheck
 
       - name: Lint
-        shell: pwsh
         run: pnpm -r lint
 
       - name: Test
-        shell: pwsh
         run: pnpm -r test

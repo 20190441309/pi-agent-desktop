@@ -76,7 +76,7 @@ describe("AppUpdaterService", () => {
         fetchLatestReleaseMock.mockResolvedValueOnce({
             tagName: "v0.2.0",
             body: "Manual release notes",
-            pageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/tag/v0.2.0",
+            pageUrl: "https://github.com/20190441309/pi-agent-desktop/releases/tag/v0.2.0",
         });
         const service = setupAutoUpdater({
             autoUpdateEnabled: false,
@@ -106,7 +106,7 @@ describe("AppUpdaterService", () => {
         fetchLatestReleaseMock.mockResolvedValueOnce({
             tagName: "v0.0.9",
             body: null,
-            pageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/tag/v0.0.9",
+            pageUrl: "https://github.com/20190441309/pi-agent-desktop/releases/tag/v0.0.9",
         });
         const service = setupAutoUpdater({
             autoUpdateEnabled: false,
@@ -197,7 +197,7 @@ describe("AppUpdaterService", () => {
         emit(
             "error",
             new Error(
-                '404 "method: GET url: https://github.com/ChisaAlter/pi-agent-desktop/releases.atom\\n\\nPlease double check that your authentication token is correct.\\n"\\nHeaders: {"x-test":"value"}',
+                '404 "method: GET url: https://github.com/20190441309/pi-agent-desktop/releases.atom\\n\\nPlease double check that your authentication token is correct.\\n"\\nHeaders: {"x-test":"value"}',
             ),
         );
 

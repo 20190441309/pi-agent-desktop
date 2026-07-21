@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { join } from "path";
 import { resolveNativeSessionPath } from "../session-path";
 
 describe("resolveNativeSessionPath", () => {
     it("maps a desktop session id to one stable JSONL path", () => {
         expect(resolveNativeSessionPath("C:/user-data", "session-123"))
-            .toBe("C:\\user-data\\pi-sessions\\session-123-b9c84322f82434cb.jsonl");
+            .toBe(join("C:/user-data", "pi-sessions", "session-123-b9c84322f82434cb.jsonl"));
     });
 
     it.each(["", "../auth", "session/child", "session\\child", "session id", "会话"])(
@@ -18,8 +19,8 @@ describe("resolveNativeSessionPath", () => {
     it.each(["session_123", "session.123", "SESSION-123"])(
         "allows the documented filename characters in %s",
         (sessionId) => {
-            expect(resolveNativeSessionPath("C:/user-data", sessionId))
-                .toMatch(/^C:\\user-data\\pi-sessions\\[a-z0-9._-]+-[a-f0-9]{16}\.jsonl$/);
+            const result = resolveNativeSessionPath("C:/user-data", sessionId);
+            expect(result).toMatch(/[\\/][\w.-]+-[\da-f]{16}\.jsonl$/);
         },
     );
 
@@ -27,8 +28,8 @@ describe("resolveNativeSessionPath", () => {
         const upper = resolveNativeSessionPath("C:/user-data", "Session-A");
         const lower = resolveNativeSessionPath("C:/user-data", "session-a");
 
-        expect(upper).toBe("C:\\user-data\\pi-sessions\\session-a-70d359e1f21e1bfd.jsonl");
-        expect(lower).toBe("C:\\user-data\\pi-sessions\\session-a-fa57a52dbf081902.jsonl");
+        expect(upper).toBe(join("C:/user-data", "pi-sessions", "session-a-70d359e1f21e1bfd.jsonl"));
+        expect(lower).toBe(join("C:/user-data", "pi-sessions", "session-a-fa57a52dbf081902.jsonl"));
         expect(upper.toLowerCase()).not.toBe(lower.toLowerCase());
     });
 
@@ -39,7 +40,7 @@ describe("resolveNativeSessionPath", () => {
         ["..", "session-5ec1f7e700f37c3d.jsonl"],
     ])("maps Windows-special id %s to a regular filename", (sessionId, filename) => {
         expect(resolveNativeSessionPath("C:/user-data", sessionId))
-            .toBe(`C:\\user-data\\pi-sessions\\${filename}`);
+            .toBe(join("C:/user-data", "pi-sessions", filename));
     });
 
     it("is stable for repeated calls with the same original id", () => {

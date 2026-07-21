@@ -34,6 +34,11 @@ export function configureProductionLogging(logger: typeof log): void {
     if (logger.transports?.file) {
         logger.transports.file.maxSize = 10 * 1024 * 1024;
     }
+    // Disable console transport when stdout is not a TTY to avoid EPIPE errors
+    // (happens when launched from background shell or after pipe closes)
+    if (logger.transports?.console && !process.stdout.isTTY) {
+        logger.transports.console.level = false;
+    }
     if (hookInstalled || !Array.isArray(logger.hooks)) return;
     logger.hooks.push((message) => ({
         ...message,

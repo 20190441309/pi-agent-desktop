@@ -114,10 +114,10 @@ describe("setupProjectShellIpc", () => {
         openExternalMock.mockResolvedValueOnce(undefined);
 
         const handler = handlers.get("shell:open-path")!;
-        const result = await handler({}, "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest");
+        const result = await handler({}, "https://github.com/20190441309/pi-agent-desktop/releases/latest");
 
         expect(result).toBe("");
-        expect(openExternalMock).toHaveBeenCalledWith("https://github.com/ChisaAlter/pi-agent-desktop/releases/latest");
+        expect(openExternalMock).toHaveBeenCalledWith("https://github.com/20190441309/pi-agent-desktop/releases/latest");
         expect(openPathMock).not.toHaveBeenCalled();
     });
 
