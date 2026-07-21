@@ -102,6 +102,34 @@ describe("PtyManager", () => {
         expect(mgr.size()).toBe(0);
     });
 
+    it("closeAll kills every live pty (A-008 quit process-tree contract)", async () => {
+        await mgr.create({ id: "p1" });
+        await mgr.create({ id: "p2" });
+        await mgr.create({ id: "p3" });
+        expect(mgr.size()).toBe(3);
+
+        mgr.closeAll();
+
+        expect(mgr.size()).toBe(0);
+        expect(fakePtys[0].kill).toHaveBeenCalledTimes(1);
+        expect(fakePtys[1].kill).toHaveBeenCalledTimes(1);
+        expect(fakePtys[2].kill).toHaveBeenCalledTimes(1);
+        expect(mgr.list()).toEqual([]);
+    });
+
+    it("closeAll continues when one pty.kill throws (quit must not hang)", async () => {
+        await mgr.create({ id: "p1" });
+        await mgr.create({ id: "p2" });
+        fakePtys[0].kill.mockImplementationOnce(() => {
+            throw new Error("kill failed");
+        });
+
+        expect(() => mgr.closeAll()).not.toThrow();
+        expect(mgr.size()).toBe(0);
+        expect(fakePtys[0].kill).toHaveBeenCalled();
+        expect(fakePtys[1].kill).toHaveBeenCalled();
+    });
+
     it("emits output via onOutput listener", async () => {
         const listener = vi.fn();
         mgr.onOutput(listener);

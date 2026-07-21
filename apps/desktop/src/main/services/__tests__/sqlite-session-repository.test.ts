@@ -84,4 +84,52 @@ describe("SqliteSessionRepository", () => {
         expect(await repository.searchSessionMessages({ query: "card content", limit: 10 }))
             .toEqual([expect.objectContaining({ messageId: "m1" })]);
     });
+
+    it("finds hyphenated needles via LIKE fallback when FTS token OR returns no hit", async () => {
+        const repository = createRepository();
+        await repository.createSession("w1", "Search session", "s-search");
+        await repository.appendMessage("s-search", {
+            id: "m-search",
+            role: "user",
+            content: "search-floating-needle 顶部历史搜索应该打开这条消息",
+            timestamp: new Date(2_000),
+        });
+
+        const hits = await repository.searchSessionMessages({
+            query: "search-floating-needle",
+            limit: 10,
+        });
+        expect(hits).toEqual([expect.objectContaining({
+            sessionId: "s-search",
+            messageId: "m-search",
+            messageContent: expect.stringContaining("search-floating-needle"),
+        })]);
+    });
+
+    it("does not return partial FTS token matches for multi-token needles", async () => {
+        const repository = createRepository();
+        await repository.createSession("w1", "Search session", "s-search");
+        await repository.appendMessage("s-search", {
+            id: "m-user",
+            role: "user",
+            content: "search-floating-needle 顶部历史搜索应该打开这条消息",
+            timestamp: new Date(2_000),
+        });
+        await repository.appendMessage("s-search", {
+            id: "m-assistant",
+            role: "assistant",
+            content: "search-floating-assistant-reply",
+            timestamp: new Date(3_000),
+        });
+
+        const hits = await repository.searchSessionMessages({
+            query: "search-floating-needle",
+            limit: 10,
+        });
+        expect(hits).toHaveLength(1);
+        expect(hits[0]).toEqual(expect.objectContaining({
+            messageId: "m-user",
+            messageContent: expect.stringContaining("search-floating-needle"),
+        }));
+    });
 });

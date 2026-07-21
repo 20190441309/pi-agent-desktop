@@ -71,7 +71,7 @@ describe("GitRailControls", () => {
     window.addEventListener("app:switch-section", switchSpy);
     renderControls();
 
-    fireEvent.click(screen.getByRole("button", { name: "查看变更文件" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看变更文件，打开 Git 面板" }));
 
     expect(switchSpy).toHaveBeenCalledWith(expect.objectContaining({ detail: { section: "git" } }));
     window.removeEventListener("app:switch-section", switchSpy);

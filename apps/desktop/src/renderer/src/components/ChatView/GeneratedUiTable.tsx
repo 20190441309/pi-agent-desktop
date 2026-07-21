@@ -5,12 +5,12 @@ interface GeneratedUiTableProps {
   section: Extract<GeneratedUiSectionV2, { kind: "table" }>;
 }
 
-function compareValues(left: GeneratedUiPrimitive, right: GeneratedUiPrimitive): number {
+export function compareValues(left: GeneratedUiPrimitive, right: GeneratedUiPrimitive): number {
   if (typeof left === "number" && typeof right === "number") return left - right;
   return String(left ?? "").localeCompare(String(right ?? ""), undefined, { numeric: true, sensitivity: "base" });
 }
 
-function formatValue(value: GeneratedUiPrimitive, format: "text" | "number" | "percent" | undefined): string {
+export function formatValue(value: GeneratedUiPrimitive, format: "text" | "number" | "percent" | undefined): string {
   if (value === null) return "";
   if (format === "number" && typeof value === "number") return new Intl.NumberFormat().format(value);
   if (format === "percent" && typeof value === "number") return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value)}%`;

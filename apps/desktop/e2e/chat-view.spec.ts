@@ -323,11 +323,12 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         await thinkingTrigger.click();
         const thinkingMenu = page.getByRole('menu', { name: '思考强度' });
         await expect(thinkingMenu).toBeVisible();
-        await expect(thinkingMenu.getByRole('menuitemradio', { name: '高' })).toBeVisible();
-        await thinkingMenu.getByRole('menuitemradio', { name: '高' }).click();
+        // Prefer data-thinking-level: Playwright name "高" also matches "最高".
+        await expect(thinkingMenu.locator('[data-thinking-level="high"]')).toBeVisible();
+        await thinkingMenu.locator('[data-thinking-level="high"]').click();
         await expect(page.getByRole('button', { name: /思考强度: 高/ })).toBeVisible();
         await controls.getByRole('button', { name: /思考强度: 高/ }).click();
-        await expect(thinkingMenu.getByRole('menuitemradio', { name: '高' })).toHaveAttribute('aria-checked', 'true');
+        await expect(thinkingMenu.locator('[data-thinking-level="high"]')).toHaveAttribute('aria-checked', 'true');
         await page.keyboard.press('Escape');
         await expect(thinkingMenu).toBeHidden();
 

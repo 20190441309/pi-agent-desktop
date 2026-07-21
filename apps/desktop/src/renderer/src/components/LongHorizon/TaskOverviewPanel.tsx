@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import type { GeneratedUiCard, GeneratedUiListItem } from "@shared";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
 import { usePlanStore } from "../../stores/plan-store";
 import { useRuntimeFeatureStore, isRuntimeFeatureEnabled } from "../../stores/runtime-feature-store";
@@ -7,12 +8,96 @@ import { useWorkspaceStore } from "../../stores/workspace-store";
 import { useSessionStore } from "../../stores/session-store";
 import { useAgentStore } from "../../stores/agent-store";
 import { useI18n } from "../../i18n";
+import type { TaskProgressItem, TaskStatus } from "../MiniMaxCode/TaskProgressPanel";
+
+interface MessageWithGeneratedUi {
+  generatedUi?: GeneratedUiCard;
+}
+
+/** Exported for unit tests. */
+export function mapPlanStepStatus(status: "pending" | "running" | "completed" | "failed" | "waiting" | "blocked"): TaskStatus {
+  switch (status) {
+    case "running":
+      return "running";
+    case "completed":
+      return "completed";
+    case "failed":
+    case "blocked":
+      return "failed";
+    case "pending":
+    case "waiting":
+    default:
+      return "pending";
+  }
+}
+
+/** Exported for unit tests. */
+export function mapUiStatus(status?: string): TaskStatus {
+  if (!status) return "pending";
+  const normalized = status.toLowerCase();
+  if (normalized === "running" || normalized === "in_progress" || normalized === "progress" || normalized === "进行中") {
+    return "running";
+  }
+  if (
+    normalized === "completed"
+    || normalized === "done"
+    || normalized === "success"
+    || normalized === "skipped"
+    || normalized === "完成"
+  ) {
+    return "completed";
+  }
+  if (normalized === "failed" || normalized === "error" || normalized === "blocked" || normalized === "失败") {
+    return "failed";
+  }
+  return "pending";
+}
+
+/** Exported for unit tests. */
+export function tasksFromListItems(items: GeneratedUiListItem[]): TaskProgressItem[] {
+  return items
+    .map((item) => {
+      const name = item.label?.trim();
+      if (!name) return null;
+      return {
+        id: item.id || name,
+        name,
+        status: mapUiStatus(item.status),
+      } satisfies TaskProgressItem;
+    })
+    .filter((item): item is TaskProgressItem => item !== null);
+}
+
+/** Exported for unit tests. */
+export function tasksFromGeneratedUi(card: GeneratedUiCard | undefined): TaskProgressItem[] {
+  if (!card?.sections?.length) return [];
+  const collected: TaskProgressItem[] = [];
+  for (const section of card.sections) {
+    if (section.kind === "steps" || section.kind === "status_list" || section.kind === "file_list") {
+      collected.push(...tasksFromListItems(section.items));
+    }
+  }
+  return collected;
+}
+
+/** Exported for unit tests. */
+export function tasksFromMessages(messages: MessageWithGeneratedUi[]): TaskProgressItem[] {
+  // Prefer the newest workflow/progress card so phase sequence reflects the latest run.
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const fromCard = tasksFromGeneratedUi(messages[index]?.generatedUi);
+    if (fromCard.length > 0) return fromCard;
+  }
+  return [];
+}
 
 export function TaskOverviewPanel(): React.JSX.Element {
   const currentSessionId = useSessionStore((state) => state.currentSessionId);
+  const sessions = useSessionStore((state) => state.sessions);
   const currentAgentId = useAgentStore((state) => state.currentAgentId);
   const agents = useAgentStore((state) => state.agents);
+  const messagesByAgent = useAgentStore((state) => state.messagesByAgent);
   const goal = usePlanStore((state) => state.goal);
+  const planSteps = usePlanStore((state) => state.steps);
   const featureState = useRuntimeFeatureStore((state) => state.featureState);
   const longHorizon = useSettingsStore((state) => state.settings.longHorizon);
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
@@ -28,7 +113,36 @@ export function TaskOverviewPanel(): React.JSX.Element {
       : undefined;
     return selectedAgent?.id ?? agents.find((agent) => agent.workspaceId === currentWorkspace.id && !agent.sessionId)?.id;
   }, [agents, currentAgentId, currentSessionId, currentWorkspace]);
-  const { tasks } = useTaskProgress(scopedAgentId);
+  const { tasks: scopedRegistryTasks } = useTaskProgress(scopedAgentId);
+  // Workspace-wide fallback: plan/workflow rows are often written with agentId,
+  // but after tab switches or agent rebinding the scoped id may not match.
+  const { tasks: workspaceRegistryTasks } = useTaskProgress(undefined);
+  const sessionMessages = useMemo((): MessageWithGeneratedUi[] => {
+    if (!currentSessionId) return [];
+    const session = sessions.find((item) => item.id === currentSessionId);
+    return session?.messages ?? [];
+  }, [currentSessionId, sessions]);
+  const agentMessages = useMemo((): MessageWithGeneratedUi[] => {
+    if (!scopedAgentId) return [];
+    return messagesByAgent?.[scopedAgentId] ?? [];
+  }, [messagesByAgent, scopedAgentId]);
+  // Prefer registry tasks; fall back to live plan/workflow steps and the
+  // latest generated-ui phase card so Compose stages remain visible on the
+  // Run tab even when chat is hidden or agent-scoped registry rows lag.
+  const tasks = useMemo(() => {
+    if (scopedRegistryTasks.length > 0) return scopedRegistryTasks;
+    if (workspaceRegistryTasks.length > 0) return workspaceRegistryTasks;
+    if (planSteps.length > 0) {
+      return planSteps.map((step) => ({
+        id: step.id,
+        name: step.text,
+        status: mapPlanStepStatus(step.status),
+      }));
+    }
+    const fromAgent = tasksFromMessages(agentMessages);
+    if (fromAgent.length > 0) return fromAgent;
+    return tasksFromMessages(sessionMessages);
+  }, [agentMessages, planSteps, scopedRegistryTasks, sessionMessages, workspaceRegistryTasks]);
   const taskEnabled = isRuntimeFeatureEnabled(featureState, longHorizon, "task");
 
   const statusLabel = (status: "pending" | "running" | "completed" | "failed"): string => {

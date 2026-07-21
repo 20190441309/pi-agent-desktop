@@ -500,10 +500,11 @@ test.describe("Pi Desktop — settings window interaction audit", () => {
         const apiOptions = await dialog.getByLabel("API 类型").locator("option").evaluateAll((options) =>
             options.map((option) => ({ label: option.textContent?.trim(), value: option.getAttribute("value") }))
         );
+        // Product labels are localized product names; values are the wire formats.
         expect(apiOptions).toEqual(expect.arrayContaining([
-            { label: "OpenAI Chat Completions", value: "openai-completions" },
-            { label: "OpenAI Responses", value: "openai-responses" },
-            { label: "Anthropic Messages", value: "anthropic-messages" },
+            { label: "OpenAI 兼容", value: "openai-completions" },
+            { label: "Codex", value: "openai-codex-responses" },
+            { label: "Claude Code", value: "anthropic-messages" },
         ]));
 
         await expectSoftInputFocus(dialog.getByLabel("Provider ID"), "Provider ID input");

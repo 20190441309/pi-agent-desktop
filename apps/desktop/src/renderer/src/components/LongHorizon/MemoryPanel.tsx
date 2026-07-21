@@ -6,7 +6,8 @@ import { useSettingsStore } from "../../stores/settings-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { useI18n } from "../../i18n";
 
-function recordMeta(record: LongHorizonMemoryRecord): string {
+/** Exported for unit tests — compact meta line for memory cards. */
+export function recordMeta(record: LongHorizonMemoryRecord): string {
   const parts: string[] = [record.layer, record.kind];
   if (record.score !== undefined) parts.push(`score ${record.score.toFixed(2)}`);
   return parts.join(" · ");

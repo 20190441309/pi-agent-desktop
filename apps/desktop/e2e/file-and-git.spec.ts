@@ -119,7 +119,7 @@ test.describe('Pi Desktop — File & Git Workflow', () => {
         await reloadAppShell(page);
 
         await page.getByRole("button", { name: "展开右侧栏" }).click();
-        await page.getByRole("button", { name: "提交或推送，打开 Git 面板" }).click();
+        await page.getByRole("button", { name: /查看变更文件/ }).click();
         await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 10_000 });
         await expect(page.getByText(/0 staged \/ 1 changes/)).toBeVisible({ timeout: 10_000 });
 

@@ -652,7 +652,7 @@
     "commitOrPush": "Commit or push",
     "commitOrPushAria": "Commit or push",
     "gitActions": {
-      "openChanges": "View changed files",
+      "openChanges": "View changed files, open Git panel",
       "branchDialog": "Manage branches",
       "commitDialog": "Commit or push",
       "searchBranches": "Search branches",

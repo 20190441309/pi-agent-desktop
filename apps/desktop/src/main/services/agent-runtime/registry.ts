@@ -176,13 +176,18 @@ function promptFailureDetails(error: unknown): string {
             const operation = this.enqueueRuntimeOperation(runtime, async () => {
                 const modeOptions = this.deps.getModeOptions?.(runtime.workspace.id);
                 const mode = normalizeAgentMode(input.mode, modeOptions);
+                // Capture Pi session mode before /plan toggle so plan→build can inject BUILD_SWITCH.
+                const previousSessionMode = runtime.sessionMode;
                 await this.syncRuntimeMode(runtime, mode, input.streamingBehavior);
                 runtime.mode = mode;
                 await this.configureSessionPermissions(runtime, runtime.session, mode);
                 const visibleContent = visibleUserPromptContent(text);
                 this.addMessage(runtime, "user", visibleContent, { mode });
                 this.rememberRecentUserIntent(runtime, visibleContent, mode);
-                const outbound = buildAgentModePrompt(mode, text, modeOptions);
+                const outbound = buildAgentModePrompt(mode, text, {
+                    ...modeOptions,
+                    previousMode: previousSessionMode,
+                });
                 await this.promptRuntime(runtime, outbound, input.streamingBehavior, {
                     returnEarly: true,
                     onAccepted: resolveAccepted,

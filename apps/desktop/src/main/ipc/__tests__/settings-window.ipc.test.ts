@@ -125,8 +125,11 @@ describe("setupSettingsWindowIpc", () => {
   it("hides and reuses the settings window instead of destroying it", async () => {
     const openWindow = handlers.get("settings:open-window");
     const closeWindow = handlers.get("settings:close-window");
+    const rendererReady = handlers.get("settings:renderer-ready");
 
     await openWindow?.({}, "general");
+    // Mark renderer ready so the re-show path can emit settings:window-shown.
+    expect(rendererReady?.({ sender: webContents })).toBe("general");
     await closeWindow?.({});
     await openWindow?.({}, "usage");
 
@@ -135,6 +138,8 @@ describe("setupSettingsWindowIpc", () => {
     expect(mockWindow.close).not.toHaveBeenCalled();
     expect(mockWindow.show).toHaveBeenCalledTimes(1);
     expect(mockWindow.focus).toHaveBeenCalledTimes(1);
+    expect(sendMock).toHaveBeenCalledWith("settings:select-tab", "usage");
+    expect(sendMock).toHaveBeenCalledWith("settings:window-shown");
   });
 
   it("turns a native close request into a hide while the app is running", async () => {

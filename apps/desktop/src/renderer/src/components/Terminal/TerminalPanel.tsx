@@ -77,11 +77,17 @@ export function TerminalPanel({
         const id = `term_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         const containerRef = React.createRef<HTMLDivElement>();
 
+        const isDark =
+            typeof document !== "undefined" &&
+            document.documentElement.getAttribute("data-theme") === "dark";
         const term = new Terminal({
             cursorBlink: true,
             fontFamily: 'Menlo, "Cascadia Code", Consolas, monospace',
             fontSize: terminalFontSize,
-            theme: { background: "#ffffff" },
+            // Match app theme so dark mode does not paint a white xterm slab.
+            theme: isDark
+                ? { background: "#1a1a1a", foreground: "#e5e5e5", cursor: "#e5e5e5" }
+                : { background: "#ffffff", foreground: "#1a1a1a", cursor: "#1a1a1a" },
         });
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
@@ -340,6 +346,7 @@ export function TerminalPanel({
                     onClick={() => void createTab()}
                     className="text-xs px-2 py-1 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded"
                     title="新建终端"
+                    aria-label="新建终端"
                 >
                     +
                 </button>
@@ -349,6 +356,7 @@ export function TerminalPanel({
                         onClick={onClose}
                         className="text-xs px-2 py-1 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded ml-1"
                         title="收起终端"
+                        aria-label="收起终端"
                     >
                         ✕
                     </button>
@@ -403,6 +411,7 @@ export function TerminalPanel({
                             按 <kbd className="px-1.5 py-0.5 bg-[var(--mm-bg-hover)] rounded text-[10px] font-mono">Ctrl + `</kbd> 或点下面按钮新建
                         </p>
                         <button
+                            type="button"
                             onClick={() => void createTab()}
                             className="px-4 py-2 bg-[#1a1a1a] text-white rounded hover:bg-[#333] transition-colors text-sm"
                         >

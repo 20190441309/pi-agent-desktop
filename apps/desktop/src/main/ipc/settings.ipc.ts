@@ -99,7 +99,12 @@ export function setupSettingsIpc(opts: {
 
     if (currentModel) {
       const currentSettings = store.get('settings');
-      if (!currentSettings.model && !currentSettings.provider) {
+      // External edits to settings.json defaultProvider/defaultModel should refresh
+      // the live selection (settings UI + main model menu), not only first-run empty state.
+      if (
+        currentSettings.model !== currentModel.model
+        || currentSettings.provider !== currentModel.provider
+      ) {
         store.set('settings', {
           ...currentSettings,
           model: currentModel.model,

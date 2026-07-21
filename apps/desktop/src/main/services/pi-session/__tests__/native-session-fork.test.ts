@@ -27,6 +27,9 @@ function desktopHistory(): DesktopMessage[] {
 }
 
 describe("forkNativeSession", () => {
+    // Real Pi SDK load + JSONL branch/fork can exceed the default 5s on cold Windows CI.
+    const SDK_TEST_TIMEOUT_MS = 30_000;
+
     it("creates a real Pi branch ending at the selected desktop message", async () => {
         const sdk = await loadPiSdk();
         const dir = makeTempDir();
@@ -65,7 +68,7 @@ describe("forkNativeSession", () => {
         const reopened = sdk.SessionManager.open(targetPath);
         expect(reopened.buildSessionContext().messages.map((message) => message.role)).toEqual(["user", "assistant"]);
         expect(reopened.getHeader()?.parentSession).toBe(sourcePath);
-    });
+    }, SDK_TEST_TIMEOUT_MS);
 
     it("converts imported desktop history into a resumable Pi JSONL session", async () => {
         const sdk = await loadPiSdk();
@@ -83,5 +86,5 @@ describe("forkNativeSession", () => {
 
         const reopened = sdk.SessionManager.open(targetPath);
         expect(reopened.buildSessionContext().messages.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
-    });
+    }, SDK_TEST_TIMEOUT_MS);
 });

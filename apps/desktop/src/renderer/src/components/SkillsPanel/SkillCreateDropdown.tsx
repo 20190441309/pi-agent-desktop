@@ -33,19 +33,28 @@ export function SkillCreateDropdown({
     return (
         <div ref={ref} className="relative">
             <button
+                type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 bg-[#1a1a1a] text-white text-sm rounded hover:bg-[#333] transition-colors"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                aria-label="创建技能"
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 bg-[#1a1a1a] text-white text-sm rounded hover:bg-[#333] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-accent-blue)]"
             >
                 <span>+ 创建</span>
             </button>
             {open && (
-                <div className="absolute right-0 top-full mt-1 w-72 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-lg shadow-lg z-10 py-1">
+                <div
+                    role="menu"
+                    className="absolute right-0 top-full mt-1 w-72 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-lg shadow-lg z-10 py-1"
+                >
                     <button
+                        type="button"
+                        role="menuitem"
                         onClick={() => {
                             setOpen(false);
                             onBuildWithPi?.();
                         }}
-                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--mm-bg-sidebar)] transition-colors flex items-start gap-2"
+                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--mm-bg-sidebar)] transition-colors flex items-start gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--mm-accent-blue)]"
                     >
                         <span className={optionIconClasses} aria-hidden="true">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -58,11 +67,13 @@ export function SkillCreateDropdown({
                         </div>
                     </button>
                     <button
+                        type="button"
+                        role="menuitem"
                         onClick={() => {
                             setOpen(false);
                             onWriteDirect?.();
                         }}
-                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--mm-bg-sidebar)] transition-colors flex items-start gap-2"
+                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--mm-bg-sidebar)] transition-colors flex items-start gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--mm-accent-blue)]"
                     >
                         <span className={optionIconClasses} aria-hidden="true">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -75,11 +86,13 @@ export function SkillCreateDropdown({
                         </div>
                     </button>
                     <button
+                        type="button"
+                        role="menuitem"
                         onClick={() => {
                             setOpen(false);
                             onImportFromGitHub?.();
                         }}
-                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--mm-bg-sidebar)] transition-colors flex items-start gap-2"
+                        className="w-full text-left px-3 py-2.5 hover:bg-[var(--mm-bg-sidebar)] transition-colors flex items-start gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--mm-accent-blue)]"
                     >
                         <span className={optionIconClasses} aria-hidden="true">
                             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">

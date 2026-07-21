@@ -97,7 +97,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
 
         await page.getByRole('tab', { name: '对话' }).click();
         await expandRightRailIfNeeded(page);
-        await page.getByRole('button', { name: /提交或推送/ }).click();
+        await page.getByRole('button', { name: /查看变更文件/ }).click();
         await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 5000 });
         await expect(page.getByRole('tab', { name: 'Git' })).toHaveAttribute('aria-selected', 'true');
 
@@ -274,8 +274,9 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await thinkingTrigger.click();
         const thinkingMenu = page.getByRole('menu', { name: '思考强度' });
         await expect(thinkingMenu).toBeVisible();
-        await expect(thinkingMenu.getByRole('menuitemradio', { name: '高' })).toBeVisible();
-        await thinkingMenu.getByRole('menuitemradio', { name: '低' }).click();
+        // Prefer data-thinking-level: Playwright name "高" also matches "最高".
+        await expect(thinkingMenu.locator('[data-thinking-level="high"]')).toBeVisible();
+        await thinkingMenu.locator('[data-thinking-level="low"]').click();
         await expect(thinkingMenu).toBeHidden();
         await expect(thinkingTrigger).toContainText('低');
 

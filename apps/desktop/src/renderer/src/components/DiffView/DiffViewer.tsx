@@ -76,7 +76,7 @@ function HunkHeader({ header }: { header: string }): React.JSX.Element {
 
 const CONTEXT_EXPAND = 3;
 
-function splitHunkLines(lines: DiffLine[]): Array<{ type: 'lines'; lines: DiffLine[] } | { type: 'fold'; count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null }> {
+export function splitHunkLines(lines: DiffLine[]): Array<{ type: 'lines'; lines: DiffLine[] } | { type: 'fold'; count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null }> {
   const result: Array<{ type: 'lines'; lines: DiffLine[] } | { type: 'fold'; count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null }> = [];
   let i = 0;
   while (i < lines.length) {
@@ -111,13 +111,18 @@ function FoldRow({ count, oldStart, newStart, oldEnd, newEnd }: { count: number;
   }
   const label = t("diffView.expand", { count });
   return (
-    <tr className="bg-[var(--mm-bg-sidebar)] hover:bg-[var(--mm-bg-hover)] cursor-pointer transition-colors"
-        onClick={() => setExpanded(true)}>
+    <tr className="bg-[var(--mm-bg-sidebar)] hover:bg-[var(--mm-bg-hover)] transition-colors">
       <td colSpan={4} className="px-3 py-1 text-center text-[11px] text-[var(--mm-text-tertiary)] select-none"
-          style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", fontSize: "var(--font-size-mono-small)" }}
+          style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", fontSize: "var(--font-size-mono-small)" }}>
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
           title={label}
-          aria-label={label}>
-        ⋯ {oldStart ?? '?'}→{oldEnd ?? '?'} · {newStart ?? '?'}→{newEnd ?? '?'} · {label} ⋯
+          aria-label={label}
+          className="w-full cursor-pointer bg-transparent p-0 text-inherit focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
+        >
+          ⋯ {oldStart ?? '?'}→{oldEnd ?? '?'} · {newStart ?? '?'}→{newEnd ?? '?'} · {label} ⋯
+        </button>
       </td>
     </tr>
   );

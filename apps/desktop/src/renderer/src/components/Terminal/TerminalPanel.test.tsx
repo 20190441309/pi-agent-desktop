@@ -11,9 +11,11 @@ const writeMock = vi.fn();
 const loadAddonMock = vi.fn();
 const onDataMock = vi.fn();
 const fitMock = vi.fn();
+let lastTerminalOptions: { theme?: { background?: string; foreground?: string } } | null = null;
 
 vi.mock("@xterm/xterm", () => ({
-    Terminal: vi.fn(function TerminalMock() {
+    Terminal: vi.fn(function TerminalMock(options: { theme?: { background?: string; foreground?: string } }) {
+        lastTerminalOptions = options ?? null;
         return {
         cols: 80,
         rows: 24,
@@ -44,6 +46,8 @@ describe("TerminalPanel", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         outputListener = null;
+        lastTerminalOptions = null;
+        document.documentElement.removeAttribute("data-theme");
         class ResizeObserverStub {
             observe = vi.fn();
             disconnect = vi.fn();
@@ -75,7 +79,7 @@ describe("TerminalPanel", () => {
     it("opens the xterm after the container is mounted and cleans subscriptions on close", async () => {
         render(<TerminalPanel isOpen workspacePath="C:/demo" onClose={vi.fn()} />);
 
-        fireEvent.click(screen.getByRole("button", { name: "+ 新建终端" }));
+        fireEvent.click(screen.getByRole("button", { name: "新建终端" }));
 
         await waitFor(() => {
             expect(openMock).toHaveBeenCalledWith(expect.any(HTMLElement));
@@ -138,7 +142,7 @@ describe("TerminalPanel", () => {
         });
 
         render(<TerminalPanel isOpen workspacePath="C:/demo" onClose={vi.fn()} />);
-        fireEvent.click(screen.getByRole("button", { name: "+ 新建终端" }));
+        fireEvent.click(screen.getByRole("button", { name: "新建终端" }));
         await waitFor(() => expect(outputListener).toBeTruthy());
 
         act(() => {
@@ -157,5 +161,88 @@ describe("TerminalPanel", () => {
         await waitFor(() => {
             expect(navigator.clipboard.writeText).toHaveBeenCalledWith("firstsecond");
         });
+    });
+
+    it("isolates multi-tab output and keeps the remaining tab after closing one", async () => {
+        const frames: FrameRequestCallback[] = [];
+        vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+            frames.push(callback);
+            return frames.length;
+        });
+
+        const outputById = new Map<string, (data: string) => void>();
+        let termSeq = 0;
+        Object.defineProperty(window, "piAPI", {
+            value: {
+                createTerminal: vi.fn(async () => {
+                    termSeq += 1;
+                    return { id: `term-${termSeq}`, cwd: "C:/demo", cols: 80, rows: 24 };
+                }),
+                terminalInput: vi.fn(async () => undefined),
+                terminalResize: vi.fn(async () => undefined),
+                closeTerminal: vi.fn(async () => undefined),
+                onTerminalOutput: vi.fn((id: string, listener: (data: string) => void) => {
+                    outputById.set(id, listener);
+                    return unsubOut;
+                }),
+                onTerminalExit: vi.fn(() => unsubExit),
+            },
+            configurable: true,
+        });
+
+        render(<TerminalPanel isOpen workspacePath="C:/demo" onClose={vi.fn()} />);
+        fireEvent.click(screen.getByTitle("新建终端"));
+        await waitFor(() => expect(window.piAPI.createTerminal).toHaveBeenCalledTimes(1));
+        fireEvent.click(screen.getByTitle("新建终端"));
+        await waitFor(() => expect(window.piAPI.createTerminal).toHaveBeenCalledTimes(2));
+
+        expect(screen.getByText("Terminal 1")).toBeTruthy();
+        expect(screen.getByText("Terminal 2")).toBeTruthy();
+
+        act(() => {
+            outputById.get("term-1")?.("from-tab-1");
+            outputById.get("term-2")?.("from-tab-2");
+        });
+        act(() => {
+            for (const frame of frames.splice(0)) frame(16);
+        });
+
+        // Active tab is the last created (Terminal 2)
+        fireEvent.click(screen.getByTitle("复制当前终端最近输出"));
+        await waitFor(() => {
+            expect(navigator.clipboard.writeText).toHaveBeenCalledWith("from-tab-2");
+        });
+
+        fireEvent.click(screen.getByTitle("Terminal 1 - C:/demo"));
+        fireEvent.click(screen.getByTitle("复制当前终端最近输出"));
+        await waitFor(() => {
+            expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith("from-tab-1");
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "关闭终端 Terminal 2" }));
+        expect(window.piAPI.closeTerminal).toHaveBeenCalledWith("term-2");
+        expect(screen.queryByText("Terminal 2")).toBeNull();
+        expect(screen.getByText("Terminal 1")).toBeTruthy();
+
+        fireEvent.click(screen.getByTitle("复制当前终端最近输出"));
+        await waitFor(() => {
+            expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith("from-tab-1");
+        });
+        expect(window.piAPI.closeTerminal).not.toHaveBeenCalledWith("term-1");
+    });
+
+    it("uses dark xterm colors when data-theme is dark", async () => {
+        document.documentElement.setAttribute("data-theme", "dark");
+        render(<TerminalPanel isOpen workspacePath="C:/demo" onClose={vi.fn()} />);
+        fireEvent.click(screen.getByRole("button", { name: "新建终端" }));
+        await waitFor(() => expect(window.piAPI.createTerminal).toHaveBeenCalledTimes(1));
+        expect(lastTerminalOptions?.theme?.background).toBe("#1a1a1a");
+        expect(lastTerminalOptions?.theme?.foreground).toBe("#e5e5e5");
+    });
+
+    it("exposes accessible labels on tab-bar new and collapse controls", () => {
+        render(<TerminalPanel isOpen workspacePath="C:/demo" onClose={vi.fn()} />);
+        expect(screen.getByRole("button", { name: "新建终端" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "收起终端" })).toBeTruthy();
     });
 });

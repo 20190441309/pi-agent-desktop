@@ -609,4 +609,78 @@ describe("ConfigManager", () => {
             expect(config!.providers[0].models[0].id).toBe("claude-sonnet-4-20250514");
         });
     });
+
+    describe("fetchModels error and success paths (B-015)", () => {
+        it("rejects empty baseUrl before network I/O", async () => {
+            await expect(manager.fetchModels("")).rejects.toThrow(/缺少 baseUrl/);
+            await expect(manager.fetchModels("   ")).rejects.toThrow(/缺少 baseUrl/);
+        });
+
+        it("surfaces non-2xx HTTP status as a readable failure", async () => {
+            const fetchMock = vi.fn(async () => ({
+                ok: false,
+                status: 401,
+                json: async () => ({ error: "unauthorized" }),
+            }));
+            vi.stubGlobal("fetch", fetchMock);
+
+            await expect(manager.fetchModels("https://api.example.com/v1", "sk-bad")).rejects.toThrow(
+                /模型列表请求失败: HTTP 401/,
+            );
+            expect(fetchMock).toHaveBeenCalledWith(
+                "https://api.example.com/v1/models",
+                expect.objectContaining({
+                    headers: expect.objectContaining({ Authorization: "Bearer sk-bad" }),
+                }),
+            );
+        });
+
+        it("surfaces network timeouts / fetch rejections without swallowing them", async () => {
+            vi.stubGlobal("fetch", vi.fn(async () => {
+                throw new Error("fetch failed: network timeout");
+            }));
+
+            await expect(manager.fetchModels("https://api.example.com/v1")).rejects.toThrow(/network timeout/);
+        });
+
+        it("maps OpenAI-style and Google-style list payloads to model items", async () => {
+            const fetchMock = vi.fn(async (url: string) => {
+                if (String(url).includes("generativelanguage")) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => ({
+                            models: [
+                                { name: "models/gemini-2.0-flash", displayName: "Gemini 2.0 Flash" },
+                                { name: "models/", displayName: "skip empty" },
+                            ],
+                        }),
+                    };
+                }
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        data: [
+                            { id: "gpt-test", name: "GPT Test" },
+                            { id: "", name: "empty" },
+                        ],
+                    }),
+                };
+            });
+            vi.stubGlobal("fetch", fetchMock);
+
+            await expect(manager.fetchModels("https://api.example.com/v1", "sk-ok")).resolves.toEqual([
+                { id: "gpt-test", name: "GPT Test" },
+            ]);
+            // apiType must be the resolved provider api id for Google prefix stripping.
+            await expect(
+                manager.fetchModels(
+                    "https://generativelanguage.googleapis.com/v1beta",
+                    "gkey",
+                    "google-generative-ai",
+                ),
+            ).resolves.toEqual([{ id: "gemini-2.0-flash", name: "Gemini 2.0 Flash" }]);
+        });
+    });
 });

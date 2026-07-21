@@ -79,7 +79,16 @@ function searchableContent(message: Message): string {
 function sanitizeFtsQuery(raw: string): string | null {
     const tokens = raw.match(/[\p{L}\p{N}_]+/gu)?.map((token) => token.trim()).filter(Boolean) ?? [];
     if (tokens.length === 0) return null;
-    return tokens.map((token) => `"${token.replaceAll('"', "")}"`).join(" OR ");
+    // AND keeps multi-token / hyphenated queries phrase-like ("search-floating-needle"
+    // should not hit "search-floating-assistant-reply" via a lone "search" token).
+    return tokens.map((token) => `"${token.replaceAll('"', "")}"`).join(" AND ");
+}
+
+function contentMatchesNeedle(content: string, thinking: string | null | undefined, needle: string): boolean {
+    const lower = needle.toLowerCase();
+    if (content.toLowerCase().includes(lower)) return true;
+    if (typeof thinking === "string" && thinking.toLowerCase().includes(lower)) return true;
+    return false;
 }
 
 export class SqliteSessionRepository implements SessionRepository {
@@ -395,49 +404,76 @@ export class SqliteSessionRepository implements SessionRepository {
         const query = input.query.trim();
         if (!query) return [];
         const limit = Math.max(1, Math.min(Math.floor(input.limit ?? 20), 100));
-        const params: Array<string | number> = [];
-        let sql: string;
-        const ftsQuery = query.length >= 3 ? sanitizeFtsQuery(query) : null;
-        if (ftsQuery) {
-            sql = `
-                SELECT m.id, m.session_id, m.role, m.content, m.timestamp, s.title, s.workspace_id
-                FROM message_fts
-                JOIN messages m ON m.id = message_fts.message_id
-                JOIN sessions s ON s.id = m.session_id
-                WHERE message_fts MATCH ?
-            `;
-            params.push(ftsQuery);
-        } else {
-            sql = `
-                SELECT m.id, m.session_id, m.role, m.content, m.timestamp, s.title, s.workspace_id
+        const needle = query.toLowerCase();
+        const likeNeedle = `%${needle}%`;
+
+        const mapRows = (rows: DbRow[]): SessionSearchResult[] => rows
+            .filter((row) => contentMatchesNeedle(String(row.content), row.thinking as string | null | undefined, needle))
+            .map((row) => {
+                const content = String(row.content);
+                const thinking = typeof row.thinking === "string" ? row.thinking : "";
+                const contentIndex = content.toLowerCase().indexOf(needle);
+                const matchIndex = contentIndex >= 0
+                    ? contentIndex
+                    : Math.max(0, thinking.toLowerCase().indexOf(needle));
+                return {
+                    sessionId: String(row.session_id),
+                    sessionTitle: String(row.title),
+                    workspaceId: String(row.workspace_id),
+                    messageId: String(row.id),
+                    messageContent: contentIndex >= 0 ? content : (thinking || content),
+                    messageRole: row.role as Message["role"],
+                    timestamp: Number(row.timestamp),
+                    matchIndex,
+                    matchLength: query.length,
+                };
+            });
+
+        const runLikeSearch = (): SessionSearchResult[] => {
+            const params: Array<string | number> = [likeNeedle, likeNeedle];
+            let sql = `
+                SELECT m.id, m.session_id, m.role, m.content, m.thinking, m.timestamp, s.title, s.workspace_id
                 FROM messages m JOIN sessions s ON s.id = m.session_id
                 WHERE (lower(m.content) LIKE ? OR lower(COALESCE(m.thinking, '')) LIKE ?)
             `;
-            params.push(`%${query.toLowerCase()}%`, `%${query.toLowerCase()}%`);
+            if (input.workspaceId) {
+                sql += " AND s.workspace_id = ?";
+                params.push(input.workspaceId);
+            }
+            sql += " ORDER BY m.timestamp DESC LIMIT ?";
+            params.push(limit);
+            return mapRows(this.db.prepare(sql).all(...params) as DbRow[]);
+        };
+
+        // Prefer FTS for longer queries, then require the full needle as a substring so
+        // tokenized OR/AND hits cannot surface partial matches. Fall back to LIKE when
+        // FTS misses hyphenated or mixed-script needles (e.g. "search-floating-needle").
+        const ftsQuery = query.length >= 3 ? sanitizeFtsQuery(query) : null;
+        if (ftsQuery) {
+            try {
+                const params: Array<string | number> = [ftsQuery];
+                let sql = `
+                    SELECT m.id, m.session_id, m.role, m.content, m.thinking, m.timestamp, s.title, s.workspace_id
+                    FROM message_fts
+                    JOIN messages m ON m.id = message_fts.message_id
+                    JOIN sessions s ON s.id = m.session_id
+                    WHERE message_fts MATCH ?
+                `;
+                if (input.workspaceId) {
+                    sql += " AND s.workspace_id = ?";
+                    params.push(input.workspaceId);
+                }
+                // Over-fetch slightly so substring post-filter still fills the limit.
+                sql += " ORDER BY m.timestamp DESC LIMIT ?";
+                params.push(Math.min(limit * 4, 100));
+                const ftsRows = this.db.prepare(sql).all(...params) as DbRow[];
+                const matched = mapRows(ftsRows).slice(0, limit);
+                if (matched.length > 0) return matched;
+            } catch {
+                // FTS syntax/tokenizer edge cases — fall through to LIKE.
+            }
         }
-        if (input.workspaceId) {
-            sql += " AND s.workspace_id = ?";
-            params.push(input.workspaceId);
-        }
-        sql += " ORDER BY m.timestamp DESC LIMIT ?";
-        params.push(limit);
-        const rows = this.db.prepare(sql).all(...params) as DbRow[];
-        const needle = query.toLowerCase();
-        return rows.map((row) => {
-            const content = String(row.content);
-            const matchIndex = Math.max(0, content.toLowerCase().indexOf(needle));
-            return {
-                sessionId: String(row.session_id),
-                sessionTitle: String(row.title),
-                workspaceId: String(row.workspace_id),
-                messageId: String(row.id),
-                messageContent: content,
-                messageRole: row.role as Message["role"],
-                timestamp: Number(row.timestamp),
-                matchIndex,
-                matchLength: query.length,
-            };
-        });
+        return runLikeSearch();
     }
 
     async getStats(): Promise<SessionRepositoryStats> {

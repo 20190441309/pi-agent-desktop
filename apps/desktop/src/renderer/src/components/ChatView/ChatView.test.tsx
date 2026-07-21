@@ -1009,7 +1009,7 @@ describe("ChatView", () => {
     expect(topStrip?.className ?? "").not.toContain("bg-[var(--mm-bg-main)]");
   });
 
-  it("renders one conversation header without workspace, permission, or duplicate session controls", () => {
+  it("renders conversation header with workspace switcher but without permission or session selects", () => {
     mockedStreamError = null;
 
     render(
@@ -1022,6 +1022,8 @@ describe("ChatView", () => {
     expect(header.textContent).toContain("Session 1");
     expect(header.textContent).toContain("Token:");
     expect(header.textContent).toContain("已连接");
+    // Workspace switcher stays available after messages exist so users can switch projects mid-session.
+    expect(screen.getByRole("button", { name: /切换工作区/ })).toBeTruthy();
     expect(header.textContent).not.toContain("工作区:");
     expect(header.textContent).not.toContain("权限:");
     expect(header.querySelector("select")).toBeNull();

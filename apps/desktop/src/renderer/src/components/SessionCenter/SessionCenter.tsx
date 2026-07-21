@@ -303,7 +303,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                     return (
                       <article
                         key={session.id}
-                        className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 transition-colors hover:border-[var(--mm-border)] hover:bg-[#fffefb]"
+                        className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 transition-colors hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)]"
                         style={{ marginLeft: depth * 18 }}
                       >
                         <div className="flex items-start gap-3">

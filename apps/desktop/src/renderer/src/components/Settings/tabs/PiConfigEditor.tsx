@@ -107,7 +107,8 @@ export function PiConfigEditor(): React.JSX.Element {
                             key={name}
                             type="button"
                             onClick={() => setFileName(name)}
-                            className={`settings-pressable rounded-md px-3 py-1.5 text-sm transition-[transform,background-color,color] duration-150 ease-out ${
+                            aria-pressed={fileName === name}
+                            className={`settings-pressable rounded-md px-3 py-1.5 text-sm transition-[transform,background-color,color] duration-150 ease-out focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)] ${
                                 fileName === name ? 'bg-[var(--mm-accent-blue)] text-white' : 'bg-[var(--settings-bg-control)] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]'
                             }`}
                         >

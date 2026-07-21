@@ -92,6 +92,22 @@ describe("setupTerminalIpc", () => {
         expect(webContentsSend).toHaveBeenCalledWith("terminal:exit", { id: "pty_1", code: 0 });
     });
 
+    it("forwards ANSI / Chinese / multi-line output without mutation (H-002)", () => {
+        const outputListener = onOutputMock.mock.calls[0][0] as (id: string, data: string) => void;
+        const ansiChinese = "\u001b[32m通过\u001b[0m\r\n第二行\n";
+        outputListener("pty_zh", ansiChinese);
+        expect(webContentsSend).toHaveBeenCalledWith("terminal:output", {
+            id: "pty_zh",
+            data: ansiChinese,
+        });
+    });
+
+    it("forwards exit once with null code when shell dies without status (H-004)", () => {
+        const exitListener = onExitMock.mock.calls[0][0] as (id: string, code: number | null) => void;
+        exitListener("pty_dead", null);
+        expect(webContentsSend).toHaveBeenCalledWith("terminal:exit", { id: "pty_dead", code: null });
+    });
+
     it("blocks protected cwd before creating a terminal", async () => {
         const handler = handlers.get("terminal:create")!;
         const result = await handler({}, { id: "secret", cwd: "C:/repo/.ssh", cols: 80, rows: 24 });

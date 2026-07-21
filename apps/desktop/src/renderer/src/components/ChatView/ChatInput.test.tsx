@@ -593,7 +593,8 @@ describe("ChatInput", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "思考强度: 中" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "高" }));
+    // Prefer data-thinking-level so "高" is not confused with "最高".
+    fireEvent.click(document.querySelector('[data-thinking-level="high"]')!);
 
     await waitFor(() => {
       expect(window.piAPI.agentsSetThinking).toHaveBeenCalledWith("agent-1", "high");
@@ -958,6 +959,54 @@ describe("ChatInput", () => {
     expect(onSend).toHaveBeenCalledTimes(1);
     resolveSend?.();
     await waitFor(() => expect((textbox as HTMLTextAreaElement).value).toBe(""));
+  });
+
+  it("does not submit blank or whitespace-only messages (D-002)", () => {
+    const onSend = vi.fn(async () => undefined);
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+
+    fireEvent.change(textbox, { target: { value: "   \n\t  " } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("keeps multi-line drafts intact and only submits non-empty trimmed text (D-002)", async () => {
+    const onSend = vi.fn(async () => undefined);
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const multiline = "line-one\nline-two\nline-three";
+    fireEvent.change(textbox, { target: { value: multiline } });
+    expect(textbox.value).toContain("\n");
+    fireEvent.keyDown(textbox, { key: "Enter" });
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend).toHaveBeenCalledWith(multiline);
   });
 
   it("shows files:select IPC errors inline", async () => {

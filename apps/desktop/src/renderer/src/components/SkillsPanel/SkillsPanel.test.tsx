@@ -60,8 +60,8 @@ describe("SkillsPanel", () => {
   it("imports from GitHub through an in-app dialog instead of window.prompt", async () => {
     render(<SkillsPanel />);
 
-    fireEvent.click(screen.getByRole("button", { name: "+ 创建" }));
-    fireEvent.click(screen.getByRole("button", { name: /从 Github 导入/ }));
+    fireEvent.click(screen.getByRole("button", { name: "创建技能" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /从 Github 导入/ }));
     fireEvent.change(screen.getByLabelText("GitHub 仓库 URL"), {
       target: { value: "https://github.com/user/repo" },
     });
@@ -77,8 +77,8 @@ describe("SkillsPanel", () => {
   it("shows invalid skill names inline instead of window.alert", async () => {
     render(<SkillsPanel />);
 
-    fireEvent.click(screen.getByRole("button", { name: "+ 创建" }));
-    fireEvent.click(screen.getByRole("button", { name: /编写技能/ }));
+    fireEvent.click(screen.getByRole("button", { name: "创建技能" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /编写技能/ }));
     fireEvent.click(screen.getByRole("button", { name: "保存 SKILL.md" }));
 
     expect(screen.getByRole("alert").textContent).toContain("请输入有效的技能名称");
@@ -97,8 +97,8 @@ describe("SkillsPanel", () => {
 
     render(<SkillsPanel />);
 
-    fireEvent.click(screen.getByRole("button", { name: "+ 创建" }));
-    fireEvent.click(screen.getByRole("button", { name: /编写技能/ }));
+    fireEvent.click(screen.getByRole("button", { name: "创建技能" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /编写技能/ }));
     fireEvent.change(screen.getByPlaceholderText("my-skill"), { target: { value: "copy-fail" } });
     fireEvent.click(screen.getByRole("button", { name: "保存 SKILL.md" }));
 

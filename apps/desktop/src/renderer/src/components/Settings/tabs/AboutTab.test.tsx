@@ -76,6 +76,62 @@ describe("AboutTab updater card", () => {
         expect(screen.getByRole("button", { name: "重启并安装" })).toBeTruthy();
     });
 
+    it("shows download progress percent while downloading", () => {
+        useUpdaterStore.setState({
+            state: {
+                phase: "downloading",
+                currentVersion: "0.1.0",
+                latestVersion: "0.2.0",
+                updateAvailable: true,
+                releaseNotes: null,
+                progress: { percent: 42.7, bytesPerSecond: 1024, transferred: 42, total: 100 },
+                lastCheckedAt: 1_720_000_000_000,
+                disabledReason: null,
+                error: null,
+                releasePageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest",
+            },
+            loading: true,
+        });
+
+        render(
+            <I18nProvider>
+                <AboutTab />
+            </I18nProvider>,
+        );
+
+        expect(screen.getByText("43%")).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "下载更新" })).toBeNull();
+        expect(screen.getByRole("button", { name: "检查更新" }).hasAttribute("disabled")).toBe(true);
+    });
+
+    it("invokes downloadUpdate when the download button is clicked", () => {
+        const downloadUpdate = vi.fn(async () => undefined);
+        useUpdaterStore.setState({
+            downloadUpdate,
+            state: {
+                phase: "available",
+                currentVersion: "0.1.0",
+                latestVersion: "0.2.0",
+                updateAvailable: true,
+                releaseNotes: "notes",
+                progress: null,
+                lastCheckedAt: 1_720_000_000_000,
+                disabledReason: null,
+                error: null,
+                releasePageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest",
+            },
+        });
+
+        render(
+            <I18nProvider>
+                <AboutTab />
+            </I18nProvider>,
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "下载更新" }));
+        expect(downloadUpdate).toHaveBeenCalledTimes(1);
+    });
+
     it("keeps GitHub checks available without offering automatic download for unsigned builds", () => {
         useUpdaterStore.setState({
             state: {

@@ -413,12 +413,14 @@ describe("AgentRuntimeRegistry", () => {
         await buildPrompt;
 
         expect(buildAccepted).toBe(true);
-        expect(sessions[0].prompt.mock.calls.map(([message]) => message)).toEqual([
+        const buildMessages = sessions[0].prompt.mock.calls.map(([message]) => message);
+        expect(buildMessages.slice(0, 3)).toEqual([
             "/plan",
             `${PLAN_DIRECTIVE}\n\ninspect`,
             "/plan",
-            "implement",
         ]);
+        expect(String(buildMessages[3])).toContain("operational mode has changed from plan to build");
+        expect(String(buildMessages[3])).toContain("implement");
         expect(sessions[0].setActiveToolsByName).toHaveBeenLastCalledWith([
             "read", "write", "bash", "git_status", "actor",
         ]);
@@ -443,8 +445,11 @@ describe("AgentRuntimeRegistry", () => {
         expect(planOutbound).toContain(PLAN_DIRECTIVE);
         expect(planOutbound.endsWith("先生成计划")).toBe(true);
         expect(sessions[0].prompt).toHaveBeenNthCalledWith(3, "/plan", { streamingBehavior: "followUp" });
-        // Second prompt is in build mode → passes through unchanged.
-        expect(sessions[0].prompt).toHaveBeenNthCalledWith(4, "现在执行计划", { streamingBehavior: "followUp" });
+        // Second prompt is in build mode → plan→build injects BUILD_SWITCH then user text.
+        const buildOutbound = sessions[0].prompt.mock.calls[3][0] as string;
+        expect(buildOutbound).toContain("operational mode has changed from plan to build");
+        expect(buildOutbound).toContain("现在执行计划");
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(4, buildOutbound, { streamingBehavior: "followUp" });
     });
 
     it("restarts with the same session path and replaces runtime", async () => {
@@ -618,12 +623,14 @@ describe("AgentRuntimeRegistry", () => {
         planTransition.resolve();
         await Promise.all([planPrompt, buildPrompt]);
 
-        expect(sessions[0].prompt.mock.calls.map(([message]) => message)).toEqual([
+        const concurrentMessages = sessions[0].prompt.mock.calls.map(([message]) => message);
+        expect(concurrentMessages.slice(0, 3)).toEqual([
             "/plan",
             `${PLAN_DIRECTIVE}\n\ninspect`,
             "/plan",
-            "implement",
         ]);
+        expect(String(concurrentMessages[3])).toContain("operational mode has changed from plan to build");
+        expect(String(concurrentMessages[3])).toContain("implement");
         expect(sessions[0].setActiveToolsByName.mock.calls.map(([tools]) => tools)).toEqual([
             ["read", "git_status", "actor"],
             ["read", "write", "bash", "git_status", "actor"],

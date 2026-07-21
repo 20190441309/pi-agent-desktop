@@ -1,0 +1,25 @@
+<Configuration>
+  <!--
+    Windows Sandbox config for K-004 / K-014 / K-015.
+    Prerequisites on HOST (admin): enable Containers-DisposableClientVM, reboot if needed.
+    Launch: WindowsSandbox.exe docs/testing/PiDesktop-NSIS.wsb
+    Copy evidence off Desktop\nsis-evidence before closing Sandbox.
+  -->
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\Ai\pi-desktop\apps\desktop\dist</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\dist</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <MappedFolder>
+      <HostFolder>C:\Ai\pi-desktop\scripts</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\scripts</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\WDAGUtilityAccount\Desktop\scripts\nsis-sandbox-smoke.ps1 -DistDir C:\Users\WDAGUtilityAccount\Desktop\dist -EvidenceDir C:\Users\WDAGUtilityAccount\Desktop\nsis-evidence</Command>
+  </LogonCommand>
+  <MemoryInMB>8192</MemoryInMB>
+  <VGpu>Enable</VGpu>
+</Configuration>

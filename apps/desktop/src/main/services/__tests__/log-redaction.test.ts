@@ -35,4 +35,19 @@ describe("log redaction", () => {
         expect(redacted.self).toBe("[Circular]");
         expect(redacted.error.message).not.toContain("sk-secret-value");
     });
+
+    it("redacts OpenAI/Anthropic key shapes and cookie headers (B-020/E-014)", () => {
+        const blob = [
+            "sk-proj-ABCDEFGHIJKLMNOPQRSTUV",
+            "api_key=sk-ant-api03-secret",
+            "Cookie: session=abc; token=xyz",
+            "x-api-key: anthropic-secret",
+        ].join("\n");
+        const out = String(redactLogValue(blob));
+        expect(out).not.toContain("ABCDEFGHIJKLMNOPQRSTUV");
+        expect(out).not.toContain("anthropic-secret");
+        expect(out).not.toContain("session=abc");
+        expect(out).toContain("Cookie: [REDACTED]");
+        expect(out).toMatch(/REDACTED|\[REDACTED\]/i);
+    });
 });

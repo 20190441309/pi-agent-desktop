@@ -33,8 +33,33 @@ describe("agent modes", () => {
         ]);
     });
 
-    it("leaves build prompts unchanged", () => {
+    it("leaves build prompts unchanged when not transitioning from plan", () => {
         expect(buildAgentModePrompt("build", "hello")).toBe("hello");
+    });
+
+    it("injects BUILD_SWITCH on plan→build transition", () => {
+        const outbound = buildAgentModePrompt("build", "implement now", {
+            previousMode: "plan",
+            longHorizonEnabled: true,
+        });
+        expect(outbound).toContain("operational mode has changed from plan to build");
+        expect(outbound).toContain("no longer in read-only mode");
+        expect(outbound).toContain("Plan mode constraints are lifted");
+        expect(outbound).toContain("implement now");
+        expect(outbound.endsWith("implement now")).toBe(true);
+    });
+
+    it("does not inject BUILD_SWITCH when long horizon is disabled", () => {
+        expect(buildAgentModePrompt("build", "implement", {
+            previousMode: "plan",
+            longHorizonEnabled: false,
+        })).toBe("implement");
+    });
+
+    it("does not inject BUILD_SWITCH when previous mode was already build", () => {
+        expect(buildAgentModePrompt("build", "continue", {
+            previousMode: "build",
+        })).toBe("continue");
     });
 
     it("does not inject mode prompts when long horizon is disabled", () => {

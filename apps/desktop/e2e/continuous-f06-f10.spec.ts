@@ -442,7 +442,10 @@ test.describe("continuous acceptance F06-F10 continuation", () => {
       }, "permission-mode");
       await record("F07-C09", "F07", "思考强度菜单可切换到高", async () => {
         await page!.getByRole("button", { name: /思考强度/ }).click();
-        await page!.getByRole("menuitemradio", { name: /高/ }).click();
+        // Use data-thinking-level so "高" is not confused with "最高" (Playwright substring match).
+        const thinkingMenu = page!.getByRole("menu", { name: "思考强度" });
+        await expect(thinkingMenu).toBeVisible();
+        await thinkingMenu.locator('[data-thinking-level="high"]').click();
         await expect(page!.getByRole("button", { name: /思考强度/ })).toContainText("高");
         return "思考强度切换到高并显示在控件上。";
       }, "thinking-high");

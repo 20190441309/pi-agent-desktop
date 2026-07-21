@@ -70,6 +70,7 @@ export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.
   const { t } = useI18n();
   const [git, setGit] = useState<GitStatus | null>(null);
   const [diffStats, setDiffStats] = useState<DiffStats>({ additions: 0, deletions: 0 });
+  const [filesExpanded, setFilesExpanded] = useState(false);
   const rightRailCollapsed = useSettingsStore((state) => state.rightRailCollapsed);
   const [documentVisible, setDocumentVisible] = useState(() => document.visibilityState === "visible");
   const railVisible = !rightRailCollapsed && documentVisible;
@@ -80,6 +81,29 @@ export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.
       ? state.sessions.find((session) => session.id === state.currentSessionId) ?? null
       : null,
   );
+
+  const changedFiles = useMemo(() => {
+    if (!git) return [];
+    return [
+      ...git.modified.map((path) => ({ path, mark: "M", className: "text-[var(--color-info)]" })),
+      ...git.added.map((path) => ({ path, mark: "A", className: "text-[var(--color-success)]" })),
+      ...git.deleted.map((path) => ({ path, mark: "D", className: "text-[#dc2626]" })),
+      ...git.untracked.map((path) => ({ path, mark: "?", className: "text-[var(--mm-text-tertiary)]" })),
+    ];
+  }, [git]);
+  const visibleChangedFiles = filesExpanded ? changedFiles : changedFiles.slice(0, 3);
+  const hiddenChangedCount = Math.max(0, changedFiles.length - visibleChangedFiles.length);
+
+  const openWorkspaceFile = (path: string, mode?: "edit" | "diff"): void => {
+    window.dispatchEvent(
+      new CustomEvent("workspace:open-file", {
+        detail: { path, mode },
+      }),
+    );
+  };
+  const openGitDiff = (file: string): void => {
+    window.dispatchEvent(new CustomEvent("workspace:open-git-diff", { detail: { file } }));
+  };
 
   const loadGitSnapshot = useCallback(async (): Promise<void> => {
     if (!workspacePath || !window.piAPI?.getGitStatus) return;
@@ -196,7 +220,9 @@ export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.
   const openFilesPanel = (): void => {
     window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "files" } }));
   };
-  const showProgress = Boolean(
+  // Always mount the progress region so idle chat has a stable landmark for
+  // status + empty state. Content inside still adapts to queue/goal/task data.
+  const hasActiveProgress = Boolean(
     queue.lastError || queue.lastCompletedAt || queue.lastActivity || goal || taskFlowItems.length || steps.length || tasks.length,
   );
 
@@ -227,16 +253,56 @@ export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.
             diffStats={diffStats}
             onRefresh={loadGitSnapshot}
           />
+          {visibleChangedFiles.length > 0 && (
+            <div className="mt-2 space-y-1 border-t border-[var(--right-rail-divider)] pt-2">
+              <div className="flex items-center justify-between px-1.5 text-[11px] text-[var(--right-rail-muted)]">
+                <span>{t("rightRail.projectFiles")}</span>
+                <span className="font-mono">{changedFiles.length}</span>
+              </div>
+              {visibleChangedFiles.map((item) => (
+                <div key={`${item.mark}:${item.path}`} className="flex min-w-0 items-center gap-2 px-1 text-[11px]">
+                  <span className={`w-3 shrink-0 font-mono font-semibold ${item.className}`}>{item.mark}</span>
+                  <button
+                    type="button"
+                    onClick={() => openWorkspaceFile(item.path)}
+                    className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left font-mono text-[var(--right-rail-secondary)] hover:bg-[var(--right-rail-hover)] hover:text-[var(--right-rail-text)]"
+                    title={t("rightRail.openFile", { path: item.path })}
+                  >
+                    {item.path}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openGitDiff(item.path)}
+                    className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-[var(--right-rail-muted)] hover:bg-[var(--right-rail-hover)] hover:text-[var(--right-rail-text)]"
+                    title={t("rightRail.viewDiff", { path: item.path })}
+                  >
+                    Diff
+                  </button>
+                </div>
+              ))}
+              {changedFiles.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setFilesExpanded((value) => !value)}
+                  className="mt-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--right-rail-secondary)] transition-colors hover:bg-[var(--right-rail-hover)] hover:text-[var(--right-rail-text)]"
+                >
+                  {filesExpanded
+                    ? t("rightRail.collapseFiles")
+                    : t("rightRail.expandRemainingFiles", { count: hiddenChangedCount })}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
-
-      {showProgress && (
-      <section className="min-h-0 border-t border-[var(--right-rail-divider)] px-0.5 py-3">
+      <section className="min-h-0 border-t border-[var(--right-rail-divider)] px-0.5 py-3" data-testid="right-rail-progress">
         <div className="mb-1 flex min-h-9 items-center justify-between px-1.5">
           <h2 className="m-0 text-[13px] font-normal text-[var(--right-rail-muted)]">{t("rightRail.progress")}</h2>
           <span className="rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
-            {taskFlowItems.length > 0 ? t("rightRail.itemCount", { count: taskFlowItems.length }) : t("rightRail.idle")}
+            {hasActiveProgress && taskFlowItems.length > 0
+              ? t("rightRail.itemCount", { count: taskFlowItems.length })
+              : t("rightRail.idle")}
           </span>
         </div>
         {queue.lastError && (
@@ -325,7 +391,6 @@ export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.
           </p>
         )}
       </section>
-      )}
 
     </aside>
   );

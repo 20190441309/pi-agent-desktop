@@ -134,19 +134,23 @@ export function ChangeApprovalCard({ change, onApprove, onReject }: ChangeApprov
       {!isDecided && (
         <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[var(--mm-border)] bg-[var(--mm-bg-panel)]">
           <button
+            type="button"
             onClick={() => onReject(change.id)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-error)] hover:bg-[var(--color-error)] transition-colors"
+            aria-label={`拒绝变更 ${change.filePath}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-error)] hover:bg-[var(--color-error)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-error)]"
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
             拒绝
           </button>
           <button
+            type="button"
             onClick={() => onApprove(change.id)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-success)] hover:bg-[#059669] transition-colors"
+            aria-label={`接受变更 ${change.filePath}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-success)] hover:bg-[#059669] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-success)]"
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
             接受

@@ -236,7 +236,8 @@ test.describe('CommandPalette 3 callback (v1.0.16 fix)', () => {
         await expect(workbenchTabs.getByRole('tab', { name: '终端' })).toHaveAttribute('aria-selected', 'true');
         await expect(page.getByTestId('terminal-panel')).toBeVisible({ timeout: 5000 });
         await expect(page.getByRole('status').filter({ hasText: '暂无终端' })).toBeVisible({ timeout: 5000 });
-        await expect(page.getByRole('button', { name: /新建终端/ })).toBeVisible();
+        // Empty-state CTA text is unique; tab-bar "+" also exposes aria-label "新建终端".
+        await expect(page.getByRole('button', { name: '+ 新建终端' })).toBeVisible();
 
         await workbenchTabs.getByRole('tab', { name: '文件' }).click();
         await expect(workbenchTabs.getByRole('tab', { name: '文件' })).toHaveAttribute('aria-selected', 'true');

@@ -36,7 +36,7 @@
 | ID | P | 用例 | 预期 | 执行 |
 |---|---|---|---|---|
 | B-001 | P0 | 检测 PATH 中已安装 Pi CLI | 状态显示已安装、版本可读，不显示错误 onboarding | E2E `status-onboarding` |
-| B-002 | P0 | Pi CLI 缺失 | 显示可行动的安装/配置提示，主 UI 不崩溃 | E2E + 模拟 PATH |
+| B-002 | P0 | Pi CLI 缺失 | 显示可行动的安装/配置提示，主 UI 不崩溃 | E2E `status-onboarding` IPC stub + unit `pi-driver-detect` |
 | B-003 | P1 | 刷新 Pi 状态 | 状态变化事件只更新一次，旧状态不覆盖新状态 | 单测/IPC |
 | B-004 | P1 | 安装 Pi CLI 成功/失败 | 进度、成功结果和失败错误均可见，取消后状态回收 | IPC + 手工 |
 | B-005 | P1 | Pi CLI 更新成功/失败 | 版本刷新，失败有可读错误，不破坏当前配置 | IPC + 手工 |
@@ -90,8 +90,8 @@
 | ID | P | 用例 | 预期 | 执行 |
 |---|---|---|---|---|
 | D-001 | P0 | 发送普通文本 | 用户消息立即出现，Pi 流式事件逐步渲染，完成后状态收敛 | E2E `chat-view` |
-| D-002 | P0 | 空白/超长/多行消息 | 空白不提交；多行按预期；超长有界面或后端保护，不冻结 | 单测/E2E |
-| D-003 | P0 | Enter/Shift+Enter | Enter 提交，Shift+Enter 换行，Windows IME/组合输入不误提交 | E2E + 手工 |
+| D-002 | P0 | 空白/超长/多行消息 | 空白不提交；多行按预期；超长有界面或后端保护，不冻结 | 单测 ChatInput blank/multiline |
+| D-003 | P0 | Enter/Shift+Enter | Enter 提交，Shift+Enter 换行，Windows IME/组合输入不误提交 | 单测 useInputShortcuts；IME residual |
 | D-004 | P0 | 发送中清空草稿 | 提交立即清空输入框，后台请求继续且不丢消息 | E2E `draft-clear` |
 | D-005 | P0 | 流式 text_delta + turn_end 并发 | 消息顺序、最终文本和 loading 状态稳定，无重复/截断 | 单测/集成 |
 | D-006 | P0 | provider message_end 错误 | 错误在聊天中可见且可操作，不被泛化为空响应 | E2E `chat-view` |
@@ -177,7 +177,7 @@
 | ID | P | 用例 | 预期 | 执行 |
 |---|---|---|---|---|
 | H-001 | P0 | 创建终端 | 返回唯一 terminal id，cwd/workspace 绑定正确，输出可订阅 | E2E `terminal-and-tools` |
-| H-002 | P0 | 输入命令/输出 | 输入、回显、ANSI、中文、换行和长输出正确 | E2E + 手工 |
+| H-002 | P0 | 输入命令/输出 | 输入、回显、ANSI、中文、换行和长输出正确 | E2E terminal-and-tools + unit terminal.ipc ANSI/中文 |
 | H-003 | P1 | resize | cols/rows 边界校验，终端布局同步，不丢输出 | IPC/E2E |
 | H-004 | P0 | 终端退出 | exit code 正确，订阅回调只触发一次，关闭后输入被拒绝 | 单测/E2E |
 | H-005 | P1 | 多终端 tabs | 每个终端隔离，切换不串输出，关闭单个不影响其他 | E2E |
@@ -238,7 +238,7 @@
 | K-013 | P2 | 性能基线 | 冷启动、首屏、长会话、长输出、大文件搜索和多终端不出现明显卡死/内存持续增长 | 手工/性能记录 |
 | K-014 | P1 | 打包安装 | NSIS 安装、卸载、快捷方式、用户数据保留策略和首次启动正确 | `package` + 手工 |
 | K-015 | P1 | 升级安装 | 旧版本升级后配置/会话保留，版本号、卸载和回滚策略正确 | 打包矩阵 |
-| K-016 | P0 | 崩溃/异常恢复 | renderer/main/pty 异常有日志，重启后用户数据不损坏，会话可恢复 | 手工/日志 |
+| K-016 | P0 | 崩溃/异常恢复 | renderer/main/pty 异常有日志，重启后用户数据不损坏，会话可恢复 | E2E session-resume 重启后 shell+listSessions；强制 crash residual |
 
 ## 覆盖要求
 
@@ -246,3 +246,90 @@
 2. 每个 IPC handler 至少有一个成功用例、一个非法输入/错误用例；文件、Git、终端、审批还必须有工作区外/危险路径用例。
 3. 真实 Provider、GitHub、Pi CLI、Windows 托盘、NSIS 安装和自动更新属于环境相关测试，无法在无凭据/无发布包时标记为 PASS，只能标记 `BLOCKED` 并记录原因。
 4. 对失败项记录：ID、实际结果、复现步骤、日志/截图、严重等级、是否回归验证。
+
+## 2026-07-21 执行映射（逐 ID 见 qa-progress，非 174 全绿）
+
+证据源：`docs/testing/qa-progress-2026-07-21.md`（含 **174 行逐 ID 表**）。
+
+- **wave-6 全量 suite（权威）**：`/tmp/e2e-full-wave6-20260721-040535.log` — **116 passed / 1 failed / 6 skipped / 28.7m**（`e2e:build`）。
+- **wave-6 残差**：`command-palette-callbacks` **7/7 PASS**（修闭 full-suite 唯一 fail：终端 CTA strict-mode）。
+- **wave-7 live**：deep-interactive **5/5 PASS**（minimax）；long-horizon 初版 settings+Build 绿、Plan hang。
+- **wave-8 long-horizon**：`RUN_LONG_HORIZON_ACCEPTANCE=1` → **1 passed / 52.9s**（`/tmp/e2e-live-i012-wave8g-20260721-062942.log`）；当时 plan_probe **seed** → 曾 PARTIAL。
+- **wave-9b long-horizon**：`RUN_LONG_HORIZON_ACCEPTANCE=1` → **1 passed / 35.0s**（`/tmp/e2e-live-i012-wave9b-20260721-065806.log`）；**plan source=model**；**plan_probe 模型写出 PLAN_OK（no seed）** + BUILD_SWITCH plan→build → I-012 **PASS**（`/tmp/live-i012-wave9b-evidence.txt`）。
+- **wave-58 residual**：VirtualizedMessageList **3** + GeneratedUiChart pure/UI **4**（`buildChartOption`）；NSIS still **BLOCKED**（`/tmp/wave58-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-57 residual**：NSIS re-probe still **BLOCKED**；UX PiConfigEditor/ShortcutsSettings a11y；unit **6**（`/tmp/wave57-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-56 residual**：DiffViewer `splitHunkLines` pure/UI **6**；FoldRow keyboard a11y；NSIS still **BLOCKED**（`/tmp/wave56-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-55 residual**：ProjectGroupedSessionList UX + unit **3**；session-grouping depth/activity/group expand；cluster w/ wave-54 **11**；NSIS still **BLOCKED**（`/tmp/wave55-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-54 residual**：DateGroupedSessionList pure/UI **4**（injectable `now` + local-calendar）；group focus-visible；NSIS still **BLOCKED**（`/tmp/wave54-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-53 residual**：GeneratedUiForm pure/UI **4** + MiniMaxCodeTitleBar **2**；NSIS still **BLOCKED**（`/tmp/wave53-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-52 residual**：GeneratedUiTable pure/UI **4** + SessionExport recheck **3**；NSIS still **BLOCKED**（`/tmp/wave52-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-51 residual**：NSIS re-probe still **BLOCKED**；UX SessionExportDialog a11y；unit ModelSelector/MotionPanelLayer/CustomMessageCard/SessionExport **10**（`/tmp/wave51-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-50 residual**：UX ShortcutsCheatsheet close a11y；unit ShortcutsCheatsheet/SessionRow **6**；NSIS still **BLOCKED**（`/tmp/wave50-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-49 residual**：unit SettingsNav **3** + Popover **3**（**6**）；NSIS still **BLOCKED**（`/tmp/wave49-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-48 residual**：unit session-path **3** + AnimatedCollapse **3**（**6**）；NSIS still **BLOCKED**（`/tmp/wave48-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-47 residual**：UX Button/ErrorBoundary/ThinkingBlock a11y；unit **9**；NSIS still **BLOCKED**（`/tmp/wave47-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-46 residual**：unit theme **7** + directives-pure **6** + judge-prompt **4**（**17**）；NSIS still **BLOCKED**（`/tmp/wave46-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-45 residual**：unit ApprovalPanel **3** + LongHorizonTab **3**；UX ApprovalPanel bulk focus-visible；NSIS still **BLOCKED**（`/tmp/wave45-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-44 residual**：export TaskOverviewPanel pure mappers；UX ChangeApprovalCard a11y；unit pure/ChangeApprovalCard **8**；NSIS still **BLOCKED**（`/tmp/wave44-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-43 residual**：unit MemoryPanel **3**；NSIS still **BLOCKED**（`/tmp/wave43-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-42 residual**：UX Settings ModelSelector button a11y；unit ModelSelector/Appearance/Permissions **5**；NSIS still **BLOCKED**（`/tmp/wave42-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-41 residual**：UX SkillCreateDropdown menu a11y；unit **2**；NSIS re-probe still **BLOCKED**（`/tmp/wave41-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-40 residual**：unit TopTabBar **2** + UsageStatsPanel **1**；NSIS still **BLOCKED**（`/tmp/wave40-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-39 residual**：UX FileChangeItem a11y + RecentWorkspaces formatTimeAgo；unit FileChangeItem/RecentWorkspaces **6**（cluster 13 w/ wave-38）；NSIS still **BLOCKED**（`/tmp/wave39-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-38 residual**：UX ResizablePanel a11y + SkillCard focus；unit ResizablePanel/RunPanel/SkillCard **7**；NSIS still **BLOCKED**（`/tmp/wave38-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-37 residual**：shared-types ipc-guards **4**（isSettingsWindowTab + ipcError）；suite **47**；NSIS still **BLOCKED**（`/tmp/wave37-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-36 residual**：unit list-local-skills **4** + desktop-overlay **1** + pi-api **2** + claude/codex sessions **2**（**9**）；nsis honesty **4/4**；security/memory refresh；NSIS re-probe still **BLOCKED**（`/tmp/wave36-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-35 residual**：unit helpers **7** + packages.ipc **6** + usePlanSyncEffect pure **5** + settings-nav-metadata **4**（**22**）；export plan-sync pure helpers；NSIS re-probe still **BLOCKED**（`/tmp/wave35-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-34 residual**：unit useShortcuts **4** + contentWithGeneratedUiText；NSIS re-probe still **BLOCKED**（`/tmp/wave34-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-33 residual**：unit usePrefillConsumer/useInputText/useRenderedPlanCardIds **8**；NSIS re-probe still **BLOCKED**（`/tmp/wave33-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-32 residual**：unit useLatestRequest/useTransientState/useDebouncedSave **9**；NSIS re-probe still **BLOCKED**（`/tmp/wave32-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-31 residual**：unit session-summary-tools + asset-inventory-tools **8** （cluster 19 w/ spawn-handler）；nsis honesty **4/4**；NSIS still **BLOCKED**（`/tmp/wave31-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-30 residual**：unit spawn-handler **11**；NSIS re-probe still **BLOCKED**（`/tmp/wave30-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-29 residual**：unit permission defaults + engine regression **23**；NSIS still **BLOCKED**（`/tmp/wave29-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-28 residual**：live 门控 E2E deep-interactive **5/5** + long-horizon-live **1/1** （host minimax）；NSIS re-probe still **BLOCKED**（`/tmp/wave28-evidence.txt`）— **≠ 装机 PASS / ≠ 174 全绿**。
+- **wave-27 residual**：E2E **4/4** continuous-acceptance.generated + nsis honesty；NSIS still **BLOCKED**（`/tmp/wave27-evidence.txt`）— **≠ 装机 PASS**。
+- **wave-26 residual**：unit permission/evaluate/wildcard/tool-category + mutation-queue + IpcError + tab-defs + diff-parser **29**；`parseDiff` `/dev/null` isNew fix；E2E **6/6** full-demo/interactive-demo/nsis-artifact-inventory + nsis honesty；NSIS still **BLOCKED**（`/tmp/wave26-evidence.txt`）— **≠ 装机 PASS**。
+- **wave-25 residual**：E2E **16/16** session-bound-agent/settings-pi-config/terminal-tools/tray/updater + nsis honesty；NSIS still **BLOCKED**（`/tmp/wave25-evidence.txt`）— **≠ 装机 PASS**。
+- **wave-24 residual**：E2E **27/27** permission-more/plan-mode-current-ui/session-*/settings-interactions/window-geometry + nsis honesty；NSIS still **BLOCKED**（`/tmp/wave24-evidence.txt`）— **≠ 装机 PASS**。
+- **wave-23 residual**：unit sdk-runtime **4**；E2E **26/26** a11y/chat-view/command-palette/file-git/notification/permission + nsis honesty；NSIS re-probe still **BLOCKED**（`/tmp/wave23-evidence.txt`）— **≠ 装机 PASS**。
+- **wave-22 residual**：unit file-workspace-utils **12** + tool-call-normalization **5**（17）；E2E **18/18** smoke/draft-clear/overlay/running-control/plan-mode/status-onboarding + nsis honesty；NSIS re-probe still **BLOCKED**（`/tmp/wave22-evidence.txt`）— **≠ 装机 PASS**。
+- **wave-21 residual**：unit useMentions **5**（hooks cluster 12）；E2E **10/10** deep-use/continuous-f06-f10/provider-error + nsis honesty；NSIS re-probe still **BLOCKED**（`/tmp/wave21-evidence.txt`）— **≠ 装机 PASS**。
+- **wave-20 residual**：unit **7**（useCommandPalette/useSession）；E2E **12/12** compose/m5/m6/programmer/settings-v2/third-party-model + nsis honesty；NSIS re-probe still **BLOCKED**（`/tmp/wave20-evidence.txt`）— **≠ 装机 PASS**。
+- **wave-19 residual**：unit **14**（ipc/sounds/focus-trap/motion-presence）；E2E **12/12** core/continuous/git/token/generated-ui + nsis honesty；NSIS re-probe still **BLOCKED**（`/tmp/wave19-evidence.txt`）— **≠ 装机 PASS**。
+- **wave-18 residual**：unit **26**（path-canonical + attachments/permission/skills store）；E2E **16/16** launch/layout/motion/m2/visual/settings/skills + nsis honesty；NSIS re-probe still **BLOCKED**（`/tmp/wave18-evidence.txt`）— **≠ 装机 PASS**。
+- **wave-17 residual**：unit **45**（fuzzy/run-control/runtime-feature/first-launch/toast 等）；E2E **12/12** session + nsis honesty；NSIS re-probe still **BLOCKED**（`/tmp/wave17-evidence.txt`）— **≠ 装机 PASS**。
+- **wave-16 residual**：`plan-utils` **16** + `useInputShortcuts` **9** + plan-execution **5** unit；E2E **9/9**（draft/nsis/plan/running）；security/window unit **108**；typecheck PASS；NSIS re-probe still **BLOCKED**（`/tmp/nsis-probe-wave16.txt`）— **≠ 装机 PASS**。
+- **wave-10/12 NSIS 隔离**：无 Sandbox/admin/Docker + 主机已装 1.0.13 → K-004/K-014/K-015 **BLOCKED**（`/tmp/nsis-isolation-gate-wave12.txt`）；`e2e/nsis-isolation-gate.spec.ts` **3/3**（ready-pack + probe + host refuse）；就绪包：smoke + wsb + runbook — **仍 ≠ 装机 PASS**。
+- 历史 postfix：`%TEMP%/e2e-full-postfix.log`（**100 / 5 / 2 / 6**）已 superseded，仅作时间线。
+
+### 汇总
+
+| Status | 数量 | 含义 |
+|---|---:|---|
+| PASS | 100 | 本波 Electron E2E / 定点契约直接证据 |
+| UNIT_PASS | 71 | 单测/IPC smoke 主路径 |
+| PARTIAL | 0 | — |
+| BLOCKED | 3 | NSIS 装机隔离（K-004/K-014/K-015） |
+| NOT_RUN | 0 | — |
+| **合计** | **174** | **≠ 全绿**（3 BLOCKED） |
+
+P0（55）：PASS 38 / UNIT_PASS 17 / PARTIAL 0 / BLOCKED 0（自动化 ID 闭环；非场景穷尽）。  
+P1（101）：PASS 50 / UNIT_PASS 48 / PARTIAL 0 / BLOCKED 3。  
+P2（18）：PASS 12 / UNIT_PASS 6 / PARTIAL 0 / BLOCKED 0 / NOT_RUN 0。
+
+### 块级摘要
+
+| 映射范围 | 代表 ID | 证据 | 状态口径 |
+|---|---|---|---|
+| 窗口/主题/设置再开 | A-009/A-010/A-011/B-017/B-018/B-022/K-011 | `visual-audit`、`settings-pi-config-sync` | 自动化 **PASS**；A-014 multi-scale force-dpr **PASS** |
+| 工作区/会话/搜索 | C-001–C-014 核心 P0 | `session-history`、`m2`、`m5`、`deep-use` | 核心 **PASS**；C-003 越权 **UNIT_PASS** |
+| 程序员主路径/M6 | D/E + 审批/设置/导出 | `m6-final`、`programmer-workflow` | **PASS**（dual-path stub 凭证） |
+| 文件/终端/Git | F/G/H | `terminal-and-tools`、`file-and-git`、`right-rail-git`、`command-palette-callbacks` residual | 契约 **PASS**；F-009/H-005 **UNIT_PASS**；G-008/G-009 **UNIT_PASS**；palette→终端 **PASS** |
+| 长程/记忆/任务 | I | `deep-use`、memory unit、compose、**live deep-interactive 5/5**、long-horizon wave9b | 链路 **PASS/UNIT**；I-012 **PASS**（模型写 plan_probe + BUILD_SWITCH） |
+| generated UI / skills | J | `generated-ui`、`skills-and-plugins` | J-010 **PASS**；marketplace 网络 unit 边界 |
+| overlay / a11y / visual | A-012/A-013/K-009/K-011 | `overlay-anchors`、`a11y`、`visual-audit` | **PASS**；A-015 theme unit **UNIT_PASS** |
+| 安全 IPC | E-009–E-012/K-006 | protected-paths / classifier / schemas / smoke | **UNIT_PASS** 刷新绿 |
+| 安装升级 / live provider | K-004/K-014/K-015、I-012 | NSIS inventory + isolation gate deny；live deep 5/5 + long-horizon wave9b | NSIS **BLOCKED**；I-012 **PASS** |
+| DPI / perf / tray quit | A-008/A-014/K-012/K-013 | force-dpr matrix + k013 JSON + quit child windows | **PASS** |
+
+**禁止**把 suite **116** passed、100 PASS、deep 5/5 live 或 171 PASS+UNIT 解读为矩阵 174 全部 PASS。

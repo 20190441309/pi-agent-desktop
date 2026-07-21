@@ -46,5 +46,7 @@ function redactLogString(value: string): string {
     return value
         .replace(/\bBearer\s+[^\s,;]+/gi, `Bearer ${REDACTED}`)
         .replace(/\b(api[_-]?key|password|secret|token)\s*([:=])\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, (_match, key: string, separator: string) => `${key}${separator}${REDACTED}`)
+        .replace(/\b(x-api-key)\s*([:=])\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, (_match, key: string, separator: string) => `${key}${separator}${REDACTED}`)
+        .replace(/\bCookie:\s*[^\n\r]+/gi, `Cookie: ${REDACTED}`)
         .replace(/\bsk-[A-Za-z0-9._-]+\b/g, REDACTED);
 }

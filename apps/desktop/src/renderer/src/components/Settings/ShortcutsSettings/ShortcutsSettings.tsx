@@ -122,7 +122,7 @@ export function ShortcutsSettings(): React.JSX.Element {
         <button
           type="button"
           onClick={handleResetAll}
-          className="rounded-lg border border-[var(--mm-border)] px-3 py-1.5 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)]"
+          className="rounded-lg border border-[var(--mm-border)] px-3 py-1.5 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
         >
           重置全部
         </button>
@@ -159,7 +159,8 @@ export function ShortcutsSettings(): React.JSX.Element {
                           <button
                             type="button"
                             onClick={() => setEditingId(shortcut.id)}
-                            className="rounded px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)]"
+                            aria-label={`修改 ${shortcut.id}`}
+                            className="rounded px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
                           >
                             修改
                           </button>
@@ -167,7 +168,8 @@ export function ShortcutsSettings(): React.JSX.Element {
                             <button
                               type="button"
                               onClick={() => handleReset(shortcut.id)}
-                              className="rounded px-2 py-1 text-[11px] text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)]"
+                              aria-label={`重置 ${shortcut.id}`}
+                              className="rounded px-2 py-1 text-[11px] text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
                             >
                               重置
                             </button>

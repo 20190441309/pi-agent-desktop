@@ -16,6 +16,10 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
         env: { ...process.env, CI: "1", ELECTRON_RENDERER_URL: "" },
     });
     const page = await getWindowByUrl(app, "index.html");
+    // Cold start on Windows can close intermediate about:blank navigations.
+    // Wait for the main shell before callers touch locators.
+    await page.waitForLoadState("domcontentloaded", { timeout: 20_000 }).catch(() => undefined);
+    await expect(page.getByRole("tablist", { name: "顶部标签栏" })).toBeVisible({ timeout: 20_000 });
     return { app, page };
 }
 
@@ -40,8 +44,27 @@ async function closeApp(app: ElectronApplication | undefined): Promise<void> {
 }
 
 async function skipOnboarding(page: Page): Promise<void> {
+    // After relaunch the renderer may still be navigating when this runs.
+    // Wait for a stable shell marker first so count()/click don't race a closed page.
+    try {
+        await page.waitForLoadState("domcontentloaded", { timeout: 15_000 });
+        await expect(page.getByRole("tablist", { name: "顶部标签栏" })).toBeVisible({ timeout: 15_000 });
+    } catch {
+        // If the window already died mid-relaunch, let the caller retry/fail on next steps.
+        if (page.isClosed()) return;
+    }
+    if (page.isClosed()) return;
+
     const modal = page.locator('[data-testid="onboarding-modal"]');
-    if (await modal.count() === 0) return;
+    let modalCount = 0;
+    try {
+        modalCount = await modal.count();
+    } catch {
+        if (page.isClosed()) return;
+        throw new Error("skipOnboarding: failed to query onboarding modal");
+    }
+    if (modalCount === 0) return;
+
     await page.getByRole("button", { name: "跳过引导" }).click({ timeout: 5_000 });
     await expect(modal).toHaveCount(0, { timeout: 5_000 });
 }
@@ -188,17 +211,25 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
                         ],
                     },
                 });
-                await window.piAPI.agentsCreate({
+                const agent = await window.piAPI.agentsCreate({
                     workspaceId: workspace.id,
                     title: "Generated UI V1 Acceptance Agent",
                     sessionId: session.id,
                 });
+                if (!agent || typeof agent !== "object" || !("id" in agent)) {
+                    throw new Error(`agentsCreate failed: ${JSON.stringify(agent)}`);
+                }
             },
             { workspacePath, sessionId: SESSION_ID, sessionTitle: SESSION_TITLE, readmePath, now },
         );
         await expect.poll(async () => page.evaluate(async (sessionId) => {
             const sessions = await window.piAPI.listSessions();
             return sessions.some((session) => session.id === sessionId);
+        }, SESSION_ID), { timeout: 10_000 }).toBe(true);
+        // Confirm the bound agent is live before the restart cycle.
+        await expect.poll(async () => page.evaluate(async (sessionId) => {
+            const agents = await window.piAPI.agentsList();
+            return agents.some((agent) => agent.sessionId === sessionId);
         }, SESSION_ID), { timeout: 10_000 }).toBe(true);
 
         await closeApp(app);
@@ -208,6 +239,11 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
         await stubHostActions(app);
         await skipOnboarding(page);
         await openBoundSession(page);
+        // Session-bound agent is recreated after restart by App.tsx — wait for it.
+        await expect.poll(async () => page.evaluate(async (sessionId) => {
+            const agents = await window.piAPI.agentsList();
+            return agents.find((agent) => agent.sessionId === sessionId)?.id ?? null;
+        }, SESSION_ID), { timeout: 15_000 }).not.toBeNull();
 
         await expect(page.getByText("历史 customCard 回放")).toBeVisible({ timeout: 10_000 });
         await scrollChat(page, "start");

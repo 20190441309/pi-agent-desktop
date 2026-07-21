@@ -127,7 +127,9 @@ describe("RightRail", () => {
     await waitFor(() => {
       expect(getGitStatus).toHaveBeenCalledTimes(2);
     });
-    expect(screen.queryByText("src/a.ts")).toBeNull();
+    // Changed paths surface in the compact project-files list after refresh.
+    expect(await screen.findByRole("button", { name: "src/a.ts" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Diff" }).length).toBeGreaterThan(0);
   });
 
   it("refreshes git summary when workspace git changes", async () => {
@@ -185,7 +187,7 @@ describe("RightRail", () => {
     expect(screen.getByText("普通任务")).toBeTruthy();
   });
 
-  it("renders one compact utility panel without token statistics or idle progress", async () => {
+  it("renders one compact utility panel without token statistics", async () => {
     getGitStatus.mockResolvedValue({
       branch: "master",
       modified: [],
@@ -206,7 +208,8 @@ describe("RightRail", () => {
     expect(screen.queryByText("Token 使用统计")).toBeNull();
     expect(screen.queryByText("总 Token")).toBeNull();
     expect(screen.queryByText("会话数")).toBeNull();
-    expect(screen.queryByText("进度")).toBeNull();
+    expect(screen.getByText("进度")).toBeTruthy();
+    expect(screen.getByTestId("right-rail-progress")).toBeTruthy();
     expect(screen.queryByText("工具权限")).toBeNull();
   });
 
@@ -245,7 +248,7 @@ describe("RightRail", () => {
 
     expect(await screen.findByText("Environment")).toBeTruthy();
     expect(screen.queryByText("Token usage")).toBeNull();
-    expect(screen.queryByText("Progress")).toBeNull();
+    expect(screen.getByText("Progress")).toBeTruthy();
     expect(screen.queryByText("Sources")).toBeNull();
     expect(screen.getAllByRole("button", { name: "Browse all files" })).toHaveLength(1);
     expect(screen.queryByText("Tool permissions")).toBeNull();
@@ -461,7 +464,7 @@ describe("RightRail", () => {
       }),
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "查看变更文件" }));
+    fireEvent.click(await screen.findByRole("button", { name: "查看变更文件，打开 Git 面板" }));
     expect(switchSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         detail: { section: "git" },

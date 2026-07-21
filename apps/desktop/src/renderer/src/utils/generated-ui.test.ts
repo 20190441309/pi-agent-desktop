@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GENERATED_UI_LIMITS, generatedUiToPlainText, normalizeGeneratedUi } from "./generated-ui";
+import { GENERATED_UI_LIMITS, contentWithGeneratedUiText, generatedUiToPlainText, normalizeGeneratedUi } from "./generated-ui";
 
 describe("generated ui v2 normalization", () => {
   it("normalizes comprehensive v2 sections and filters unsafe actions", () => {
@@ -60,3 +60,23 @@ describe("generated ui v2 normalization", () => {
     expect(generatedUiToPlainText(card ?? undefined)).toContain("趋势向上");
   });
 });
+
+describe("contentWithGeneratedUiText", () => {
+  it("returns content, card text, or merged form without duplicating equal bodies", () => {
+    const card = normalizeGeneratedUi({
+      version: "v2",
+      id: "plain",
+      title: "报告",
+      sections: [
+        { id: "progress", kind: "progress", items: [{ id: "p", label: "进度", value: 8, max: 10 }] },
+      ],
+    });
+    const plain = generatedUiToPlainText(card ?? undefined);
+    expect(contentWithGeneratedUiText("", card ?? undefined)).toBe(plain);
+    expect(contentWithGeneratedUiText("hello", undefined)).toBe("hello");
+    expect(contentWithGeneratedUiText(plain, card ?? undefined)).toBe(plain.trim());
+    expect(contentWithGeneratedUiText("note", card ?? undefined)).toBe(`note
+${plain}`);
+  });
+});
+

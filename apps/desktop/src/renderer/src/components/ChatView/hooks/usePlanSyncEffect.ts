@@ -28,7 +28,8 @@ type PlanSourceMessageLike = {
   planAction?: AgentMessage["planAction"];
 };
 
-function normalizePlanText(content: string): string {
+/** Exported for unit tests — normalizes plan body for de-dupe matching. */
+export function normalizePlanText(content: string): string {
   return stripPlanFrontmatter(content)
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/<think>[\s\S]*$/gi, "")
@@ -37,7 +38,8 @@ function normalizePlanText(content: string): string {
     .toLowerCase();
 }
 
-function findReusablePlanSourceMessage<T extends PlanSourceMessageLike>(
+/** Exported for unit tests — finds a prior assistant plan body without planAction. */
+export function findReusablePlanSourceMessage<T extends PlanSourceMessageLike>(
   messages: T[],
   targetContent: string,
 ): T | undefined {

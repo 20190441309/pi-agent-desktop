@@ -17,14 +17,14 @@ interface GeneratedUiFormProps {
 type FieldValue = string | number | boolean | string[];
 type FormValues = Record<string, FieldValue>;
 
-function initialFieldValue(field: GeneratedUiFormField): FieldValue {
+export function initialFieldValue(field: GeneratedUiFormField): FieldValue {
   if (field.kind === "checkbox") return field.defaultValue ?? false;
   if (field.kind === "multi-select") return field.defaultValue ?? [];
   if (field.kind === "number") return field.defaultValue ?? "";
   return field.defaultValue ?? "";
 }
 
-function isEmpty(value: FieldValue): boolean {
+export function isEmptyFieldValue(value: FieldValue): boolean {
   return value === "" || value === false || (Array.isArray(value) && value.length === 0);
 }
 
@@ -49,7 +49,7 @@ export function GeneratedUiForm({ cardId, cardTitle, section, disabled, onSend }
     const nextErrors: Record<string, string> = {};
     for (const field of section.fields) {
       const value = values[field.id] ?? initialFieldValue(field);
-      if (field.required && isEmpty(value)) nextErrors[field.id] = "此项为必填";
+      if (field.required && isEmptyFieldValue(value)) nextErrors[field.id] = "此项为必填";
       if (field.kind === "number" && value !== "") {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) nextErrors[field.id] = "请输入有效数字";

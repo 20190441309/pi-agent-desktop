@@ -77,6 +77,37 @@ async function expectNoLargeLightSurfaces(page: Page, label: string): Promise<vo
             return { luminance: 0.2126 * r + 0.7152 * g + 0.0722 * b, alpha };
         }
 
+        function isPaintedVisible(element: HTMLElement): boolean {
+            const rect = element.getBoundingClientRect();
+            if (!(rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0)) {
+                return false;
+            }
+
+            // Keep inactive MotionPanelLayer / floating rails out of the audit.
+            // They remain mounted (absolute inset:0) with opacity:0 / content-visibility:hidden
+            // and would otherwise report stale light tokens after a theme flip.
+            if (element.closest('[aria-hidden="true"], [data-active="false"], [inert]')) {
+                return false;
+            }
+
+            let node: HTMLElement | null = element;
+            while (node && node !== document.documentElement) {
+                const style = getComputedStyle(node);
+                if (style.visibility === "hidden" || style.display === "none") {
+                    return false;
+                }
+                const opacity = Number.parseFloat(style.opacity);
+                if (Number.isFinite(opacity) && opacity <= 0.05) {
+                    return false;
+                }
+                if (style.contentVisibility === "hidden") {
+                    return false;
+                }
+                node = node.parentElement;
+            }
+            return true;
+        }
+
         return Array.from(document.querySelectorAll<HTMLElement>("body *"))
             .map((element) => {
                 const rect = element.getBoundingClientRect();
@@ -89,7 +120,7 @@ async function expectNoLargeLightSurfaces(page: Page, label: string): Promise<vo
                     luminance: color?.luminance ?? 0,
                     alpha: color?.alpha ?? 0,
                     allowed: Boolean(element.closest("[data-allow-light-surface]")),
-                    visible: rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0,
+                    visible: isPaintedVisible(element),
                 };
             })
             .filter((item) => item.visible && !item.allowed && item.alpha > 0.8 && item.area > 12_000 && item.luminance > 175)
@@ -189,7 +220,7 @@ async function captureMainEntrypoints(page: Page, dir: string, prefix: string): 
 
     await page.getByRole("tab", { name: "对话" }).click();
     await expandRightRailIfNeeded(page);
-    await page.getByRole("button", { name: /提交或推送/ }).click();
+    await page.getByRole("button", { name: /查看变更文件/ }).click();
     await expect(page.getByRole("region", { name: "Git 面板" })).toBeVisible();
     await expectHealthyLayout(page);
     await screenshot(page, dir, `${prefix}-06-git`);
@@ -327,7 +358,7 @@ test.describe("Pi Desktop — visual function audit", () => {
 
         await page.getByRole("tab", { name: "对话" }).click();
         await expandRightRailIfNeeded(page);
-        await page.getByRole("button", { name: /提交或推送/ }).click();
+        await page.getByRole("button", { name: /查看变更文件/ }).click();
         await expect(page.getByRole("region", { name: "Git 面板" })).toBeVisible({ timeout: 10_000 });
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "07-git");

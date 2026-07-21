@@ -652,7 +652,7 @@
     "commitOrPush": "提交或推送",
     "commitOrPushAria": "提交或推送",
     "gitActions": {
-      "openChanges": "查看变更文件",
+      "openChanges": "查看变更文件，打开 Git 面板",
       "branchDialog": "分支管理",
       "commitDialog": "提交或推送",
       "searchBranches": "搜索分支",

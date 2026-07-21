@@ -89,6 +89,27 @@ describe("setupProjectShellIpc", () => {
         expect(openPathMock).not.toHaveBeenCalled();
     });
 
+    it("blocks sensitive key/db material even without workspacePath", async () => {
+        const openHandler = handlers.get("shell:open-path")!;
+        const revealHandler = handlers.get("shell:reveal-path")!;
+
+        for (const path of [
+            "C:/Users/public/Downloads/server.pem",
+            "C:/Users/public/Downloads/app.key",
+            "C:/Users/public/Downloads/sessions.sqlite",
+            "C:/Users/public/Downloads/state.db",
+            "C:/Users/public/Downloads/github-token.json",
+        ]) {
+            const openResult = await openHandler({}, path);
+            expect(openResult).toMatchObject({ code: "ipcErrors.files.protectedPath" });
+            const revealResult = await revealHandler({}, path);
+            expect(revealResult).toMatchObject({ code: "ipcErrors.files.protectedPath" });
+        }
+
+        expect(openPathMock).not.toHaveBeenCalled();
+        expect(showItemInFolderMock).not.toHaveBeenCalled();
+    });
+
     it("opens https URLs through Electron shell external browser", async () => {
         openExternalMock.mockResolvedValueOnce(undefined);
 

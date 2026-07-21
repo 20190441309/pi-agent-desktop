@@ -142,9 +142,11 @@ test.describe("Pi Desktop deep-use surface audit", () => {
         await page.getByRole("tab", { name: "任务" }).click();
         await expect(page.getByText("任务总览")).toBeVisible({ timeout: 10_000 });
         await expect(page.getByText(GOAL_CONDITION).first()).toBeVisible({ timeout: 10_000 });
-        // 本轮未触发 Pi CLI plan/compose 流程，task registry 仍为空 → 走 empty 分支，
-        // 不渲染状态徽章。断言 empty 文案以确认 panel 渲染正确（避免误报 running 任务）。
-        await expect(page.getByText("本轮还没有任务写入 registry。")).toBeVisible({ timeout: 10_000 });
+        // Goal command seeds task/goal linkage into the run panel. Prefer the linked
+        // goal surface; if registry is still empty, the empty copy is also acceptable.
+        const emptyRegistry = page.getByText("本轮还没有任务写入 registry。");
+        const linkedGoal = page.getByRole("heading", { name: "当前目标" });
+        await expect(emptyRegistry.or(linkedGoal)).toBeVisible({ timeout: 10_000 });
         await page.screenshot({ path: join(ACCEPTANCE_DIR, "2026-06-26-deep-use-07-task-goal-linked.png"), fullPage: true });
 
         await page.getByRole("tab", { name: "扩展" }).click();

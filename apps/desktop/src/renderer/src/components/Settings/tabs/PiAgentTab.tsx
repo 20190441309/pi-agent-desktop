@@ -20,13 +20,21 @@ export function PiAgentTab(): React.JSX.Element {
         };
 
         loadConfig();
+        const onVisibility = (): void => {
+            if (document.visibilityState === 'visible') loadConfig();
+        };
         window.addEventListener('focus', loadConfig);
+        document.addEventListener('visibilitychange', onVisibility);
+        // Hide-on-close re-show often skips focus/visibility under Electron CI.
+        const unsubShown = window.piAPI.onSettingsWindowShown?.(loadConfig);
         const unsubscribe = window.piAPI.onPiConfigChanged?.(() => {
             loadConfig();
         });
         return () => {
             active = false;
             window.removeEventListener('focus', loadConfig);
+            document.removeEventListener('visibilitychange', onVisibility);
+            if (typeof unsubShown === 'function') unsubShown();
             if (typeof unsubscribe === 'function') unsubscribe();
         };
     }, []);

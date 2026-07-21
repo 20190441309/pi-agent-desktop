@@ -125,7 +125,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
                   <button
                     type="button"
                     onClick={approveAll}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-success)] hover:bg-[#059669] transition-colors"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-success)] hover:bg-[#059669] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-success)]"
                     aria-label={t("approvalPanel.approveAll")}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -136,7 +136,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
                   <button
                     type="button"
                     onClick={rejectAll}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-error)] hover:bg-[var(--color-error)] transition-colors"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium text-white bg-[var(--color-error)] hover:bg-[var(--color-error)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-error)]"
                     aria-label={t("approvalPanel.rejectAll")}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -149,7 +149,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
               <button
                 type="button"
                 onClick={clearChanges}
-                className="px-2.5 py-1.5 rounded text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] transition-colors"
+                className="px-2.5 py-1.5 rounded text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mm-accent-blue)]"
                 aria-label={t("approvalPanel.clearAria")}
               >
                 {t("approvalPanel.clear")}
@@ -163,7 +163,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
               role="switch"
               aria-checked={autoApprove}
               aria-label={t("approvalPanel.autoApprove")}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mm-accent-blue)] ${
                 autoApprove
                   ? 'bg-[#dcfce7] text-[var(--color-success)]'
                   : 'bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]'

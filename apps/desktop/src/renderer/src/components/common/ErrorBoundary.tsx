@@ -75,14 +75,16 @@ function DefaultErrorFallback({ error, onReset }: { error: Error; onReset: () =>
                 </pre>
                 <div className="flex gap-2">
                     <button
+                        type="button"
                         onClick={onReset}
-                        className="px-4 py-2 bg-[#1a1a1a] text-white rounded text-sm hover:bg-[#333] transition-colors"
+                        className="px-4 py-2 bg-[#1a1a1a] text-white rounded text-sm hover:bg-[#333] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mm-accent-blue)]"
                     >
                         {t("errorBoundary.retry")}
                     </button>
                     <button
+                        type="button"
                         onClick={() => location.reload()}
-                        className="px-4 py-2 border border-[var(--mm-border)] text-[var(--mm-text-secondary)] rounded text-sm hover:bg-[var(--mm-bg-sidebar)] transition-colors"
+                        className="px-4 py-2 border border-[var(--mm-border)] text-[var(--mm-text-secondary)] rounded text-sm hover:bg-[var(--mm-bg-sidebar)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mm-accent-blue)]"
                     >
                         {t("errorBoundary.reload")}
                     </button>

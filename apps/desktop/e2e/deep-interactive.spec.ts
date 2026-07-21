@@ -19,7 +19,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl, hideSettingsWindow } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 import { join } from 'path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
@@ -277,17 +277,15 @@ deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
         ({ app, page } = await launchApp());
         await takeScreenshot(page, '01-launch');
 
-        const settingsWindowPromise = app.waitForEvent('window');
-        await page.getByRole('tab', { name: '设置' }).click();
-        const settingsWindow = await settingsWindowPromise;
-        await settingsWindow.waitForLoadState('domcontentloaded');
-
+        // Settings is an independent BrowserWindow opened via title-bar icon (not a main tab).
+        const settingsWindow = await showSettingsWindow(app, page);
         await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible({ timeout: 5000 });
         await takeScreenshot(settingsWindow, '02-settings-opened');
 
         await settingsWindow.getByRole('tab', { name: '模型' }).click();
         await expect(settingsWindow.getByRole('tab', { name: '模型' })).toHaveAttribute('aria-selected', 'true');
-        await expect(settingsWindow.getByText(deepConfig.modelName)).toBeVisible({ timeout: 10_000 });
+        // Model id may appear in both managed-model list and current-model summary.
+        await expect(settingsWindow.getByText(deepConfig.modelName).first()).toBeVisible({ timeout: 10_000 });
         await settingsWindow.waitForTimeout(500);
         await takeScreenshot(settingsWindow, '03-settings-model-tab');
 
@@ -296,7 +294,7 @@ deepInteractiveDescribe('Pi Desktop — Deep AI Interaction', () => {
         await page.waitForTimeout(300);
         await takeScreenshot(page, '04-settings-closed');
 
-        console.log('[DEEP-TEST] Model settings configured');
+        console.log(`[DEEP-TEST] Model settings configured provider=${deepConfig.provider} model=${deepConfig.model}`);
     });
 
     test('2. 创建新会话并发送简单消息，观察 AI 流式响应', async () => {

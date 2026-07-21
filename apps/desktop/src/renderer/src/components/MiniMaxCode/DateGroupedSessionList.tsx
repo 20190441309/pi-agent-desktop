@@ -34,8 +34,7 @@ interface DateGroup {
   sessions: Session[];
 }
 
-function getDateGroupLabel(date: Date, t: (key: string) => string): string {
-  const now = new Date();
+export function getDateGroupLabel(date: Date, t: (key: string) => string, now: Date = new Date()): string {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const sessionDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const diffDays = Math.floor((today.getTime() - sessionDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -47,12 +46,12 @@ function getDateGroupLabel(date: Date, t: (key: string) => string): string {
   return t("sidebar.sessions.dateGroup.earlier");
 }
 
-function groupSessionsByDate(sessions: Session[], t: (key: string) => string): DateGroup[] {
+export function groupSessionsByDate(sessions: Session[], t: (key: string) => string, now: Date = new Date()): DateGroup[] {
   const groups = new Map<string, Session[]>();
 
   for (const session of sessions) {
     const date = sessionActivityTime(session);
-    const label = getDateGroupLabel(date, t);
+    const label = getDateGroupLabel(date, t, now);
     if (!groups.has(label)) {
       groups.set(label, []);
     }
@@ -139,7 +138,7 @@ export function DateGroupedSessionList({
               type="button"
               onClick={() => toggleGroup(label)}
               aria-expanded={expanded}
-              className="flex h-8 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-3 text-[12px] font-medium text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none"
+              className="flex h-8 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-3 text-[12px] font-medium text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:bg-[var(--mm-bg-hover)] focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
             >
               <span className="text-[var(--mm-text-tertiary)]">
                 <ChevronIcon expanded={expanded} />
@@ -178,7 +177,7 @@ export function DateGroupedSessionList({
             type="button"
             onClick={() => setArchivedExpanded((v) => !v)}
             aria-expanded={archivedExpanded}
-            className="flex h-8 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-3 text-[12px] font-medium text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none"
+            className="flex h-8 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-3 text-[12px] font-medium text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:bg-[var(--mm-bg-hover)] focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
           >
             <span className="text-[var(--mm-text-tertiary)]">
               <ChevronIcon expanded={archivedExpanded} />

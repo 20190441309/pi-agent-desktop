@@ -41,15 +41,20 @@ function prepareWorkspaceRepo(workspacePath: string): void {
 
 function prepareStubModelConfig(configDir: string): void {
     mkdirSync(configDir, { recursive: true });
+    // Dual-path credentials: models.json apiKey (config summary fallback) + auth.json for AuthStorage.
     writeFileSync(join(configDir, "models.json"), JSON.stringify({
         providers: {
             e2e: {
                 name: "E2E Stub",
                 baseUrl: "http://127.0.0.1:1/v1",
                 api: "openai-completions",
+                apiKey: "sk-e2e-stub",
                 models: [{ id: "stub-model", name: "Stub Model", contextWindow: 8192, maxTokens: 1024 }],
             },
         },
+    }, null, 2), "utf-8");
+    writeFileSync(join(configDir, "auth.json"), JSON.stringify({
+        e2e: { type: "api_key", key: "sk-e2e-stub" },
     }, null, 2), "utf-8");
     writeFileSync(join(configDir, "settings.json"), JSON.stringify({
         defaultProvider: "e2e",

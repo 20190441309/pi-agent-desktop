@@ -1104,6 +1104,8 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         const settings = deps.getSettings?.();
         const longHorizon = longHorizonSettings(settings);
         const currentModeOptions = modeOptions(settings, ws.id, deps.getWorkspacePlanMode);
+        // Capture previous mode before overwriting — plan→build injects BUILD_SWITCH.
+        const previousMode = agentModeByWorkspace.get(ws.id);
         const mode = normalizeAgentMode(options?.mode, currentModeOptions);
         // Set the workspace's active mode BEFORE any await so concurrent prompts / event-bridge
         // reads don't observe a stale value during the async window below.
@@ -1144,7 +1146,12 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             }
         }
         const promptWithContext = contextBlock ? `${contextBlock}\n\n${prompt}` : prompt;
-        const outbound = buildAgentModePrompt(mode, promptWithContext, currentModeOptions);
+        // When agentRegistry is present it builds the outbound (incl. BUILD_SWITCH) itself.
+        // Legacy session path still needs buildAgentModePrompt with previousMode.
+        const outbound = buildAgentModePrompt(mode, promptWithContext, {
+            ...currentModeOptions,
+            previousMode,
+        });
 
         try {
             if (deps.agentRegistry) {

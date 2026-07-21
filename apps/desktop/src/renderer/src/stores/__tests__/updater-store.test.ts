@@ -30,8 +30,9 @@ beforeEach(() => {
     listeners.length = 0;
     vi.clearAllMocks();
     (globalThis as { window: unknown }).window = { piAPI: mockApi };
+    // Module-level cleanupFn must be cleared so setupListeners re-registers.
+    useUpdaterStore.getState().cleanupListeners();
 });
-
 import { useUpdaterStore } from "../updater-store";
 
 describe("updater-store", () => {
@@ -68,5 +69,57 @@ describe("updater-store", () => {
             phase: "idle",
             currentVersion: "0.1.0",
         });
+    });
+
+    it("applies download progress and failure without losing currentVersion", async () => {
+        mockApi.updaterGetState.mockResolvedValueOnce(updaterState);
+        mockApi.updaterDownload.mockResolvedValueOnce({
+            ...updaterState,
+            phase: "downloading",
+            progress: { percent: 35, bytesPerSecond: 512, transferred: 35, total: 100 },
+            latestVersion: "0.2.0",
+            updateAvailable: true,
+        });
+
+        await useUpdaterStore.getState().hydrate();
+        await useUpdaterStore.getState().downloadUpdate();
+
+        expect(useUpdaterStore.getState().state).toMatchObject({
+            phase: "downloading",
+            progress: { percent: 35 },
+            currentVersion: "0.1.0",
+        });
+
+        mockApi.updaterDownload.mockResolvedValueOnce(
+            ipcError("ipcErrors.updater.downloadFailed", "磁盘空间不足"),
+        );
+        await useUpdaterStore.getState().downloadUpdate();
+
+        expect(useUpdaterStore.getState().error).toMatchObject({
+            code: "ipcErrors.updater.downloadFailed",
+        });
+        expect(useUpdaterStore.getState().state?.currentVersion).toBe("0.1.0");
+    });
+
+    it("pushes progress updates from onUpdaterStateChanged during download", async () => {
+        useUpdaterStore.getState().cleanupListeners();
+        mockApi.updaterGetState.mockResolvedValueOnce(updaterState);
+        await useUpdaterStore.getState().hydrate();
+        useUpdaterStore.getState().setupListeners();
+
+        expect(listeners.length).toBeGreaterThan(0);
+        listeners[listeners.length - 1]?.({
+            ...updaterState,
+            phase: "downloading",
+            latestVersion: "0.2.0",
+            updateAvailable: true,
+            progress: { percent: 88, bytesPerSecond: 2048, transferred: 88, total: 100 },
+        });
+
+        expect(useUpdaterStore.getState().state).toMatchObject({
+            phase: "downloading",
+            progress: { percent: 88 },
+        });
+        expect(useUpdaterStore.getState().loading).toBe(false);
     });
 });

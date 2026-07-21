@@ -285,6 +285,21 @@ describe("git IPC", () => {
             if (isIpcError(result)) expect(result.code).toBe("ipcErrors.git.pushFailed");
         });
 
+        it("maps authentication failures to pushFailed with readable fallback (G-009)", async () => {
+            gitServiceMock.gitPush.mockRejectedValue(
+                new Error("Authentication failed for 'https://github.com/org/repo.git'"),
+            );
+
+            const handler = handlers.get("git:push")!;
+            const result = await handler({}, "C:/repo");
+
+            expect(isIpcError(result)).toBe(true);
+            if (isIpcError(result)) {
+                expect(result.code).toBe("ipcErrors.git.pushFailed");
+                expect(result.fallback).toMatch(/Authentication failed|git push 失败/);
+            }
+        });
+
         it("rejects an empty workspace path", async () => {
             const handler = handlers.get("git:push")!;
             const result = await handler({}, "");

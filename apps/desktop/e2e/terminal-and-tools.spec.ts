@@ -277,7 +277,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
             await expandRightRail.click();
         }
 
-        await page.getByRole('button', { name: /提交或推送/ }).click();
+        await page.getByRole('button', { name: /查看变更文件/ }).click();
         await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 10_000 });
         await page.screenshot({ path: test.info().outputPath('right-rail-visible-git-entry.png'), fullPage: true });
 
@@ -353,7 +353,8 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         });
 
         expect(metrics).not.toBeNull();
-        expect(Math.abs(metrics!.leftTop - metrics!.rightTop)).toBeLessThanOrEqual(1);
+        // Allow ~2 device pixels: Windows DPI/subpixel rounding can yield ~1.17px.
+        expect(Math.abs(metrics!.leftTop - metrics!.rightTop)).toBeLessThanOrEqual(2);
         expect(metrics!.leftTop - metrics!.bodyTop).toBeLessThanOrEqual(20);
         expect(metrics!.leftTop).toBeLessThan(metrics!.bodyTop + metrics!.bodyHeight / 3);
 

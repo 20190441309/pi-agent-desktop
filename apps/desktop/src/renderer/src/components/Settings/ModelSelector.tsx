@@ -25,25 +25,31 @@ export function ModelSelector(): React.JSX.Element {
           <div>
             <label className="mb-2 block text-sm text-[var(--mm-text-secondary)]">选择模型</label>
             <div className="space-y-2">
-              {models.map((model) => (
-                <div
-                  key={model.id}
-                  onClick={() => updateSettings({ model: model.id, provider: model.provider })}
-                  className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                    settings.model === model.id
-                      ? 'border border-[var(--mm-accent-blue)] bg-[var(--settings-bg-active)]'
-                      : 'border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] hover:border-[var(--mm-border-strong)]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate font-medium text-[var(--mm-text-primary)]">{model.name}</div>
-                      <div className="mt-0.5 text-xs text-[var(--mm-text-secondary)]">{model.description}</div>
+              {models.map((model) => {
+                const selected = settings.model === model.id;
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    aria-pressed={selected}
+                    aria-label={`选择模型 ${model.name}`}
+                    onClick={() => updateSettings({ model: model.id, provider: model.provider })}
+                    className={`w-full p-3 rounded-lg text-left cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-accent-blue)] ${
+                      selected
+                        ? 'border border-[var(--mm-accent-blue)] bg-[var(--settings-bg-active)]'
+                        : 'border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] hover:border-[var(--mm-border-strong)]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate font-medium text-[var(--mm-text-primary)]">{model.name}</div>
+                        <div className="mt-0.5 text-xs text-[var(--mm-text-secondary)]">{model.description}</div>
+                      </div>
+                      <div className="ml-2 shrink-0 text-xs text-[var(--mm-text-tertiary)]">{model.providerName || model.provider}</div>
                     </div>
-                    <div className="ml-2 shrink-0 text-xs text-[var(--mm-text-tertiary)]">{model.providerName || model.provider}</div>
-                  </div>
-                </div>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </>
@@ -62,6 +68,7 @@ export function ModelSelector(): React.JSX.Element {
           value={settings.temperature}
           onChange={(e) => updateSettings({ temperature: parseFloat(e.target.value) })}
           className="w-full"
+          aria-label="温度参数"
         />
         <div className="mt-1 flex justify-between text-xs text-[var(--mm-text-tertiary)]">
           <span>精确</span>

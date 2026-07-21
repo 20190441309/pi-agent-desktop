@@ -122,7 +122,9 @@ test.describe("main page token presentation", () => {
         await openRightRailIfNeeded(page);
         await expect(page.getByText("环境信息")).toBeVisible();
         await expect(page.getByText("来源")).toHaveCount(0);
-        await expect(page.getByText("进度")).toHaveCount(0);
+        // Progress section is always mounted for empty-state discoverability;
+        // token usage still must not live in the right rail.
+        await expect(page.getByTestId("right-rail-progress")).toBeVisible({ timeout: 5_000 });
         await expect(page.getByText("Token 使用统计")).toHaveCount(0);
         await expect(page.getByText("总 Token")).toHaveCount(0);
         await expect(page.getByText("输入 Token")).toHaveCount(0);

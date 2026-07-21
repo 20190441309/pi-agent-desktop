@@ -29,6 +29,7 @@ export function Button({
   isLoading = false,
   className = '',
   disabled,
+  type = 'button',
   ...props
 }: ButtonProps): React.JSX.Element {
   const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2';
@@ -57,6 +58,7 @@ export function Button({
   
   return (
     <button
+      type={type}
       className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${
         disabled || isLoading ? disabledClasses : ''
       } ${className}`}

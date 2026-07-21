@@ -19,10 +19,15 @@ export function FileChangeItem({ file, isExpanded, onToggle }: FileChangeItemPro
     return 'text-[var(--mm-text-secondary)]';
   };
 
+  const expandLabel = isExpanded ? `折叠 ${displayPath}` : `展开 ${displayPath}`;
+
   return (
     <button
+      type="button"
       onClick={onToggle}
-      className="w-full flex items-center justify-between px-3 py-2 hover:bg-[var(--mm-bg-hover)] transition-colors duration-150 cursor-pointer"
+      aria-expanded={isExpanded}
+      aria-label={expandLabel}
+      className="w-full flex items-center justify-between px-3 py-2 hover:bg-[var(--mm-bg-hover)] transition-colors duration-150 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-accent-blue)]"
     >
       <div className="flex items-center gap-2 min-w-0">
         {/* 展开/折叠箭头 */}
@@ -33,6 +38,7 @@ export function FileChangeItem({ file, isExpanded, onToggle }: FileChangeItemPro
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
+          aria-hidden="true"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
@@ -43,6 +49,7 @@ export function FileChangeItem({ file, isExpanded, onToggle }: FileChangeItemPro
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
+          aria-hidden="true"
         >
           <path
             strokeLinecap="round"

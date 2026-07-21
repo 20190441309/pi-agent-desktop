@@ -71,6 +71,9 @@ export function ResizablePanel({
       
       {/* 拖动手柄 */}
       <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={side === 'left' ? '调整左侧面板宽度' : '调整右侧面板宽度'}
         className={`absolute top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#1a1a1a] transition-colors ${
           side === 'left' ? 'right-0' : 'left-0'
         } ${isDragging ? 'bg-[#1a1a1a]' : 'bg-transparent'}`}

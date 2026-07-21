@@ -66,19 +66,24 @@ export function parseDiff(diffText: string): ParsedDiff {
     if (!currentFile) continue;
 
     // --- 行
+    // Keep /dev/null as a sentinel until +++ is seen so isNew/isDeleted can be
+    // decided correctly (empty string alone cannot distinguish "new file" from
+    // "path not yet filled").
     if (line.startsWith('--- ')) {
       const path = line.slice(4);
-      currentFile.oldPath = path === '/dev/null' ? '' : path.replace(/^a\//, '');
-      currentFile.isDeleted = path === '/dev/null';
+      currentFile.oldPath = path === '/dev/null' ? '/dev/null' : path.replace(/^a\//, '');
       continue;
     }
 
     // +++ 行
     if (line.startsWith('+++ ')) {
       const path = line.slice(4);
-      currentFile.newPath = path === '/dev/null' ? '' : path.replace(/^b\//, '');
-      currentFile.isNew = path === '/dev/null' || currentFile.oldPath === '/dev/null';
-      // 如果 newPath 为空但 oldPath 有值，使用 oldPath
+      currentFile.newPath = path === '/dev/null' ? '/dev/null' : path.replace(/^b\//, '');
+      currentFile.isNew = currentFile.oldPath === '/dev/null' && currentFile.newPath !== '/dev/null';
+      currentFile.isDeleted = currentFile.newPath === '/dev/null' && currentFile.oldPath !== '/dev/null';
+      // Normalize /dev/null away and backfill the surviving path for display.
+      if (currentFile.oldPath === '/dev/null') currentFile.oldPath = '';
+      if (currentFile.newPath === '/dev/null') currentFile.newPath = '';
       if (!currentFile.newPath && currentFile.oldPath) {
         currentFile.newPath = currentFile.oldPath;
       }

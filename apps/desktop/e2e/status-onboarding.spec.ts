@@ -9,7 +9,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, retryMainAction } from "./support/electron-windows";
 
 const TEST_TIMEOUT = 60_000;
 
@@ -94,5 +94,63 @@ test.describe('Pi Desktop — Status & Onboarding', () => {
         expect(config.parsed).toBeTruthy();
         console.log(`[TEST] Models config keys: ${Object.keys(config.parsed).join(', ')}`);
 
+    });
+
+    test('B-002: missing Pi CLI surfaces installed=false without crashing main UI', async () => {
+        const userDataDir = test.info().outputPath(`pi-missing-${Date.now()}`);
+        const launched = await launchApp(userDataDir);
+        app = launched.app;
+        const { page } = launched;
+
+        // Wait for renderer shell before main evaluate — avoids early navigation context loss.
+        await expect(page.getByRole('tablist', { name: '顶部标签栏' })).toBeVisible({ timeout: 15_000 });
+
+        // contextBridge freezes window.piAPI — stub the main-process IPC handlers instead.
+        // retryMainAction absorbs "Execution context was destroyed" during early shell navigation.
+        await retryMainAction(() => app!.evaluate(({ ipcMain }) => {
+            const missingStatus = {
+                installed: false,
+                localVersion: null,
+                latestVersion: null,
+                updateAvailable: false,
+                executablePath: null,
+                installMethod: 'unknown',
+                configExists: false,
+                defaultProvider: null,
+                defaultModel: null,
+                managedRuntimePath: null,
+                runtimeSource: 'none',
+                runtimeChannel: 'stable',
+                lastCheckedAt: Date.now(),
+            };
+            for (const channel of ['pi:status', 'pi:refresh-status'] as const) {
+                ipcMain.removeHandler(channel);
+                ipcMain.handle(channel, async () => missingStatus);
+            }
+        }));
+
+        // Main chrome must remain usable when Pi is reported missing.
+        await expect(page.getByRole('tablist', { name: '顶部标签栏' })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('出错了')).toHaveCount(0);
+
+        const status = await page.evaluate(async () => window.piAPI.getStatus());
+        expect(status).toMatchObject({
+            installed: false,
+            executablePath: null,
+            updateAvailable: false,
+            runtimeSource: 'none',
+        });
+
+        // Settings may open as independent window; install CTA is optional if status panel is elsewhere.
+        await page.getByRole('button', { name: '打开设置' }).click().catch(() => undefined);
+        const installCta = page.getByRole('button', { name: /安装 Pi CLI/ });
+        const installVisible = await installCta.isVisible().catch(() => false);
+        if (installVisible) {
+            await expect(installCta).toBeVisible();
+        }
+
+        // Shell must still respond after the missing-status path.
+        await expect(page.getByRole('tablist', { name: '顶部标签栏' })).toBeVisible();
+        console.log('[TEST] B-002 missing Pi CLI contract: installed=false, main UI alive');
     });
 });

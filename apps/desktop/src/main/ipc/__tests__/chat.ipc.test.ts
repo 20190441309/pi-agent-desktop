@@ -544,6 +544,48 @@ describe("setupChatIpc", () => {
         });
     });
 
+    it("slash edge cases: missing workspace, leading slash strip, settings/new/export actions (D-019/D-020)", async () => {
+        const exportToHtml = vi.fn(async () => "C:/demo/export.html");
+        const session = {
+            compact: vi.fn(),
+            reload: vi.fn(),
+            exportToHtml,
+            getLastAssistantText: vi.fn(() => null),
+            extensionRunner: { getRegisteredCommands: vi.fn(() => []) },
+            promptTemplates: [],
+            resourceLoader: { getSkills: vi.fn(() => ({ skills: [] })) },
+        };
+        const registry = {
+            get: vi.fn(async () => ({ session })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: (id: string) => (id === "ws_1" ? { id: "ws_1", name: "demo", path: "C:/demo" } : undefined),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("pi:run-builtin-slash-command")!;
+
+        const missingWs = await handler({}, { workspaceId: "missing", command: "settings", args: "" });
+        expect(missingWs).toMatchObject({ code: "ipcErrors.chat.workspaceNotFound" });
+
+        const withSlash = await handler({}, { workspaceId: "ws_1", command: "/settings", args: "" });
+        expect(withSlash).toMatchObject({ handled: true, command: "settings", action: "open-settings" });
+
+        const newSession = await handler({}, { workspaceId: "ws_1", command: "new", args: "" });
+        expect(newSession).toMatchObject({ handled: true, command: "new", action: "new-session" });
+
+        const exported = await handler({}, { workspaceId: "ws_1", command: "export", args: "out.html" });
+        expect(exportToHtml).toHaveBeenCalledWith("out.html");
+        expect(exported).toMatchObject({ handled: true, command: "export", action: "export" });
+
+        const copyEmpty = await handler({}, { workspaceId: "ws_1", command: "copy", args: "" });
+        expect(copyEmpty).toMatchObject({ handled: true, command: "copy", action: "copy", keepInput: true });
+    });
+
     it("returns MiMoCode runtime feature state from settings", async () => {
         setupChatIpc({
             registry: { get: vi.fn(), has: vi.fn() } as any,

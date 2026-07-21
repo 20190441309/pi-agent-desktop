@@ -7,6 +7,26 @@ All notable changes to Pi Desktop will be documented here. Format follows [Keep 
 ### Planned
 - Electron 35+ bump to unblock e2e
 
+## [1.0.14] - 2026-07-21
+
+### Added
+- Plan→build transition injects `BUILD_SWITCH` so the model drops plan read-only discipline and may write workspace files
+- NSIS isolation probe/smoke scripts, Windows Sandbox WSB, honesty E2E gates, and isolation runbook (host install still blocked without admin sandbox)
+- Broad unit/E2E residual coverage across chat, permissions, skills, terminal, tray, window geometry, generated UI, and shared IPC guards
+- Settings window `onSettingsWindowShown` preload hook for hide-on-close reuse
+
+### Changed
+- Session search prefers FTS with AND tokenization, then substring post-filter and LIKE fallback for hyphenated/mixed needles
+- Approval classifier expands high-risk shell patterns (`iex`, disk wipe, elevation, scheduled tasks, registry writes)
+- Protected paths cover more credential material (`.pem`/keystores, sqlite DBs, `.gcloud`, `authorized_keys`, public SSH keys)
+- Accessibility pass: focus-visible rings, aria labels, dialog roles across Git rail, skills, approvals, diff, settings, and session export
+
+### Fixed
+- Command palette terminal create selector no longer matches dual “新建终端” buttons
+- Skills create menu a11y (`aria-label` / menuitem roles) aligned with unit tests
+- Long-horizon live acceptance no longer seeds plan probes; model must write plan artifacts
+- Tray quit, DPI scale factors, window geometry, and session resume residual E2E paths
+
 ## [1.0.12] - 2026-06-27
 
 ### Added

@@ -577,7 +577,9 @@ select:not([data-allow-blue-focus]):focus {
 }
 
 [data-theme="dark"] .bg-\[\#fffaf0\],
-[data-theme="dark"] .bg-\[\#fffefb\] {
+[data-theme="dark"] .bg-\[\#fffefb\],
+[data-theme="dark"] .hover\:bg-\[\#fffefb\]:hover,
+[data-theme="dark"] .hover\:bg-\[\#fffaf0\]:hover {
   background-color: #2a2518 !important;
 }
 
@@ -1030,6 +1032,7 @@ code {
   flex-direction: column;
   contain: layout paint style;
   content-visibility: hidden;
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--motion-fast) var(--motion-ease);
@@ -1038,6 +1041,7 @@ code {
 .pi-motion-panel-layer[data-active="true"] {
   z-index: 1;
   content-visibility: visible;
+  visibility: visible;
   opacity: 1;
   pointer-events: auto;
 }

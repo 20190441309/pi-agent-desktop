@@ -154,10 +154,16 @@ export class CodexSessionImporter {
     private async readCodexSession(filePath: string): Promise<ParsedCodexSession> {
         this.assertCodexSourcePath(filePath);
         const [raw, info] = await Promise.all([readFile(filePath, "utf8"), stat(filePath)]);
-        const entries = raw
-            .split(/\r?\n/)
-            .filter(Boolean)
-            .map((line) => JSON.parse(line));
+        // Skip corrupt lines so a single bad event does not drop an otherwise valid session.
+        const entries: CodexJsonlEntry[] = [];
+        for (const line of raw.split(/\r?\n/)) {
+            if (!line) continue;
+            try {
+                entries.push(JSON.parse(line) as CodexJsonlEntry);
+            } catch {
+                // ignore unparseable lines
+            }
+        }
         const meta = entries.find((entry) => entry.type === "session_meta")?.payload;
         if (!meta?.id || !meta?.cwd) throw new Error("缺少 Codex session metadata");
         return {

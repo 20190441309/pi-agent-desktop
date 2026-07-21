@@ -58,7 +58,7 @@ function GroupHeader({ workspace, count, expanded, onToggle, onSwitch }: GroupHe
       }}
       aria-expanded={expanded}
       title={workspace.path}
-      className="group flex h-9 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-2 text-[12px] font-medium text-[var(--mm-text-primary)] transition-[color,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:text-[var(--mm-text-secondary)] active:scale-[0.96] motion-reduce:transition-none focus:outline-none"
+      className="group flex h-9 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-2 text-[12px] font-medium text-[var(--mm-text-primary)] transition-[color,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:text-[var(--mm-text-secondary)] active:scale-[0.96] motion-reduce:transition-none focus:outline-none focus-visible:bg-[var(--mm-bg-hover)] focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
     >
       <span className="text-[var(--mm-text-secondary)] transition-colors group-hover:text-[var(--mm-text-primary)]">
         <FolderIcon />
@@ -173,7 +173,7 @@ export function ProjectGroupedSessionList({
             type="button"
             onClick={() => setArchivedExpanded((v) => !v)}
             aria-expanded={archivedExpanded}
-            className="flex h-8 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-3 text-[12px] font-medium text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none"
+            className="flex h-8 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-3 text-[12px] font-medium text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:bg-[var(--mm-bg-hover)] focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
           >
             <span className="text-[var(--mm-text-tertiary)]"><ChevronIcon expanded={archivedExpanded} /></span>
             <span className="min-w-0 flex-1 truncate text-left">{t("sidebar.sessions.archived")}</span>

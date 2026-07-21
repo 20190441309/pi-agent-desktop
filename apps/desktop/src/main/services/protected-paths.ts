@@ -6,13 +6,18 @@ const SENSITIVE_FILE_PATTERNS = [
     /^\.npmrc$/i,
     /^\.netrc$/i,
     /^\.pypirc$/i,
-    /^id_(?:rsa|dsa|ecdsa|ed25519)$/i,
+    /^id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?$/i,
     /^known_hosts$/i,
+    /^authorized_keys$/i,
     /^config$/i,
     /^credentials(?:\..*)?$/i,
     /^credentials\.json$/i,
     /^secrets?(?:[._-].*)?$/i,
     /^.*(?:token|secret|credential)s?\.(?:json|ya?ml|toml|txt|env)$/i,
+    // Private keys / cert material that may live outside credential dirs
+    /^.*\.(?:pem|p12|pfx|key|keystore|jks)$/i,
+    // Local databases that often hold tokens or session cookies
+    /^.*\.(?:db|sqlite|sqlite3)$/i,
 ];
 
 const SENSITIVE_DIR_NAMES = new Set([
@@ -22,6 +27,7 @@ const SENSITIVE_DIR_NAMES = new Set([
     ".azure",
     ".kube",
     ".docker",
+    ".gcloud",
 ]);
 
 function withTrailingSeparator(path: string): string {

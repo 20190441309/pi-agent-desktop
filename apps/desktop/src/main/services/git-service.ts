@@ -78,11 +78,15 @@ export async function getGitStatus(workspacePath: string): Promise<GitStatus | n
 
     for (const line of statusOutput.split("\n").filter((item) => item.trim())) {
         const status = line.substring(0, 2);
-        const file = line.substring(3).trim();
+        // Porcelain renames: "R  old -> new" — keep the destination path for UI lists.
+        const rawPath = line.substring(3).trim();
+        const file = rawPath.includes(" -> ") ? (rawPath.split(" -> ").at(-1) ?? rawPath).trim() : rawPath;
         if (status === "??") {
             untracked.push(file);
             continue;
         }
+        // Worktree (unstaged) column only — staged-only rows stay out of these buckets
+        // so the rail "变更" list matches `git status` unstaged work.
         const worktreeStatus = status[1];
         if (worktreeStatus === "M") modified.push(file);
         if (worktreeStatus === "A") added.push(file);

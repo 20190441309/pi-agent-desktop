@@ -17,15 +17,20 @@ import { prepareMiniNodeProject, readMiniProjectResult } from "./support/program
 
 function prepareStubModelConfig(configDir: string): void {
     mkdirSync(configDir, { recursive: true });
+    // Dual-path credentials: models.json apiKey (config summary fallback) + auth.json for AuthStorage.
     writeFileSync(join(configDir, "models.json"), JSON.stringify({
         providers: {
             e2e: {
                 name: "E2E Stub",
                 baseUrl: "http://127.0.0.1:1/v1",
                 api: "openai-completions",
+                apiKey: "sk-e2e-stub",
                 models: [{ id: "stub-model", name: "Stub Model", contextWindow: 8192, maxTokens: 1024 }],
             },
         },
+    }, null, 2), "utf8");
+    writeFileSync(join(configDir, "auth.json"), JSON.stringify({
+        e2e: { type: "api_key", key: "sk-e2e-stub" },
     }, null, 2), "utf8");
     writeFileSync(join(configDir, "settings.json"), JSON.stringify({
         defaultProvider: "e2e",
@@ -88,7 +93,7 @@ test.describe("normal programmer real Electron workflow", () => {
 
             await context.page.getByRole("tab", { name: "对话" }).click();
             await expandRightRailIfNeeded(context.page);
-            await context.page.getByRole("button", { name: "提交或推送，打开 Git 面板" }).click();
+            await context.page.getByRole("button", { name: /查看变更文件/ }).click();
             await expect(context.page.getByRole("region", { name: "Git 面板" })).toBeVisible({ timeout: 5_000 });
             await context.page.getByRole("button", { name: "刷新 Git 状态" }).click();
             await expect(context.page.getByText(/0 staged \/ 1 changes/)).toBeVisible({ timeout: 10_000 });

@@ -68,14 +68,19 @@ export function SessionExportDialog({ isOpen, onClose, sessionId }: SessionExpor
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      role="dialog"
+      aria-modal="true"
+      aria-label="导出会话"
+    >
       <div className="w-full max-w-[480px] overflow-hidden rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-2xl">
         <div className="flex items-center justify-between border-b border-[var(--mm-border)] px-4 py-3">
           <h2 className="text-sm font-semibold text-[var(--mm-text-primary)]">导出会话</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+            className="rounded p-1 text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mm-accent-blue)]"
             aria-label="关闭"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -87,13 +92,14 @@ export function SessionExportDialog({ isOpen, onClose, sessionId }: SessionExpor
         <div className="p-4">
           <div className="mb-4">
             <label className="mb-2 block text-xs font-medium text-[var(--mm-text-secondary)]">导出格式</label>
-            <div className="flex gap-2">
+            <div className="flex gap-2" role="group" aria-label="导出格式">
               {formats.map((format) => (
                 <button
                   key={format.value}
                   type="button"
+                  aria-pressed={selectedFormat === format.value}
                   onClick={() => setSelectedFormat(format.value)}
-                  className={`rounded-lg border px-3 py-2 text-xs transition-colors ${
+                  className={`rounded-lg border px-3 py-2 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mm-accent-blue)] ${
                     selectedFormat === format.value
                       ? "border-[var(--mm-text-primary)] bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)]"
                       : "border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"

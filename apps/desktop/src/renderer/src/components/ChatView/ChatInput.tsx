@@ -1219,7 +1219,9 @@ export function ChatInput({
                         key={option.value}
                         type="button"
                         role="menuitemradio"
+                        aria-label={option.label}
                         aria-checked={currentThinking === option.value}
+                        data-thinking-level={option.value}
                         onClick={() => {
                           handleThinkingSelect(option.value);
                           close();

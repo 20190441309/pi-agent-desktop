@@ -51,8 +51,9 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
       setSearchResults([]);
       return;
     }
-    if (!window.piAPI?.searchSessionMessages) {
-      const lowerQuery = trimmed.toLowerCase();
+    const lowerQuery = trimmed.toLowerCase();
+
+    const buildLocalResults = (): SearchResult[] => {
       const workspaceNameById = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
       const localResults: SearchResult[] = [];
       for (const session of sessions) {
@@ -81,34 +82,55 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
         const workspacePriority = Number(b.workspaceId === currentWorkspace?.id) - Number(a.workspaceId === currentWorkspace?.id);
         return workspacePriority || b.timestamp.getTime() - a.timestamp.getTime();
       });
-      setSearchResults(localResults.slice(0, 20));
+      return localResults.slice(0, 20);
+    };
+
+    if (!window.piAPI?.searchSessionMessages) {
+      setSearchResults(buildLocalResults());
       return;
     }
     let disposed = false;
     const timer = window.setTimeout(() => {
       void window.piAPI.searchSessionMessages({ query: trimmed, limit: 50 }).then((result) => {
-        if (disposed || isIpcError(result)) return;
+        if (disposed) return;
+        if (isIpcError(result)) {
+          setSearchResults(buildLocalResults());
+          return;
+        }
         const rows = result as SessionSearchResult[];
         const workspaceNameById = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
-        const mapped = rows.map((row) => ({
-          sessionId: row.sessionId,
-          sessionTitle: row.sessionTitle,
-          workspaceId: row.workspaceId,
-          workspaceName: workspaceNameById.get(row.workspaceId) ?? "未知工作区",
-          messageId: row.messageId,
-          messageContent: row.messageContent,
-          messageRole: row.messageRole,
-          timestamp: new Date(row.timestamp),
-          matchIndex: row.matchIndex,
-          matchLength: row.matchLength,
-        }));
+        // Require the full query as a substring so FTS token hits cannot inflate
+        // counts (e.g. "search-floating-needle" must not match "...assistant-reply").
+        const phraseMatched = rows.filter((row) =>
+          row.messageContent.toLowerCase().includes(lowerQuery),
+        );
+        if (phraseMatched.length === 0) {
+          // IPC/FTS can miss hyphenated or freshly-persisted content; use in-memory sessions.
+          setSearchResults(buildLocalResults());
+          return;
+        }
+        const mapped = phraseMatched.map((row) => {
+          const matchIndex = Math.max(0, row.messageContent.toLowerCase().indexOf(lowerQuery));
+          return {
+            sessionId: row.sessionId,
+            sessionTitle: row.sessionTitle,
+            workspaceId: row.workspaceId,
+            workspaceName: workspaceNameById.get(row.workspaceId) ?? "未知工作区",
+            messageId: row.messageId,
+            messageContent: row.messageContent,
+            messageRole: row.messageRole,
+            timestamp: new Date(row.timestamp),
+            matchIndex,
+            matchLength: trimmed.length,
+          };
+        });
         mapped.sort((a, b) => {
           const workspacePriority = Number(b.workspaceId === currentWorkspace?.id) - Number(a.workspaceId === currentWorkspace?.id);
           return workspacePriority || b.timestamp.getTime() - a.timestamp.getTime();
         });
         setSearchResults(mapped.slice(0, 20));
       }).catch(() => {
-        if (!disposed) setSearchResults([]);
+        if (!disposed) setSearchResults(buildLocalResults());
       });
     }, 120);
     return () => {

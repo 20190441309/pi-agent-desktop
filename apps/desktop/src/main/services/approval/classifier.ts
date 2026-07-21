@@ -23,7 +23,16 @@ const EXTRA_HIGH_RISK_PATTERNS: RegExp[] = [
     /\bbcdedit\b/i,
     /\bnet\s+user\b/i,
     /\bInvoke-Expression\b/i,
+    // Bare PowerShell alias for Invoke-Expression (e.g. `iex (iwr ...)`)
+    /\biex\b/i,
     /\bStop-Process\s+.*-Force\b/i,
+    // Disk wipe / secure erase
+    /\bformat\s+[a-z]:/i,
+    /\bcipher\s+\/w\b/i,
+    // Elevation and scheduled persistence
+    /\bStart-Process\b.*-Verb\s+RunAs\b/i,
+    /\bschtasks\b.*\/create\b/i,
+    /\breg\s+add\b/i,
 ];
 
 function isExtraHighRiskCommand(cmd: string): boolean {

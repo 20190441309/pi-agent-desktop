@@ -55,6 +55,11 @@ export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | nul
       settingsWindow.show();
       settingsWindow.focus();
       selectSettingsTab(tab);
+      // Hide-on-close re-show often skips DOM focus/visibility events under Electron CI.
+      // Emit a dedicated signal so Pi config surfaces always re-read on reopen.
+      if (settingsRendererReady) {
+        settingsWindow.webContents.send('settings:window-shown');
+      }
       return;
     }
 

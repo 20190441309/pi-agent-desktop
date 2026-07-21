@@ -95,11 +95,12 @@ export function ShortcutsCheatsheet({
                         </p>
                     </div>
                     <button
+                        type="button"
                         onClick={onClose}
                         aria-label={t("shortcutsCheatsheet.closeAria")}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)] transition-colors"
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mm-accent-blue)]"
                     >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>

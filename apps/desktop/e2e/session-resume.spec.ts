@@ -149,5 +149,11 @@ test.describe("Pi Desktop native Pi session resume", () => {
         expect(after.sessionFile).toBe(before.agentPath);
         expect(after.hasMarker).toBe(true);
         expect(await readFile(after.agentPath!, "utf8")).toContain(MARKER);
+
+        // K-016: after full process restart, renderer shell is usable and marker is still readable.
+        await expect(launched.page.getByRole("tablist", { name: "顶部标签栏" })).toBeVisible({ timeout: 15_000 });
+        await expect(launched.page.getByText("出错了")).toHaveCount(0);
+        const sessions = await launched.page.evaluate(async () => window.piAPI.listSessions());
+        expect(sessions.some((session) => session.id === SESSION_ID)).toBe(true);
     });
 });

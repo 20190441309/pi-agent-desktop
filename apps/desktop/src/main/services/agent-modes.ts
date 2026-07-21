@@ -1,6 +1,7 @@
 import { isAbsolute, relative, resolve } from "path";
 import type { AgentMode, PiSlashCommand } from "@shared";
 import { PLAN_DIRECTIVE } from "./agent-modes/plan-prompt";
+import { BUILD_SWITCH } from "./agent-modes/directives";
 
 export interface AgentModeRuntimeOptions {
     longHorizonEnabled?: boolean;
@@ -8,6 +9,11 @@ export interface AgentModeRuntimeOptions {
     composeModeEnabled?: boolean;
     workflowEnabled?: boolean;
     composeWorkflowEnabled?: boolean;
+    /**
+     * Mode of the previous prompt in this agent/workspace session.
+     * Used for plan→build transition reminder (BUILD_SWITCH).
+     */
+    previousMode?: AgentMode;
 }
 
 export interface AgentRegistryEntry {
@@ -150,9 +156,29 @@ export function goalSlashCommands(): PiSlashCommand[] {
     return GOAL_COMMANDS.map((command) => ({ ...command }));
 }
 
+/**
+ * Build the outbound user prompt for a mode, including long-horizon directives.
+ *
+ * Plan→build transition injects BUILD_SWITCH so the model drops plan read-only
+ * discipline and may write workspace files. Pass `options.previousMode` from
+ * the agent/workspace session mode before the current toggle.
+ */
 export function buildAgentModePrompt(mode: AgentMode, text: string, options: AgentModeRuntimeOptions = {}): string {
     const content = text.trim();
     if (options.longHorizonEnabled === false) return content;
+
+    // Plan→build transition wins over plain build (no plan directive).
+    if (mode === "build" && options.previousMode === "plan") {
+        return [
+            BUILD_SWITCH,
+            "",
+            "Plan mode constraints are lifted. You may write workspace files, run shell commands, and execute the plan steps now.",
+            "Do not call plan_write for execution. Implement the plan directly.",
+            "",
+            content,
+        ].join("\n");
+    }
+
     if (mode === "build") return content;
     if (mode === "plan") {
         // `longHorizonEnabled === false` already returned above, so only

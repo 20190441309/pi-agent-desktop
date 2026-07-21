@@ -7,9 +7,9 @@ interface RecentWorkspacesProps {
   limit?: number;
 }
 
-function formatTimeAgo(date: Date): string {
-  const now = Date.now();
-  const diff = now - date.getTime();
+/** Exported for unit tests — relative time labels for recent workspace rows. */
+export function formatTimeAgo(date: Date, nowMs: number = Date.now()): string {
+  const diff = nowMs - date.getTime();
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) return "刚刚";
   if (minutes < 60) return `${minutes} 分钟前`;

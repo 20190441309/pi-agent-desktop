@@ -1649,6 +1649,8 @@ export interface PiAPI {
     closeSettingsWindow(): Promise<void>;
     settingsWindowReady(): Promise<SettingsWindowTab | undefined>;
     onSettingsTabSelected(cb: (tab: SettingsWindowTab) => void): Unsubscribe;
+    /** Fired when the hide-on-close settings window is shown again (focus may not fire). */
+    onSettingsWindowShown?(cb: () => void): Unsubscribe;
 
     // v1.1.0: 识图功能 (vision)
     describeImages?(images: Array<{

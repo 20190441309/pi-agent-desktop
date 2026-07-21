@@ -5,7 +5,7 @@ interface ModelSelectorProps {
   className?: string;
 }
 
-function groupByProvider(models: PiModelInfo[]): Map<string, PiModelInfo[]> {
+export function groupByProvider(models: PiModelInfo[]): Map<string, PiModelInfo[]> {
   const groups = new Map<string, PiModelInfo[]>();
   for (const model of models) {
     const provider = model.providerName || model.provider;

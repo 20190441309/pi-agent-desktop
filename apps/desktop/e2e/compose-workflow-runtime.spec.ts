@@ -4,7 +4,7 @@ import { join } from "path";
 import { execFileSync } from "child_process";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl, hideSettingsWindow } from "./support/electron-windows";
+import { getWindowByUrl, hideSettingsWindow, showSettingsWindow } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const SESSION_ID = "compose-runtime-e2e-session";
@@ -245,10 +245,9 @@ async function waitForBoundAgent(page: Page, sessionId: string): Promise<string>
 }
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
-    const settingsWindowPromise = app.waitForEvent("window");
-    await page.getByRole("button", { name: "打开设置" }).click();
-    const settingsWindow = await settingsWindowPromise;
-    await settingsWindow.waitForLoadState("domcontentloaded");
+    // Settings BrowserWindow is hide-on-close; reuse via showSettingsWindow rather
+    // than waitForEvent("window"), which only fires on first create.
+    const settingsWindow = await showSettingsWindow(app, page);
     await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible({ timeout: 10_000 });
     return settingsWindow;
 }
@@ -490,13 +489,15 @@ test.describe("Compose workflow runtime acceptance", () => {
         await page.getByRole("tab", { name: "运行" }).click();
         await page.getByRole("tablist", { name: "运行视图" }).getByRole("tab", { name: "任务" }).click();
         await expect(page.getByText("任务总览")).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByText("Brainstorm")).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByText("Design")).toBeVisible();
-        await expect(page.getByText("Implement")).toBeVisible();
-        await expect(page.getByText("Verify")).toBeVisible();
-        await expect(page.getByText("Review")).toBeVisible();
-        await expect(page.getByText("Report")).toBeVisible();
-        await expect(page.getByText("Merge")).toBeVisible();
+        // Scope to the run panel — chat message cards may also list the same phase names.
+        const taskOverview = page.getByTestId("motion-panel-run");
+        await expect(taskOverview.getByText("Brainstorm")).toBeVisible({ timeout: 10_000 });
+        await expect(taskOverview.getByText("Design")).toBeVisible();
+        await expect(taskOverview.getByText("Implement")).toBeVisible();
+        await expect(taskOverview.getByText("Verify")).toBeVisible();
+        await expect(taskOverview.getByText("Review")).toBeVisible();
+        await expect(taskOverview.getByText("Report")).toBeVisible();
+        await expect(taskOverview.getByText("Merge")).toBeVisible();
         await page.screenshot({ path: join(ACCEPTANCE_DIR, "compose-runtime-02-mode-and-phase-sequence.png"), fullPage: true });
 
         await page.getByRole("tab", { name: "对话" }).click();

@@ -43,10 +43,11 @@ export function SkillCard({ skill, installed, isInstalling, onInstall }: SkillCa
                     <span className="text-[10px] text-green-600 font-medium">✓ 已装</span>
                 ) : onInstall ? (
                     <button
+                        type="button"
                         onClick={onInstall}
                         disabled={isInstalling}
                         aria-label={`安装 ${skill.name}`}
-                        className="text-xs px-3 py-1 bg-[#1a1a1a] text-white rounded hover:bg-[#333] transition-colors disabled:opacity-50"
+                        className="text-xs px-3 py-1 bg-[#1a1a1a] text-white rounded hover:bg-[#333] transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-accent-blue)]"
                     >
                         {isInstalling ? "安装中..." : "装"}
                     </button>

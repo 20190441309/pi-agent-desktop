@@ -131,7 +131,7 @@ test.describe("M5 acceptance — critical dotfiles, async Git/File paths and bat
         await expect(page.locator('button[title=".vscode/settings.json"]')).toBeVisible({ timeout: 5_000 });
 
         await page.getByRole("tab", { name: "对话" }).click();
-        await page.getByRole("button", { name: "提交或推送，打开 Git 面板" }).click();
+        await page.getByRole("button", { name: /查看变更文件/ }).click();
         await expect(page.getByRole("region", { name: "Git 面板" })).toBeVisible({ timeout: 5_000 });
         await page.getByRole("button", { name: "刷新 Git 状态" }).click();
         await expect(page.getByText(/0 staged \/ 1 changes/)).toBeVisible({ timeout: 10_000 });

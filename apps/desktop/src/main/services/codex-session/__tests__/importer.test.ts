@@ -79,4 +79,47 @@ describe("CodexSessionImporter", () => {
         expect(report.failed).toBe(1);
         expect(report.results[0].error).toContain("outside ~/.codex/sessions");
     });
+
+    it("tolerates corrupt JSONL / empty sessions without throwing (C-021)", async () => {
+        const corrupt = join(codexRoot, "corrupt.jsonl");
+        await writeFile(corrupt, "not-json\n{\n", "utf8");
+        const empty = join(codexRoot, "empty.jsonl");
+        await writeFile(empty, "", "utf8");
+        const partial = join(codexRoot, "partial.jsonl");
+        await writeFile(
+            partial,
+            [
+                "garbage-line",
+                JSON.stringify({ type: "session_meta", payload: { id: "partial-ok", cwd: projectPath, timestamp: "2026-06-01T00:00:00.000Z" } }),
+                JSON.stringify({ type: "event_msg", payload: { type: "user_message", content: "hi" } }),
+            ].join("\n"),
+            "utf8",
+        );
+
+        await expect(importer.scan(projectPath)).resolves.toEqual(
+            expect.arrayContaining([expect.objectContaining({ id: "partial-ok" })]),
+        );
+
+        const report = await importer.import(projectPath, [corrupt, empty, partial]);
+        expect(report.results).toHaveLength(3);
+        expect(report.results.every((result) => typeof result.success === "boolean")).toBe(true);
+        expect(report.imported + report.failed).toBe(3);
+        // empty/corrupt fail; partial with valid meta should import
+        expect(report.results.find((result) => result.sourcePath === partial)?.success).toBe(true);
+        expect(report.results.find((result) => result.sourcePath === empty)?.success).toBe(false);
+    });
+
+    it("rejects cwd mismatch on import (C-021)", async () => {
+        const source = join(codexRoot, "mismatch.jsonl");
+        await writeFile(
+            source,
+            JSON.stringify({ type: "session_meta", payload: { id: "s-x", cwd: "C:/other-project" } }),
+            "utf8",
+        );
+
+        const report = await importer.import(projectPath, [source]);
+        expect(report.imported).toBe(0);
+        expect(report.failed).toBe(1);
+        expect(report.results[0].error).toMatch(/不匹配|cwd/);
+    });
 });

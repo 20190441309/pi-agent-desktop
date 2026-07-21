@@ -31,10 +31,20 @@ function SettingsShell(): React.JSX.Element {
         const refreshPiConfig = (): void => {
             void loadPiConfig();
         };
+        const onVisibility = (): void => {
+            if (document.visibilityState === 'visible') refreshPiConfig();
+        };
 
         refreshPiConfig();
         window.addEventListener('focus', refreshPiConfig);
-        return () => window.removeEventListener('focus', refreshPiConfig);
+        document.addEventListener('visibilitychange', onVisibility);
+        // Hide-on-close re-show often skips focus/visibility under Electron CI.
+        const unsubShown = window.piAPI?.onSettingsWindowShown?.(refreshPiConfig);
+        return () => {
+            window.removeEventListener('focus', refreshPiConfig);
+            document.removeEventListener('visibilitychange', onVisibility);
+            if (typeof unsubShown === 'function') unsubShown();
+        };
     }, [loadPiConfig]);
 
     useEffect(() => {

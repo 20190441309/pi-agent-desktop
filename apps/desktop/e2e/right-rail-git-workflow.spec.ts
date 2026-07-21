@@ -95,7 +95,7 @@ test.describe("right rail Git workflow", () => {
         const rail = page.getByTestId("right-rail-panel");
         await expect(rail.getByText("本地", { exact: true })).toHaveCount(0);
         await expect(rail.getByText("比较分支", { exact: true })).toHaveCount(0);
-        await rail.getByRole("button", { name: "查看变更文件" }).click();
+        await rail.getByRole("button", { name: "查看变更文件，打开 Git 面板" }).click();
 
         await expect(page.getByRole("region", { name: "Git 面板" })).toBeVisible({ timeout: 10_000 });
         await expect(page.getByRole("button", { name: "打开 README.md diff" })).toBeVisible({ timeout: 10_000 });

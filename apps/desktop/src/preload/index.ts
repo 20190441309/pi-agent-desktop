@@ -417,6 +417,7 @@ const piAPI: PiAPI = {
     closeSettingsWindow: () => ipcRenderer.invoke("settings:close-window") as Promise<void>,
     settingsWindowReady: () => ipcRenderer.invoke("settings:renderer-ready") as Promise<SettingsWindowTab | undefined>,
     onSettingsTabSelected: (cb) => subscribe<SettingsWindowTab>("settings:select-tab", cb),
+    onSettingsWindowShown: (cb) => subscribe<void>("settings:window-shown", () => cb()),
 
     // v1.1.0: 识图功能 (vision). 通道当前未注册 ipcMain.handle, invoke 会 reject,
     // 由渲染层 try/catch 走 visionFailed 错误文案 — 待主进程补 handler 后自动生效.
